@@ -198,7 +198,7 @@ export async function bootstrapCommand(ctx: CliContext): Promise<number> {
   console.log("→ Creating Forgejo repo...");
   const repo = await forgejo.createUserRepo(username, {
     name: repoName,
-    auto_init: true,
+    auto_init: false,
     default_branch: "main",
   });
   if (repo) {
