@@ -79,6 +79,14 @@ export class ChangeQueries {
       .run(summary, id);
   }
 
+  updateDiffStats(id: number, diffStats: string): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(diffStats, id);
+  }
+
   /** Mark all open changes on a repo+branch as superseded (new push arrived). */
   supersedePrior(repo: string, branch: string, excludeId: number): number {
     const result = this.db

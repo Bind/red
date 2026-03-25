@@ -129,25 +129,12 @@ export class JobWorker {
     // Score
     const result = this.deps.scorer.score(diffStats);
     this.deps.changes.updateConfidence(change_id, result.confidence);
-    this.deps.changes.updateStatus(change_id, "scored");
+    this.deps.changes.updateDiffStats(change_id, JSON.stringify(diffStats));
 
-    // Store diff stats
-    this.deps.changes.getById(change_id); // refresh
-    // Update diff_stats on the change record
-    const db = (this.deps.changes as any).db;
-    db.prepare("UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(JSON.stringify(diffStats), change_id);
-
-    // Log scoring event
-    this.deps.events.append({
-      change_id,
-      event_type: "scored",
-      from_status: "scoring",
-      to_status: "scored",
-      metadata: JSON.stringify({
-        confidence: result.confidence,
-        reasons: result.reasons,
-      }),
+    // Transition to scored via state machine
+    this.deps.stateMachine.transition(change_id, "scored", {
+      confidence: result.confidence,
+      reasons: result.reasons,
     });
 
     // Evaluate policy

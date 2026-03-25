@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { CliContext } from "./index";
 import type { PolicyConfig, DiffStats, ConfidenceLevel } from "../types";
+import {
+  ruleMatches,
+  actionPriority,
+  validatePolicy,
+} from "../engine/policy-shared";
 
 export async function policyTestCommand(ctx: CliContext): Promise<number> {
   // Find policy file
@@ -169,60 +174,4 @@ function evaluateScenario(
   }
 
   return { action: finalAction, matched_rules: matched };
-}
-
-// Re-implement locally to avoid circular dep with engine/policy (which needs ForgejoClient)
-import { matchGlob } from "../engine/review";
-import type { PolicyRule } from "../types";
-
-function ruleMatches(
-  rule: PolicyRule,
-  diff: DiffStats,
-  confidence: ConfidenceLevel
-): boolean {
-  if (rule.match.confidence && rule.match.confidence !== confidence) return false;
-  if (rule.match.files?.length) {
-    const hasMatch = diff.files.some((f) =>
-      rule.match.files!.some((p) => matchGlob(p, f.filename))
-    );
-    if (!hasMatch) return false;
-  }
-  return true;
-}
-
-function actionPriority(action: string): number {
-  switch (action) {
-    case "auto-approve": return 0;
-    case "require-review": return 1;
-    case "block": return 2;
-    default: return 1;
-  }
-}
-
-function validatePolicy(raw: unknown): PolicyConfig {
-  if (!raw || typeof raw !== "object") return { rules: [] };
-  const obj = raw as Record<string, unknown>;
-  const rawRules = Array.isArray(obj.rules) ? obj.rules : [];
-  const rules: PolicyRule[] = rawRules
-    .filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
-    .map((r) => ({
-      name: String(r.name ?? "unnamed"),
-      match: {
-        files: Array.isArray((r.match as any)?.files) ? (r.match as any).files.map(String) : undefined,
-        confidence: validConfidence((r.match as any)?.confidence),
-      },
-      action: validAction(r.action),
-      reviewers: Array.isArray(r.reviewers) ? r.reviewers.map(String) : undefined,
-    }));
-  return { rules };
-}
-
-function validConfidence(val: unknown): ConfidenceLevel | undefined {
-  if (val === "safe" || val === "needs_review" || val === "critical") return val;
-  return undefined;
-}
-
-function validAction(val: unknown): PolicyRule["action"] {
-  if (val === "auto-approve" || val === "require-review" || val === "block") return val;
-  return "require-review";
 }

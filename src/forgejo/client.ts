@@ -1,7 +1,12 @@
 import type {
   CommitStatusState,
   ForgejoCommitStatus,
+  ForgejoCreateUserOptions,
   ForgejoPR,
+  ForgejoRepo,
+  ForgejoSSHKey,
+  ForgejoToken,
+  ForgejoUser,
   DiffStats,
   FileStats,
 } from "../types";
@@ -151,6 +156,118 @@ export class ForgejoClient {
     return this.request<ForgejoPR[]>(
       `/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(branch)}`
     );
+  }
+
+  // ── Admin methods (used by bootstrap) ──────────────────
+
+  /** Create a Forgejo user via admin API. Returns null if user already exists. */
+  async createUser(opts: ForgejoCreateUserOptions): Promise<ForgejoUser | null> {
+    try {
+      return await this.request<ForgejoUser>("/admin/users", {
+        method: "POST",
+        body: JSON.stringify(opts),
+      });
+    } catch (err) {
+      if (err instanceof ForgejoAPIError && (err.status === 409 || err.status === 422)) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /** Upload an SSH key for a user. Returns null if key already exists. */
+  async uploadSSHKey(
+    username: string,
+    title: string,
+    key: string
+  ): Promise<ForgejoSSHKey | null> {
+    try {
+      return await this.request<ForgejoSSHKey>(
+        `/admin/users/${encodeURIComponent(username)}/keys`,
+        {
+          method: "POST",
+          body: JSON.stringify({ title, key }),
+        }
+      );
+    } catch (err) {
+      if (err instanceof ForgejoAPIError && (err.status === 409 || err.status === 422)) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /** Create a repo owned by a user via admin API. Returns null if repo already exists. */
+  async createUserRepo(
+    username: string,
+    opts: { name: string; auto_init?: boolean; default_branch?: string }
+  ): Promise<ForgejoRepo | null> {
+    try {
+      return await this.request<ForgejoRepo>(
+        `/admin/users/${encodeURIComponent(username)}/repos`,
+        {
+          method: "POST",
+          body: JSON.stringify(opts),
+        }
+      );
+    } catch (err) {
+      if (err instanceof ForgejoAPIError && (err.status === 409 || err.status === 422)) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /** Create an API token for a user. Returns null if token name already exists. */
+  async createUserToken(
+    username: string,
+    name: string
+  ): Promise<ForgejoToken | null> {
+    try {
+      return await this.request<ForgejoToken>(
+        `/users/${encodeURIComponent(username)}/tokens`,
+        {
+          method: "POST",
+          body: JSON.stringify({ name, scopes: ["all"] }),
+        }
+      );
+    } catch (err) {
+      if (err instanceof ForgejoAPIError && (err.status === 409 || err.status === 422)) {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  /** Create a webhook on a repo. Returns null if webhook already exists. */
+  async createWebhook(
+    owner: string,
+    repo: string,
+    opts: { url: string; secret: string; events: string[] }
+  ): Promise<unknown> {
+    try {
+      return await this.request(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/hooks`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: "forgejo",
+            active: true,
+            config: {
+              url: opts.url,
+              content_type: "json",
+              secret: opts.secret,
+            },
+            events: opts.events,
+          }),
+        }
+      );
+    } catch (err) {
+      if (err instanceof ForgejoAPIError && (err.status === 409 || err.status === 422)) {
+        return null;
+      }
+      throw err;
+    }
   }
 }
 

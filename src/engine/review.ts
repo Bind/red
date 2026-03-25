@@ -110,12 +110,28 @@ export class ScoringEngine {
  * Not a full glob implementation — covers the common cases.
  */
 export function matchGlob(pattern: string, filepath: string): boolean {
-  // Convert glob to regex
-  let regex = pattern
-    .replace(/\./g, "\\.")
-    .replace(/\*\*/g, "{{GLOBSTAR}}")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\{\{GLOBSTAR\}\}/g, ".*");
+  // Split on ** and * first, then escape each literal segment
+  const parts: string[] = [];
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] === "*" && pattern[i + 1] === "*") {
+      parts.push(".*");
+      i += 2;
+    } else if (pattern[i] === "*") {
+      parts.push("[^/]*");
+      i += 1;
+    } else {
+      // Collect literal chars until next *
+      let literal = "";
+      while (i < pattern.length && pattern[i] !== "*") {
+        literal += pattern[i];
+        i++;
+      }
+      // Escape regex-special chars in the literal
+      parts.push(literal.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
+    }
+  }
+  const regex = parts.join("");
   return new RegExp(`^${regex}$`).test(filepath) ||
     new RegExp(`(^|/)${regex}$`).test(filepath);
 }

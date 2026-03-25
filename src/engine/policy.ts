@@ -1,7 +1,13 @@
 import { parse as parseYaml } from "yaml";
-import type { PolicyConfig, PolicyRule, ConfidenceLevel, DiffStats } from "../types";
+import type { PolicyConfig, ConfidenceLevel, DiffStats } from "../types";
 import type { ForgejoClient } from "../forgejo/client";
 import { matchGlob } from "./review";
+import {
+  ruleMatches,
+  actionPriority,
+  validatePolicy,
+} from "./policy-shared";
+import type { PolicyRule } from "../types";
 
 export interface PolicyDecision {
   action: "auto-approve" | "require-review" | "block";
@@ -84,27 +90,6 @@ export class PolicyEngine {
   }
 }
 
-function ruleMatches(
-  rule: PolicyRule,
-  diff: DiffStats,
-  confidence: ConfidenceLevel
-): boolean {
-  // Check confidence match
-  if (rule.match.confidence && rule.match.confidence !== confidence) {
-    return false;
-  }
-
-  // Check file pattern match
-  if (rule.match.files && rule.match.files.length > 0) {
-    const hasFileMatch = diff.files.some((f) =>
-      rule.match.files!.some((pattern) => matchGlob(pattern, f.filename))
-    );
-    if (!hasFileMatch) return false;
-  }
-
-  return true;
-}
-
 function describeMatch(
   rule: PolicyRule,
   diff: DiffStats,
@@ -123,51 +108,4 @@ function describeMatch(
     }
   }
   return parts.join("; ") || "unconditional match";
-}
-
-function actionPriority(action: PolicyDecision["action"]): number {
-  switch (action) {
-    case "auto-approve": return 0;
-    case "require-review": return 1;
-    case "block": return 2;
-  }
-}
-
-/**
- * Validate and normalize a parsed YAML policy object.
- * Lenient: ignores unknown fields, provides defaults.
- */
-function validatePolicy(raw: unknown): PolicyConfig {
-  if (!raw || typeof raw !== "object") {
-    return { rules: [] };
-  }
-
-  const obj = raw as Record<string, unknown>;
-  const rawRules = Array.isArray(obj.rules) ? obj.rules : [];
-
-  const rules: PolicyRule[] = rawRules
-    .filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
-    .map((r) => ({
-      name: String(r.name ?? "unnamed"),
-      match: {
-        files: Array.isArray((r.match as any)?.files)
-          ? (r.match as any).files.map(String)
-          : undefined,
-        confidence: validConfidence((r.match as any)?.confidence),
-      },
-      action: validAction(r.action),
-      reviewers: Array.isArray(r.reviewers) ? r.reviewers.map(String) : undefined,
-    }));
-
-  return { rules };
-}
-
-function validConfidence(val: unknown): ConfidenceLevel | undefined {
-  if (val === "safe" || val === "needs_review" || val === "critical") return val;
-  return undefined;
-}
-
-function validAction(val: unknown): PolicyRule["action"] {
-  if (val === "auto-approve" || val === "require-review" || val === "block") return val;
-  return "require-review"; // safe default
 }

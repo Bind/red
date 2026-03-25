@@ -163,3 +163,31 @@ export interface NotificationConfig {
   url: string;
   events: ("critical" | "needs_review" | "all")[];
 }
+
+/** Forgejo admin API types for bootstrap. */
+export interface ForgejoCreateUserOptions {
+  username: string;
+  password: string;
+  email: string;
+  must_change_password?: boolean;
+}
+
+export interface ForgejoSSHKey {
+  id: number;
+  key: string;
+  title: string;
+  fingerprint: string;
+}
+
+export interface ForgejoRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  default_branch: string;
+}
+
+export interface ForgejoToken {
+  id: number;
+  name: string;
+  sha1: string;
+}

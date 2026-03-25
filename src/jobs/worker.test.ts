@@ -178,7 +178,7 @@ describe("JobWorker", () => {
     const events = deps.events.listByChangeId(changeId);
     const types = events.map((e) => e.event_type);
     expect(types).toContain("push_received");
-    expect(types).toContain("scored");
+    expect(types).toContain("status_change");
     expect(types).toContain("summary_generated");
   });
 

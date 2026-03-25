@@ -104,9 +104,20 @@ ci: check test
 
 # ── CLI ─────────────────────────────────────────────────
 
+# Bootstrap Forgejo user, repo, and git remote from GitHub identity
+bootstrap:
+    bun run src/cli/index.ts bootstrap
+
 # Show merge velocity and review queue
 status:
     bun run src/cli/index.ts status
+
+# Browse all Forgejo repos with fzf
+repos:
+    @curl -sf "{{ FORGEJO_URL }}/api/v1/admin/repos?limit=50&token=$FORGEJO_TOKEN" \
+        | bun -e 'const repos=await Bun.stdin.json();for(const r of repos)console.log(r.full_name+"\t"+r.html_url+"\t"+(r.description||""))' \
+        | fzf --delimiter='\t' --with-nth=1 --preview='echo "URL: {2}\nDesc: {3}"' \
+        | cut -f2
 
 # Dry-run policy evaluation
 policy-test path=".redc/policy.yaml":
