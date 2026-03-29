@@ -1,0 +1,114 @@
+static_resources:
+  listeners:
+    # HTTP listener — path-based routing
+    - name: http
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: AUTO
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: backend
+                      domains: ["*"]
+                      routes:
+                        # Landing page
+                        - match: { path: "/" }
+                          direct_response:
+                            status: 200
+                            body:
+                              inline_string: |
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                  <meta charset="utf-8">
+                                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                                  <title>red.computer</title>
+                                  <style>
+                                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                                    body {
+                                      min-height: 100vh;
+                                      display: flex;
+                                      align-items: center;
+                                      justify-content: center;
+                                      background: linear-gradient(135deg, #1a0000, #8b0000, #dc143c, #ff4500);
+                                      background-size: 400% 400%;
+                                      animation: shift 12s ease infinite;
+                                      font-family: system-ui, -apple-system, sans-serif;
+                                      color: #fff;
+                                    }
+                                    @keyframes shift {
+                                      0% { background-position: 0% 50%; }
+                                      50% { background-position: 100% 50%; }
+                                      100% { background-position: 0% 50%; }
+                                    }
+                                    h1 {
+                                      font-size: clamp(2rem, 8vw, 6rem);
+                                      font-weight: 200;
+                                      letter-spacing: 0.05em;
+                                      text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+                                    }
+                                  </style>
+                                </head>
+                                <body>
+                                  <h1>red.computer</h1>
+                                </body>
+                                </html>
+                          response_headers_to_add:
+                            - header: { key: "content-type", value: "text/html; charset=utf-8" }
+                        # redc-api routes
+                        - match: { prefix: "/webhook/" }
+                          route: { cluster: redc_api }
+                        - match: { path: "/health" }
+                          route: { cluster: redc_api }
+                        - match: { prefix: "/api/velocity" }
+                          route: { cluster: redc_api }
+                        - match: { prefix: "/api/changes" }
+                          route: { cluster: redc_api }
+                        - match: { prefix: "/api/review" }
+                          route: { cluster: redc_api }
+                        - match: { prefix: "/api/jobs" }
+                          route: { cluster: redc_api }
+                        # Everything else → Forgejo
+                        - match: { prefix: "/" }
+                          route: { cluster: forgejo }
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+
+  clusters:
+    - name: forgejo
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: forgejo
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${FORGEJO_HOST}
+                      port_value: 3000
+
+    - name: redc_api
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_api
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${API_HOST}
+                      port_value: 3000
+

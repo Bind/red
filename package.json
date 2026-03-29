@@ -9,13 +9,15 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "cli": "bun run src/cli/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {
     "hono": "^4.7.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "sst": "^3"
   }
 }

@@ -52,5 +52,5 @@
 ### Self-hosted deployment
 **What:** Docker image + Helm chart for on-prem deployment.
 **Why:** Security-conscious teams (finance, healthcare, gov) need self-hosted.
-**Context:** SaaS-only for MVP. Self-hosted requires solving: upgrade paths, data migration, operational docs, Forgejo + redc-api orchestration.
+**Context:** SaaS deployment via SST (AWS ECS/Fargate) is implemented. Dockerfile exists. Self-hosted (Helm chart, operational docs) still needed for on-prem.
 **Depends on:** SaaS version stable, at least one paying customer validating the product.

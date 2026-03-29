@@ -1,0 +1,61 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - redc-net
+    depends_on:
+      - gateway
+
+  gateway:
+    build: ./gateway
+    restart: unless-stopped
+    environment:
+      FORGEJO_HOST: forgejo
+      API_HOST: redc-api
+    networks:
+      - redc-net
+    depends_on:
+      - forgejo
+      - redc-api
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:11
+    restart: unless-stopped
+    ports:
+      - "22:22"
+    environment:
+      FORGEJO__server__ROOT_URL: https://red.computer
+      FORGEJO__server__SSH_DOMAIN: red.computer
+      FORGEJO__server__SSH_PORT: "22"
+    volumes:
+      - forgejo-data:/data
+    networks:
+      - redc-net
+
+  redc-api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - redc-data:/data
+    networks:
+      - redc-net
+
+volumes:
+  caddy-data:
+  caddy-config:
+  forgejo-data:
+  redc-data:
+
+networks:
+  redc-net:
+    driver: bridge
