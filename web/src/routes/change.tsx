@@ -8,7 +8,10 @@ import { StateMachine } from "@/components/state-machine";
 import { fetchChange, approveChange, retryMerge, type ChangeDetail, type ChangeStatus } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  // SQLite datetime('now') returns UTC without Z suffix — append it
+  const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : dateStr + "Z";
+  const seconds = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
+  if (isNaN(seconds) || seconds < 0) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;

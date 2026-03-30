@@ -14,7 +14,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchVelocity, fetchReviewQueue, type Change, type Velocity } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : dateStr + "Z";
+  const seconds = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
+  if (isNaN(seconds) || seconds < 0) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
