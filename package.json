@@ -2,6 +2,7 @@
   "name": "redc",
   "version": "0.1.0",
   "type": "module",
+  "workspaces": ["web"],
   "bin": {
     "redc": "src/cli/index.ts"
   },

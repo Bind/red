@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
 import {
   ChangeQueries,
@@ -117,6 +118,10 @@ export function createApp(config: AppConfig) {
     notifier,
     notificationConfigs: [], // loaded from policy at runtime
   });
+
+  // Serve frontend static files (production)
+  app.use("/*", serveStatic({ root: "./web/dist" }));
+  app.get("/*", serveStatic({ path: "./web/dist/index.html" }));
 
   return { app, db, changes, events, jobs, deliveries, forgejo, worker };
 }

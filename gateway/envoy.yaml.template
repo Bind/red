@@ -19,66 +19,26 @@ static_resources:
                     - name: backend
                       domains: ["*"]
                       routes:
-                        # Landing page
-                        - match: { path: "/" }
-                          direct_response:
-                            status: 200
-                            body:
-                              inline_string: |
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                  <meta charset="utf-8">
-                                  <meta name="viewport" content="width=device-width, initial-scale=1">
-                                  <title>red.computer</title>
-                                  <style>
-                                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                                    body {
-                                      min-height: 100vh;
-                                      display: flex;
-                                      align-items: center;
-                                      justify-content: center;
-                                      background: linear-gradient(135deg, #1a0000, #8b0000, #dc143c, #ff4500);
-                                      background-size: 400% 400%;
-                                      animation: shift 12s ease infinite;
-                                      font-family: system-ui, -apple-system, sans-serif;
-                                      color: #fff;
-                                    }
-                                    @keyframes shift {
-                                      0% { background-position: 0% 50%; }
-                                      50% { background-position: 100% 50%; }
-                                      100% { background-position: 0% 50%; }
-                                    }
-                                    h1 {
-                                      font-size: clamp(2rem, 8vw, 6rem);
-                                      font-weight: 200;
-                                      letter-spacing: 0.05em;
-                                      text-shadow: 0 2px 20px rgba(0,0,0,0.3);
-                                    }
-                                  </style>
-                                </head>
-                                <body>
-                                  <h1>red.computer</h1>
-                                </body>
-                                </html>
-                          response_headers_to_add:
-                            - header: { key: "content-type", value: "text/html; charset=utf-8" }
-                        # redc-api routes
+                        # redc API routes
                         - match: { prefix: "/webhook/" }
                           route: { cluster: redc_api }
                         - match: { path: "/health" }
                           route: { cluster: redc_api }
-                        - match: { prefix: "/api/velocity" }
+                        - match: { prefix: "/api/" }
                           route: { cluster: redc_api }
-                        - match: { prefix: "/api/changes" }
+                        # SPA assets
+                        - match: { prefix: "/assets/" }
                           route: { cluster: redc_api }
-                        - match: { prefix: "/api/review" }
-                          route: { cluster: redc_api }
-                        - match: { prefix: "/api/jobs" }
-                          route: { cluster: redc_api }
-                        # Everything else → Forgejo
-                        - match: { prefix: "/" }
+                        # Forgejo routes
+                        - match: { prefix: "/git/" }
                           route: { cluster: forgejo }
+                        - match: { regex: "^/[^/]+/[^/]+\\.git/.*" }
+                          route: { cluster: forgejo }
+                        - match: { prefix: "/forgejo/" }
+                          route: { cluster: forgejo }
+                        # SPA fallback — serves index.html for client-side routing
+                        - match: { prefix: "/" }
+                          route: { cluster: redc_api }
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:

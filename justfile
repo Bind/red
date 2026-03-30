@@ -87,6 +87,14 @@ setup:
 dev:
     bun run --watch src/index.ts
 
+# Start Vite dev server for frontend
+web:
+    cd web && bun run dev
+
+# Build frontend for production
+web-build:
+    cd web && bun run build
+
 # Start redc API server
 start:
     bun run src/index.ts
