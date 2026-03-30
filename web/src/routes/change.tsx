@@ -194,18 +194,57 @@ export function ChangeDetailPage() {
         </CardContent>
       </Card>
 
-      {change.summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {change.summary}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {change.summary && (() => {
+        try {
+          const summary = JSON.parse(change.summary) as {
+            what_changed: string;
+            risk_assessment: string;
+            affected_modules: string[];
+            recommended_action: string;
+          };
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-sm">{summary.what_changed}</p>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Risk</dt>
+                  <dd className="text-sm">{summary.risk_assessment}</dd>
+                </div>
+                {summary.affected_modules.length > 0 && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Modules</dt>
+                    <dd className="flex flex-wrap gap-1 mt-1">
+                      {summary.affected_modules.map((mod) => (
+                        <Badge key={mod} variant="outline" className="font-mono text-xs">
+                          {mod}
+                        </Badge>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        } catch {
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {change.summary}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        }
+      })()}
 
       {change.diff_stats && (
         <Card>
