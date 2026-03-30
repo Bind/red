@@ -69,14 +69,21 @@ export function Dashboard() {
       .catch(() => setQueueError(true));
   }, []);
 
-  useEffect(() => {
+  const loadVelocity = useCallback(() => {
     fetchVelocity()
       .then(setVelocity)
       .catch(() => setVelocityError(true));
+  }, []);
+
+  useEffect(() => {
+    loadVelocity();
     loadQueue();
-    const interval = setInterval(loadQueue, 30000);
+    const interval = setInterval(() => {
+      loadVelocity();
+      loadQueue();
+    }, 3000);
     return () => clearInterval(interval);
-  }, [loadQueue]);
+  }, [loadQueue, loadVelocity]);
 
   return (
     <div className="space-y-6">
@@ -146,7 +153,10 @@ export function Dashboard() {
         ).map(([repo, changes]) => (
           <Card key={repo}>
             <CardHeader>
-              <CardTitle className="font-mono text-base">{repo}</CardTitle>
+              <CardTitle className="text-base">
+                Review Queue{" "}
+                <span className="font-mono text-muted-foreground font-normal">{repo}</span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">

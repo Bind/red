@@ -46,6 +46,8 @@ export function ChangeDetailPage() {
 
   useEffect(() => {
     loadChange();
+    const interval = setInterval(loadChange, 3000);
+    return () => clearInterval(interval);
   }, [id]);
 
   const handleApprove = async () => {
@@ -53,14 +55,6 @@ export function ChangeDetailPage() {
     setApproving(true);
     try {
       await approveChange(change.id);
-      // Poll for updates as the job runs
-      const poll = setInterval(() => {
-        fetchChange(change.id).then((updated) => {
-          setChange(updated);
-          if (updated.status !== "ready_for_review") clearInterval(poll);
-        });
-      }, 1000);
-      setTimeout(() => clearInterval(poll), 30000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Approve failed");
     } finally {
@@ -73,13 +67,6 @@ export function ChangeDetailPage() {
     setRetrying(true);
     try {
       await retryMerge(change.id);
-      const poll = setInterval(() => {
-        fetchChange(change.id).then((updated) => {
-          setChange(updated);
-          if (updated.status !== "merge_failed") clearInterval(poll);
-        });
-      }, 1000);
-      setTimeout(() => clearInterval(poll), 30000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Retry failed");
     } finally {
