@@ -11,7 +11,8 @@ import { ForgejoClient } from "./forgejo/client";
 import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
 import { PolicyEngine } from "./engine/policy";
-import { StubSummaryGenerator } from "./engine/summary";
+import { StubSummaryGenerator, ClaudeSummaryGenerator } from "./engine/summary";
+import type { SummaryGenerator } from "./engine/summary";
 import { ChangeStateMachine } from "./engine/state-machine";
 import { JobWorker } from "./jobs/worker";
 import { NotificationSender } from "./jobs/notify";
@@ -138,7 +139,10 @@ export function createApp(config: AppConfig) {
   // Engines
   const scorer = new ScoringEngine();
   const policy = new PolicyEngine(forgejo);
-  const summary = new StubSummaryGenerator();
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const summary: SummaryGenerator = anthropicKey
+    ? new ClaudeSummaryGenerator({ apiKey: anthropicKey })
+    : new StubSummaryGenerator();
   const stateMachine = new ChangeStateMachine(changes, events);
 
   // Notifications

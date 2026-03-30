@@ -197,6 +197,7 @@ export function ChangeDetailPage() {
       {change.summary && (() => {
         try {
           const summary = JSON.parse(change.summary) as {
+            title?: string;
             what_changed: string;
             risk_assessment: string;
             affected_modules: string[];
@@ -205,7 +206,9 @@ export function ChangeDetailPage() {
           return (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Summary</CardTitle>
+                <CardTitle className="text-base">
+                  {summary.title || "Summary"}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>

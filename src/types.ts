@@ -103,6 +103,7 @@ export interface PolicyConfig {
 }
 
 export interface LLMSummary {
+  title: string;
   what_changed: string;
   risk_assessment: string;
   affected_modules: string[];
