@@ -38,6 +38,9 @@ const DEFAULT_CONFIG: WorkerConfig = {
  * Job types:
  *   - score_change: fetch diff → score → set commit status → enqueue summary
  *   - generate_summary: generate LLM summary → transition to ready_for_review
+ *   - send_notification: deliver webhook/slack notifications
+ *   - approve_change: auto-approve and enqueue merge
+ *   - merge_change: create PR if needed, merge, transition to merged
  */
 export class JobWorker {
   private config: WorkerConfig;
@@ -80,6 +83,12 @@ export class JobWorker {
           break;
         case "send_notification":
           await this.handleSendNotification(job);
+          break;
+        case "approve_change":
+          await this.handleApproveChange(job);
+          break;
+        case "merge_change":
+          await this.handleMergeChange(job);
           break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
@@ -223,6 +232,130 @@ export class JobWorker {
         org_id: change.org_id,
         type: "send_notification",
         payload: JSON.stringify({ change_id: change.id, event }),
+      });
+    }
+
+    // Auto-approve if policy says so
+    if (payload.policy_decision?.action === "auto-approve") {
+      this.deps.jobs.enqueue({
+        org_id: change.org_id,
+        type: "approve_change",
+        payload: JSON.stringify({
+          change_id: change.id,
+          policy_decision: payload.policy_decision,
+        }),
+      });
+    }
+  }
+
+  private async handleApproveChange(job: Job): Promise<void> {
+    const { change_id, policy_decision } = JSON.parse(job.payload) as {
+      change_id: number;
+      policy_decision: { action: string };
+    };
+
+    const change = this.deps.changes.getById(change_id);
+    if (!change) throw new Error(`Change ${change_id} not found`);
+    if (change.status === "superseded") return;
+
+    // Only auto-approve; anything else stays at ready_for_review for manual review
+    if (policy_decision.action !== "auto-approve") {
+      this.deps.events.append({
+        change_id,
+        event_type: "approval_skipped",
+        metadata: JSON.stringify({ reason: "not auto-approve", action: policy_decision.action }),
+      });
+      return;
+    }
+
+    const [owner, repo] = parseRepoFullName(change.repo);
+
+    // Transition → approved
+    this.deps.stateMachine.transition(change_id, "approved");
+
+    // Set commit status to success
+    await this.deps.forgejo.setCommitStatus(owner, repo, change.head_sha, {
+      state: "success",
+      description: "Approved by redc",
+      context: this.config.statusContext,
+    });
+
+    // Log approval event
+    this.deps.events.append({
+      change_id,
+      event_type: "change_approved",
+      from_status: "ready_for_review",
+      to_status: "approved",
+      metadata: JSON.stringify({ policy_decision }),
+    });
+
+    // Enqueue merge
+    this.deps.jobs.enqueue({
+      org_id: change.org_id,
+      type: "merge_change",
+      payload: JSON.stringify({ change_id }),
+    });
+  }
+
+  private async handleMergeChange(job: Job): Promise<void> {
+    const { change_id } = JSON.parse(job.payload) as { change_id: number };
+
+    const change = this.deps.changes.getById(change_id);
+    if (!change) throw new Error(`Change ${change_id} not found`);
+    if (change.status === "superseded") return;
+
+    const [owner, repo] = parseRepoFullName(change.repo);
+
+    // Find or create PR
+    let prNumber = change.pr_number;
+
+    if (!prNumber) {
+      // Try to find an existing open PR for this branch
+      const prs = await this.deps.forgejo.listPRsForBranch(owner, repo, change.branch);
+      if (prs.length > 0) {
+        prNumber = prs[0].number;
+        this.deps.changes.updatePrNumber(change_id, prNumber);
+      }
+    }
+
+    if (!prNumber) {
+      // Create a new PR
+      const summary = change.summary ? JSON.parse(change.summary) : null;
+      const title = summary?.title || `Merge ${change.branch}`;
+      const pr = await this.deps.forgejo.createPR(owner, repo, {
+        title,
+        head: change.branch,
+        base: change.base_branch,
+        body: summary?.description || undefined,
+      });
+      prNumber = pr.number;
+      this.deps.changes.updatePrNumber(change_id, prNumber);
+    }
+
+    // Transition → merging
+    this.deps.stateMachine.transition(change_id, "merging");
+
+    // Merge the PR
+    await this.deps.forgejo.mergePR(owner, repo, prNumber, "merge");
+
+    // Transition → merged
+    this.deps.stateMachine.transition(change_id, "merged");
+
+    // Log merge event
+    this.deps.events.append({
+      change_id,
+      event_type: "change_merged",
+      from_status: "merging",
+      to_status: "merged",
+      metadata: JSON.stringify({ pr_number: prNumber }),
+    });
+
+    // Enqueue notification if configs exist
+    if (this.deps.notificationConfigs.length > 0) {
+      this.deps.jobs.enqueue({
+        org_id: change.org_id,
+        type: "send_notification",
+        payload: JSON.stringify({ change_id, event: "change_merged" }),
       });
     }
   }

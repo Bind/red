@@ -16,6 +16,8 @@ services:
       - FORGEJO__repository__DEFAULT_PUSH_CREATE_PRIVATE=false
       # Disable registration (we create admin via CLI)
       - FORGEJO__service__DISABLE_REGISTRATION=true
+      # Allow webhooks to local/private IPs (needed for dev)
+      - FORGEJO__webhook__ALLOWED_HOST_LIST=*
     ports:
       - "3001:3000"   # Forgejo web UI
       - "2222:22"     # SSH (optional)

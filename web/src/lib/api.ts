@@ -78,3 +78,11 @@ export function fetchChange(id: number): Promise<ChangeDetail> {
 export function fetchPendingJobs(): Promise<{ pending: number }> {
   return apiFetch("/api/jobs/pending");
 }
+
+export async function approveChange(id: number): Promise<void> {
+  const res = await fetch(`/api/changes/${id}/approve`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(body.error ?? `API error: ${res.status}`);
+  }
+}

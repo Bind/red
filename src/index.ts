@@ -85,6 +85,27 @@ export function createApp(config: AppConfig) {
     return c.json({ pending: jobs.pendingCount() });
   });
 
+  // Manual approve + merge
+  app.post("/api/changes/:id/approve", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(id);
+    if (!change) return c.json({ error: "Not found" }, 404);
+    if (change.status !== "ready_for_review") {
+      return c.json({ error: `Cannot approve from status: ${change.status}` }, 400);
+    }
+
+    jobs.enqueue({
+      org_id: change.org_id,
+      type: "approve_change",
+      payload: JSON.stringify({
+        change_id: id,
+        policy_decision: { action: "auto-approve" },
+      }),
+    });
+
+    return c.json({ ok: true });
+  });
+
   // Mount webhook routes
   const webhookRoutes = createWebhookRoutes({
     changes,

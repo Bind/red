@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMachine } from "@/components/state-machine";
-import { fetchChange, type ChangeDetail, type ChangeStatus } from "@/lib/api";
+import { fetchChange, approveChange, type ChangeDetail, type ChangeStatus } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -34,13 +34,38 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [change, setChange] = useState<ChangeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
 
-  useEffect(() => {
+  const loadChange = () => {
     if (!id) return;
     fetchChange(parseInt(id, 10))
       .then(setChange)
       .catch((err) => setError(err.message));
+  };
+
+  useEffect(() => {
+    loadChange();
   }, [id]);
+
+  const handleApprove = async () => {
+    if (!change) return;
+    setApproving(true);
+    try {
+      await approveChange(change.id);
+      // Poll for updates as the job runs
+      const poll = setInterval(() => {
+        fetchChange(change.id).then((updated) => {
+          setChange(updated);
+          if (updated.status !== "ready_for_review") clearInterval(poll);
+        });
+      }, 1000);
+      setTimeout(() => clearInterval(poll), 30000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approve failed");
+    } finally {
+      setApproving(false);
+    }
+  };
 
   if (error) {
     return (
@@ -70,6 +95,12 @@ export function ChangeDetailPage() {
 
       {/* State machine showing current position */}
       <StateMachine activeStatus={change.status} />
+
+      {change.status === "ready_for_review" && (
+        <Button onClick={handleApprove} disabled={approving}>
+          {approving ? "Approving..." : "Approve & Merge"}
+        </Button>
+      )}
 
       <Card>
         <CardHeader>

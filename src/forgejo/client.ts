@@ -142,6 +142,18 @@ export class ForgejoClient {
     });
   }
 
+  /** Create a pull request. */
+  async createPR(
+    owner: string,
+    repo: string,
+    opts: { title: string; head: string; base: string; body?: string }
+  ): Promise<ForgejoPR> {
+    return this.request<ForgejoPR>(`/repos/${owner}/${repo}/pulls`, {
+      method: "POST",
+      body: JSON.stringify(opts),
+    });
+  }
+
   /** Get a pull request by number. */
   async getPR(owner: string, repo: string, prNumber: number): Promise<ForgejoPR> {
     return this.request<ForgejoPR>(`/repos/${owner}/${repo}/pulls/${prNumber}`);

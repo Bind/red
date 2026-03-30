@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet } from "react-router";
 import { Badge } from "@/components/ui/badge";
-import { StateMachine } from "@/components/state-machine";
+
 import { fetchPendingJobs } from "@/lib/api";
 
 export function Layout() {
@@ -23,12 +23,9 @@ export function Layout() {
             <div className="space-y-1">
               <Link to="/" className="group">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                  red.computer
+                  red
                 </h1>
               </Link>
-              <p className="text-sm text-muted-foreground">
-                Automated code review. Watching itself.
-              </p>
             </div>
             {pendingJobs !== null && pendingJobs > 0 && (
               <Badge variant="secondary" className="mt-1">
@@ -36,9 +33,8 @@ export function Layout() {
               </Badge>
             )}
           </div>
-          <div className="mt-6">
-            <StateMachine />
-          </div>
+
+
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">
