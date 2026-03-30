@@ -138,6 +138,8 @@ export function createApp(config: AppConfig) {
     stateMachine,
     notifier,
     notificationConfigs: [], // loaded from policy at runtime
+  }, {
+    fetchRemoteAfterMerge: process.env.FETCH_REMOTE_AFTER_MERGE ?? null,
   });
 
   // Serve frontend static files (production)

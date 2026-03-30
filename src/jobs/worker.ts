@@ -25,11 +25,14 @@ export interface WorkerConfig {
   pollInterval: number;
   /** Commit status context name. Default: "redc" */
   statusContext: string;
+  /** Git remote name to fetch after merging. Null to skip. */
+  fetchRemoteAfterMerge: string | null;
 }
 
 const DEFAULT_CONFIG: WorkerConfig = {
   pollInterval: 1000,
   statusContext: "redc",
+  fetchRemoteAfterMerge: null,
 };
 
 /**
@@ -340,6 +343,16 @@ export class JobWorker {
 
     // Transition → merged
     this.deps.stateMachine.transition(change_id, "merged");
+
+    // Fetch the updated remote so local refs stay in sync
+    if (this.config.fetchRemoteAfterMerge) {
+      try {
+        const proc = Bun.spawn(["git", "fetch", this.config.fetchRemoteAfterMerge]);
+        await proc.exited;
+      } catch {
+        // Non-fatal — local ref sync is best-effort
+      }
+    }
 
     // Log merge event
     this.deps.events.append({
