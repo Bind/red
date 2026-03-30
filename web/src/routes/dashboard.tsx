@@ -116,80 +116,86 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Review queue */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Review Queue</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {queueError ? (
+      {/* Review queue — grouped by repo */}
+      {queueError ? (
+        <Card>
+          <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">
               Unable to load review queue.
             </p>
-          ) : queue === null ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : queue.length === 0 ? (
-            <div className="py-4 text-center">
-              <p className="text-sm text-muted-foreground">
-                No changes awaiting review.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground/60">
-                The sea is calm.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Repo</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Confidence</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right">Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {queue.map((change) => (
-                    <TableRow key={change.id}>
-                      <TableCell>
-                        <Link
-                          to={`/changes/${change.id}`}
-                          className="font-medium text-foreground hover:underline"
-                        >
-                          {change.repo}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{change.branch}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(change.status)}>{change.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {change.confidence && (
-                          <Badge variant={confidenceVariant(change.confidence)}>
-                            {change.confidence}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {change.created_by}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                        {timeAgo(change.created_at)}
-                      </TableCell>
+          </CardContent>
+        </Card>
+      ) : queue === null ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : queue.length === 0 ? (
+        <div className="py-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            No changes awaiting review.
+          </p>
+        </div>
+      ) : (
+        Object.entries(
+          queue.reduce<Record<string, Change[]>>((acc, change) => {
+            (acc[change.repo] ??= []).push(change);
+            return acc;
+          }, {})
+        ).map(([repo, changes]) => (
+          <Card key={repo}>
+            <CardHeader>
+              <CardTitle className="font-mono text-base">{repo}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Confidence</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Created</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {changes.map((change) => (
+                      <TableRow key={change.id}>
+                        <TableCell>
+                          <Link
+                            to={`/changes/${change.id}`}
+                            className="font-mono text-sm text-foreground hover:underline"
+                          >
+                            {change.branch}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusVariant(change.status)}>{change.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {change.confidence && (
+                            <Badge variant={confidenceVariant(change.confidence)}>
+                              {change.confidence}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {change.created_by}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {timeAgo(change.created_at)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+      )}
     </div>
   );
 }

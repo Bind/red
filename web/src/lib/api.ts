@@ -7,6 +7,7 @@ export type ChangeStatus =
   | "approved"
   | "rejected"
   | "merging"
+  | "merge_failed"
   | "merged"
   | "closed"
   | "superseded";
@@ -81,6 +82,14 @@ export function fetchPendingJobs(): Promise<{ pending: number }> {
 
 export async function approveChange(id: number): Promise<void> {
   const res = await fetch(`/api/changes/${id}/approve`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(body.error ?? `API error: ${res.status}`);
+  }
+}
+
+export async function retryMerge(id: number): Promise<void> {
+  const res = await fetch(`/api/changes/${id}/retry-merge`, { method: "POST" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
     throw new Error(body.error ?? `API error: ${res.status}`);

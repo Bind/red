@@ -339,7 +339,20 @@ export class JobWorker {
     this.deps.stateMachine.transition(change_id, "merging");
 
     // Merge the PR
-    await this.deps.forgejo.mergePR(owner, repo, prNumber, "merge");
+    try {
+      await this.deps.forgejo.mergePR(owner, repo, prNumber, "merge");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.deps.stateMachine.transition(change_id, "merge_failed");
+      this.deps.events.append({
+        change_id,
+        event_type: "merge_failed",
+        from_status: "merging",
+        to_status: "merge_failed",
+        metadata: JSON.stringify({ error: message, pr_number: prNumber }),
+      });
+      return; // Don't rethrow — the state machine captures the failure
+    }
 
     // Transition → merged
     this.deps.stateMachine.transition(change_id, "merged");

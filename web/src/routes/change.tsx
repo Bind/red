@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMachine } from "@/components/state-machine";
-import { fetchChange, approveChange, type ChangeDetail, type ChangeStatus } from "@/lib/api";
+import { fetchChange, approveChange, retryMerge, type ChangeDetail, type ChangeStatus } from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -25,7 +25,7 @@ const FORWARD_STATES: ChangeStatus[] = [
 
 function timelineDotColor(toStatus: ChangeStatus | null): string {
   if (!toStatus) return "bg-muted-foreground";
-  if (toStatus === "rejected" || toStatus === "closed") return "bg-destructive";
+  if (toStatus === "rejected" || toStatus === "closed" || toStatus === "merge_failed") return "bg-destructive";
   if (FORWARD_STATES.includes(toStatus)) return "bg-primary";
   return "bg-muted-foreground";
 }
@@ -35,6 +35,7 @@ export function ChangeDetailPage() {
   const [change, setChange] = useState<ChangeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const loadChange = () => {
     if (!id) return;
@@ -64,6 +65,25 @@ export function ChangeDetailPage() {
       setError(err instanceof Error ? err.message : "Approve failed");
     } finally {
       setApproving(false);
+    }
+  };
+
+  const handleRetryMerge = async () => {
+    if (!change) return;
+    setRetrying(true);
+    try {
+      await retryMerge(change.id);
+      const poll = setInterval(() => {
+        fetchChange(change.id).then((updated) => {
+          setChange(updated);
+          if (updated.status !== "merge_failed") clearInterval(poll);
+        });
+      }, 1000);
+      setTimeout(() => clearInterval(poll), 30000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -100,6 +120,29 @@ export function ChangeDetailPage() {
         <Button onClick={handleApprove} disabled={approving}>
           {approving ? "Approving..." : "Approve & Merge"}
         </Button>
+      )}
+
+      {change.status === "merge_failed" && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-destructive">Merge failed</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {change.events
+                    .filter((e) => e.event_type === "merge_failed")
+                    .slice(-1)
+                    .map((e) => {
+                      try { return JSON.parse(e.metadata ?? "{}").error; } catch { return null; }
+                    })[0] || "Unknown error"}
+                </p>
+              </div>
+              <Button onClick={handleRetryMerge} disabled={retrying} variant="destructive" size="sm">
+                {retrying ? "Retrying..." : "Retry Merge"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Card>

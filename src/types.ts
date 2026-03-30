@@ -23,6 +23,7 @@ export type ChangeStatus =
   | "approved"
   | "rejected"
   | "merging"
+  | "merge_failed"
   | "merged"
   | "closed"
   | "superseded";

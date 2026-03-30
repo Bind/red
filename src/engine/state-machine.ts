@@ -9,6 +9,8 @@ import type { ChangeQueries, EventQueries } from "../db/queries";
  *                                              approved    rejected
  *                                                  ↓
  *                                              merging → merged
+ *                                                ↓   ↑
+ *                                          merge_failed
  *                                                  ↓
  *                                               closed
  *
@@ -22,7 +24,8 @@ const VALID_TRANSITIONS: Record<ChangeStatus, ChangeStatus[]> = {
   ready_for_review: ["approved", "rejected", "superseded"],
   approved: ["merging", "superseded"],
   rejected: ["superseded"],
-  merging: ["merged", "closed", "superseded"],
+  merging: ["merged", "merge_failed", "closed", "superseded"],
+  merge_failed: ["merging", "superseded"],
   merged: [],
   closed: [],
   superseded: [],

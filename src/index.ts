@@ -106,6 +106,24 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
+  // Retry a failed merge
+  app.post("/api/changes/:id/retry-merge", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(id);
+    if (!change) return c.json({ error: "Not found" }, 404);
+    if (change.status !== "merge_failed") {
+      return c.json({ error: `Cannot retry from status: ${change.status}` }, 400);
+    }
+
+    jobs.enqueue({
+      org_id: change.org_id,
+      type: "merge_change",
+      payload: JSON.stringify({ change_id: id }),
+    });
+
+    return c.json({ ok: true });
+  });
+
   // Mount webhook routes
   const webhookRoutes = createWebhookRoutes({
     changes,

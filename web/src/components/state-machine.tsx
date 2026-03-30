@@ -12,10 +12,10 @@ const STATES: { id: ChangeStatus; label: string }[] = [
   { id: "merged", label: "merged" },
 ];
 
-const REJECTED: { id: ChangeStatus; label: string } = {
-  id: "rejected",
-  label: "rejected",
-};
+const BRANCHES: { id: ChangeStatus; label: string; afterIdx: number }[] = [
+  { id: "rejected", label: "rejected", afterIdx: 4 },       // branches off ready_for_review
+  { id: "merge_failed", label: "merge failed", afterIdx: 6 }, // branches off merging
+];
 
 // Order for determining "past" states
 const STATE_ORDER: ChangeStatus[] = [
@@ -40,7 +40,7 @@ interface StateMachineProps {
 
 export function StateMachine({ activeStatus, className }: StateMachineProps) {
   const activeIdx = activeStatus ? getStateIndex(activeStatus) : -1;
-  const isRejected = activeStatus === "rejected";
+  const isBranch = BRANCHES.some((b) => b.id === activeStatus);
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -49,7 +49,7 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
         {STATES.map((state, i) => {
           const idx = getStateIndex(state.id);
           const isActive = activeStatus === state.id;
-          const isPast = !isRejected && activeIdx > idx;
+          const isPast = !isBranch && activeIdx > idx;
 
           return (
             <div key={state.id} className="flex items-center">
@@ -80,20 +80,22 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
         })}
       </div>
 
-      {/* Rejection branch */}
-      <div className="flex items-center gap-1 pl-0 sm:pl-[calc(4*(theme(spacing.1.5)*2+theme(spacing.0.5)*2+3ch))]">
-        <span className="text-xs text-muted-foreground/40 sm:inline hidden">↳</span>
-        <span
-          className={cn(
-            "rounded px-1.5 py-0.5 font-mono text-xs",
-            isRejected
-              ? "bg-destructive text-destructive-foreground"
-              : "text-muted-foreground/40"
-          )}
-        >
-          {REJECTED.label}
-        </span>
-      </div>
+      {/* Branch states (rejected, merge_failed) */}
+      {BRANCHES.map((branch) => (
+        <div key={branch.id} className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground/40 sm:inline hidden">↳</span>
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 font-mono text-xs",
+              activeStatus === branch.id
+                ? "bg-destructive text-destructive-foreground"
+                : "text-muted-foreground/40"
+            )}
+          >
+            {branch.label}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
