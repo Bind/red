@@ -139,9 +139,14 @@ export function createApp(config: AppConfig) {
   // Engines
   const scorer = new ScoringEngine();
   const policy = new PolicyEngine(forgejo);
-  const useCodex = process.env.REDC_SUMMARIZER !== "stub";
-  const summary: SummaryGenerator = useCodex
-    ? new CodexSummaryGenerator()
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const codexImage = process.env.CODEX_RUNNER_IMAGE ?? "redc-codex-runner";
+  const summary: SummaryGenerator = openaiKey
+    ? new CodexSummaryGenerator({
+        image: codexImage,
+        forgejoBaseUrl: config.forgejo.baseUrl,
+        openaiApiKey: openaiKey,
+      })
     : new StubSummaryGenerator();
   const stateMachine = new ChangeStateMachine(changes, events);
 

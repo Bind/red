@@ -1,4 +1,3 @@
-import { Codex } from "@openai/codex-sdk";
 import type { DiffStats, LLMSummary, ConfidenceLevel } from "../types";
 
 /**
@@ -47,59 +46,82 @@ export class StubSummaryGenerator implements SummaryGenerator {
   }
 }
 
-const SUMMARY_SCHEMA = {
-  type: "object" as const,
-  properties: {
-    title: { type: "string" as const, description: "Short PR title, imperative mood, under 60 chars" },
-    what_changed: { type: "string" as const, description: "1-2 sentence description of the functional change" },
-    risk_assessment: { type: "string" as const, description: "1-2 sentence risk analysis noting specific concerns or confirming safety" },
-    affected_modules: { type: "array" as const, items: { type: "string" as const }, description: "Top-level directory paths affected" },
-    recommended_action: { type: "string" as const, enum: ["approve", "review", "block"] },
-  },
-  required: ["title", "what_changed", "risk_assessment", "affected_modules", "recommended_action"],
-  additionalProperties: false as const,
-};
+export interface CodexRunnerConfig {
+  /** Docker image name for the codex runner. */
+  image: string;
+  /** Base URL for git clone (e.g. http://user:pass@localhost:3001). Repo path is appended. */
+  forgejoBaseUrl: string;
+  /** OpenAI API key passed into the container. */
+  openaiApiKey: string;
+  /** Timeout in ms. Default: 120000 (2 min). */
+  timeout?: number;
+}
 
 /**
- * LLM-backed summary generator using the Codex SDK.
- * Uses your existing OpenAI subscription — no separate API key needed.
+ * Runs Codex as an agent inside a Docker container with the full codebase.
+ * Codex can read files, trace imports, and understand context — not just a flat diff.
  */
 export class CodexSummaryGenerator implements SummaryGenerator {
-  private codex: Codex;
+  private config: CodexRunnerConfig;
 
-  constructor() {
-    this.codex = new Codex();
+  constructor(config: CodexRunnerConfig) {
+    this.config = config;
   }
 
   async generate(params: SummaryInput): Promise<LLMSummary> {
-    const { repo, branch, diff, diffStats, confidence, commitMessages } = params;
+    const { repo, branch, diffStats, confidence, commitMessages } = params;
+    const repoUrl = `${this.config.forgejoBaseUrl.replace(/\/+$/, "")}/${repo}.git`;
 
-    const truncatedDiff = diff.length > 12000
-      ? diff.slice(0, 12000) + "\n... (truncated)"
-      : diff;
+    const prompt = [
+      `You are reviewing a change on branch "${branch}" in repo "${repo}".`,
+      `Run: git diff origin/main...HEAD to see what changed.`,
+      `Read the changed files to understand the full context.`,
+      ``,
+      `Stats: ${diffStats.files_changed} files, +${diffStats.additions}/-${diffStats.deletions}`,
+      `Scoring confidence: ${confidence}`,
+      commitMessages.length > 0 ? `Commits: ${commitMessages.join("; ")}` : "",
+      ``,
+      `After analyzing the code, respond with ONLY a JSON object:`,
+      `{`,
+      `  "title": "short PR title, imperative mood, under 60 chars",`,
+      `  "what_changed": "1-2 sentence description of the functional change",`,
+      `  "risk_assessment": "1-2 sentence risk analysis with specific concerns",`,
+      `  "affected_modules": ["top/level", "directory/paths"],`,
+      `  "recommended_action": "approve" | "review" | "block"`,
+      `}`,
+    ].filter(Boolean).join("\n");
 
-    const prompt = `You are a code review assistant. Analyze this diff and produce a structured summary.
+    const timeout = this.config.timeout ?? 120_000;
 
-Repository: ${repo}
-Branch: ${branch}
-Confidence: ${confidence}
-Stats: ${diffStats.files_changed} files, +${diffStats.additions}/-${diffStats.deletions}
-${commitMessages.length > 0 ? `Commits: ${commitMessages.join("; ")}` : ""}
+    const proc = Bun.spawn([
+      "docker", "run", "--rm",
+      "-e", `REPO_URL=${repoUrl}`,
+      "-e", `BASE_REF=main`,
+      "-e", `HEAD_SHA=${branch}`,
+      "-e", `CODEX_PROMPT=${prompt}`,
+      "-e", `OPENAI_API_KEY=${this.config.openaiApiKey}`,
+      this.config.image,
+    ], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
 
-Diff:
-\`\`\`
-${truncatedDiff}
-\`\`\``;
+    const timer = setTimeout(() => proc.kill(), timeout);
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    clearTimeout(timer);
 
-    const thread = this.codex.startThread({ skipGitRepoCheck: true });
-    const turn = await thread.run(prompt, { outputSchema: SUMMARY_SCHEMA });
+    if (exitCode !== 0) {
+      throw new Error(`Codex runner exited ${exitCode}: ${stderr.slice(0, 500)}`);
+    }
 
-    // Extract text from the final response
-    const text = turn.finalResponse ?? "";
-
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // Extract JSON from stdout
+    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("Codex response did not contain valid JSON");
+      throw new Error(`Codex runner produced no JSON. stdout: ${stdout.slice(0, 500)}`);
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as LLMSummary;
