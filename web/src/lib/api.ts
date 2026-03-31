@@ -138,6 +138,35 @@ export async function createPR(repo: string, branch: string, title: string, body
   return res.json();
 }
 
+export type CodexSessionStatus = "running" | "completed" | "failed";
+
+export interface CodexSession {
+  id: number;
+  change_id: number;
+  job_id: number | null;
+  job_type: string;
+  status: CodexSessionStatus;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface CodexSessionLog {
+  id: number;
+  session_id: number;
+  seq: number;
+  line: string;
+  created_at: string;
+}
+
+export function fetchSessions(changeId: number): Promise<CodexSession[]> {
+  return apiFetch(`/api/changes/${changeId}/sessions`);
+}
+
+export function fetchSessionLogs(sessionId: number, afterSeq: number = 0): Promise<CodexSessionLog[]> {
+  return apiFetch(`/api/sessions/${sessionId}/logs?after=${afterSeq}`);
+}
+
 /**
  * Subscribe to real-time Codex log lines via SSE.
  * Returns a cleanup function to close the connection.
@@ -145,7 +174,7 @@ export async function createPR(repo: string, branch: string, title: string, body
 export function subscribeToLogs(
   changeId: number,
   onLine: (line: string) => void,
-  onDone: () => void,
+  onDone: (data?: string) => void,
 ): () => void {
   const es = new EventSource(`/api/changes/${changeId}/logs`);
 
@@ -153,8 +182,8 @@ export function subscribeToLogs(
     onLine(e.data);
   });
 
-  es.addEventListener("done", () => {
-    onDone();
+  es.addEventListener("done", (e) => {
+    onDone(e.data || undefined);
     es.close();
   });
 

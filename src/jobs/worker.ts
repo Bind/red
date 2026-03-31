@@ -1,4 +1,4 @@
-import type { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
+import type { ChangeQueries, EventQueries, JobQueries, SessionQueries } from "../db/queries";
 import type { ForgejoClient } from "../forgejo/client";
 import type { SummaryGenerator, SummaryInput } from "../engine/summary";
 import type { Change, DiffStats, Job, NotificationConfig } from "../types";
@@ -20,6 +20,7 @@ export interface WorkerDeps {
   notifier: NotificationSender;
   notificationConfigs: NotificationConfig[];
   logBus?: LogBus;
+  sessions?: SessionQueries;
 }
 
 export interface WorkerConfig {
@@ -215,13 +216,26 @@ export class JobWorker {
       commitMessages,
     };
 
-    const onLog = this.deps.logBus
-      ? (line: string) => this.deps.logBus!.emit(change.id, line)
-      : undefined;
+    // Create a persistent session if sessions are available
+    const session = this.deps.sessions?.create(change.id, job.id, job.type);
+    const startTime = Date.now();
+
+    const onLog = (line: string) => {
+      if (session) this.deps.sessions!.appendLog(session.id, line);
+      this.deps.logBus?.emit(change.id, line);
+    };
 
     let summary;
     try {
       summary = await this.deps.summary.generate(input, onLog);
+      if (session) {
+        this.deps.sessions!.finish(session.id, "completed", Date.now() - startTime);
+      }
+    } catch (err) {
+      if (session) {
+        this.deps.sessions!.finish(session.id, "failed", Date.now() - startTime);
+      }
+      throw err;
     } finally {
       this.deps.logBus?.complete(change.id);
     }

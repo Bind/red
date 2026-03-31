@@ -3,6 +3,9 @@ import type {
   Change,
   ChangeEvent,
   ChangeStatus,
+  CodexSession,
+  CodexSessionLog,
+  CodexSessionStatus,
   ConfidenceLevel,
   CreatedBy,
   Job,
@@ -312,5 +315,72 @@ export class DeliveryQueries {
     this.db
       .prepare("INSERT OR IGNORE INTO webhook_deliveries (id) VALUES (?)")
       .run(deliveryId);
+  }
+}
+
+export class SessionQueries {
+  constructor(private db: Database) {}
+
+  create(changeId: number, jobId: number | null, jobType: string): CodexSession {
+    this.db
+      .prepare(
+        `INSERT INTO codex_sessions (change_id, job_id, job_type)
+         VALUES (?, ?, ?)`
+      )
+      .run(changeId, jobId, jobType);
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.getById(id)!;
+  }
+
+  getById(id: number): CodexSession | null {
+    return this.db
+      .prepare("SELECT * FROM codex_sessions WHERE id = ?")
+      .get(id) as CodexSession | null;
+  }
+
+  getLatestByChangeId(changeId: number): CodexSession | null {
+    return this.db
+      .prepare(
+        "SELECT * FROM codex_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1"
+      )
+      .get(changeId) as CodexSession | null;
+  }
+
+  listByChangeId(changeId: number): CodexSession[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM codex_sessions WHERE change_id = ? ORDER BY started_at DESC"
+      )
+      .all(changeId) as CodexSession[];
+  }
+
+  finish(id: number, status: CodexSessionStatus, durationMs: number): void {
+    this.db
+      .prepare(
+        `UPDATE codex_sessions
+         SET status = ?, finished_at = datetime('now'), duration_ms = ?
+         WHERE id = ?`
+      )
+      .run(status, durationMs, id);
+  }
+
+  appendLog(sessionId: number, line: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO codex_session_logs (session_id, seq, line)
+         VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM codex_session_logs WHERE session_id = ?), ?)`
+      )
+      .run(sessionId, sessionId, line);
+  }
+
+  getLogsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): CodexSessionLog[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM codex_session_logs
+         WHERE session_id = ? AND seq > ?
+         ORDER BY seq ASC
+         LIMIT ?`
+      )
+      .all(sessionId, afterSeq, limit) as CodexSessionLog[];
   }
 }

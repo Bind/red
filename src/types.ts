@@ -201,6 +201,28 @@ export interface ForgejoToken {
   sha1: string;
 }
 
+/** Codex session tracking. */
+export type CodexSessionStatus = "running" | "completed" | "failed";
+
+export interface CodexSession {
+  id: number;
+  change_id: number;
+  job_id: number | null;
+  job_type: string;
+  status: CodexSessionStatus;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface CodexSessionLog {
+  id: number;
+  session_id: number;
+  seq: number;
+  line: string;
+  created_at: string;
+}
+
 /** Forgejo branch from the branches API. */
 export interface ForgejoBranch {
   name: string;

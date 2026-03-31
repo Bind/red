@@ -1,5 +1,6 @@
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
+RUN apk add --no-cache docker-cli git
 
 FROM base AS install
 COPY package.json bun.lock ./
@@ -15,6 +16,7 @@ RUN cd web && bun run build
 
 FROM base AS prod-install
 COPY package.json bun.lock ./
+COPY web/package.json ./web/
 RUN bun install --frozen-lockfile --production
 
 FROM base AS release

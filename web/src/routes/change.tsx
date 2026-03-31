@@ -10,7 +10,7 @@ import { FileTree } from "@pierre/trees/react";
 import type { GitStatusEntry } from "@pierre/trees";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHeaderContent } from "@/components/layout";
-import { fetchChange, fetchDiff, approveChange, retryMerge, regenerateSummary, subscribeToLogs, type ChangeDetail, type ChangeStatus, type ChangeEvent } from "@/lib/api";
+import { fetchChange, fetchDiff, approveChange, retryMerge, regenerateSummary, subscribeToLogs, fetchSessions, fetchSessionLogs, type ChangeDetail, type ChangeStatus, type ChangeEvent, type CodexSession } from "@/lib/api";
 
 function Timeline({ events }: { events: ChangeEvent[] }) {
   return (
@@ -210,23 +210,66 @@ function AnnotatedSummary({ text, annotations }: { text: string; annotations?: S
   );
 }
 
-function LogViewer({ changeId }: { changeId: number }) {
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSec = seconds % 60;
+  return `${minutes}m ${remainingSec}s`;
+}
+
+function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizing: boolean }) {
   const [lines, setLines] = useState<string[]>([]);
   const [done, setDone] = useState(false);
+  const [sessions, setSessions] = useState<CodexSession[] | null>(null);
+  const [durationMs, setDurationMs] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Fetch sessions on mount
   useEffect(() => {
+    fetchSessions(changeId).then((s) => {
+      setSessions(s);
+      if (s.length > 0 && s[0].duration_ms) {
+        setDurationMs(s[0].duration_ms);
+      }
+    }).catch(() => setSessions([]));
+  }, [changeId]);
+
+  // If summarizing: connect to SSE (server handles replay + live)
+  // If completed session exists: also connect to SSE (server replays persisted logs)
+  useEffect(() => {
+    if (sessions === null) return; // still loading
+    const latestSession = sessions[0];
+    const hasSession = latestSession != null;
+
+    // No session and not summarizing — nothing to show
+    if (!hasSession && !isSummarizing) return;
+
     const cleanup = subscribeToLogs(
       changeId,
       (line) => setLines((prev) => [...prev, line]),
-      () => setDone(true),
+      (doneData) => {
+        setDone(true);
+        if (doneData) {
+          try {
+            const parsed = JSON.parse(doneData);
+            if (parsed.duration_ms) setDurationMs(parsed.duration_ms);
+          } catch {}
+        }
+      },
     );
     return cleanup;
-  }, [changeId]);
+  }, [changeId, sessions, isSummarizing]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines]);
+
+  // Don't render anything if there are no sessions and we're not summarizing
+  if (sessions !== null && sessions.length === 0 && !isSummarizing) return null;
+  // Still loading sessions
+  if (sessions === null) return null;
 
   return (
     <Card>
@@ -241,6 +284,11 @@ function LogViewer({ changeId }: { changeId: number }) {
           <CardTitle className="text-base">
             {done ? "Codex Logs" : "Codex is working..."}
           </CardTitle>
+          {done && durationMs != null && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              {formatDuration(durationMs)}
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -390,9 +438,7 @@ export function ChangeDetailPage() {
       {/* State machine showing current position */}
       <StateMachine activeStatus={change.status} />
 
-      {change.status === "summarizing" && (
-        <LogViewer changeId={change.id} />
-      )}
+      <LogViewer changeId={change.id} isSummarizing={change.status === "summarizing"} />
 
       {change.status === "ready_for_review" && (
         <div className="flex gap-2">

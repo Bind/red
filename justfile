@@ -9,122 +9,96 @@ mod e2e
 default:
     @just --list --unsorted
 
-# ── First-time setup ───────────────────────────────────
-
+# Local stack configuration
 FORGEJO_URL := env("FORGEJO_URL", "http://localhost:3001")
-FORGEJO_ADMIN := "redc-admin"
-FORGEJO_PASS := "admin1234"
-WEBHOOK_SECRET := env("WEBHOOK_SECRET", "dev-secret-123")
-REDC_PORT := env("REDC_PORT", "3000")
-TEST_REPO := "test-repo"
+REDC_PORT := env("REDC_PORT", "3002")
+WEB_PORT := "5173"
 
-# One-time setup: Forgejo + admin + repo + webhook + .env
+# One-time local bootstrap: Forgejo admin, token, repo, webhook, and app env
 setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
+    ./scripts/setup-dev-env.sh
 
-    just infra up
+# Start all local services in Docker, bootstrapping first if needed
+up:
+    ./scripts/setup-dev-env.sh
 
-    echo "Creating admin user..."
-    docker compose exec -T forgejo su -c \
-        'forgejo admin user create --username "{{ FORGEJO_ADMIN }}" --password "{{ FORGEJO_PASS }}" --email "admin@redc.local" --admin --must-change-password=false' \
-        git 2>/dev/null \
-        || echo "  (user may already exist)"
+# Stop all local services
+down:
+    just infra down
 
-    echo "Creating API token..."
-    TOKEN_RESPONSE=$(curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/users/{{ FORGEJO_ADMIN }}/tokens" \
-        -u "{{ FORGEJO_ADMIN }}:{{ FORGEJO_PASS }}" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"redc-dev-'"$(date +%s)"'","scopes":["all"]}')
-
-    FORGEJO_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"sha1":"[^"]*"' | cut -d'"' -f4)
-    if [ -z "$FORGEJO_TOKEN" ]; then
-        echo "ERROR: Failed to create token. Response: $TOKEN_RESPONSE"
-        exit 1
-    fi
-    echo "  Token: ${FORGEJO_TOKEN:0:8}..."
-
-    echo "Creating test repo..."
-    curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/user/repos" \
-        -H "Authorization: token $FORGEJO_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"{{ TEST_REPO }}","auto_init":true,"default_branch":"main"}' > /dev/null 2>&1 \
-        || echo "  (repo may already exist)"
-
-    echo "Creating webhook..."
-    curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/repos/{{ FORGEJO_ADMIN }}/{{ TEST_REPO }}/hooks" \
-        -H "Authorization: token $FORGEJO_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "type": "forgejo",
-            "active": true,
-            "config": {
-                "url": "http://host.docker.internal:{{ REDC_PORT }}/webhook/push",
-                "content_type": "json",
-                "secret": "{{ WEBHOOK_SECRET }}"
-            },
-            "events": ["push"]
-        }' > /dev/null 2>&1 \
-        || echo "  (webhook may already exist)"
-
-    echo "Writing .env..."
-    cat > .env <<EOF
-    FORGEJO_URL={{ FORGEJO_URL }}
-    FORGEJO_TOKEN=$FORGEJO_TOKEN
-    WEBHOOK_SECRET={{ WEBHOOK_SECRET }}
-    REDC_PORT={{ REDC_PORT }}
-    REDC_DB_PATH=redc-dev.db
-    EOF
-    sed -i '' 's/^    //' .env
-
-    echo ""
-    echo "=== Setup complete ==="
-    echo "Run: just dev"
-
-# ── Docker ──────────────────────────────────────────────
-
-# Build the Codex runner Docker image
-build-codex:
+# Rebuild app containers and the Codex runner image
+build:
+    docker compose build
     docker build -t redc-codex-runner codex-runner/
 
-# ── Development ─────────────────────────────────────────
+# Show local service status
+ps:
+    docker compose ps
 
-# Start redc API server (hot-reload)
-dev:
-    bun run --watch src/index.ts
+# Tail logs for one service, or pick one with fzf if omitted
+logs service="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{ service }}" ]; then
+        docker compose logs -f {{ service }}
+    else
+        selected_service="$(
+            docker compose config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+        [ -n "$selected_service" ] || exit 0
+        docker compose logs -f "$selected_service"
+    fi
 
-# Start Vite dev server for frontend
-web:
-    cd web && bun run dev
+# Open a shell inside a running service, or pick one with fzf
+shell service="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    selected_service="{{ service }}"
+    if [ -z "$selected_service" ]; then
+        selected_service="$(
+            docker compose config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+    fi
+    [ -n "$selected_service" ] || exit 0
+    docker compose exec "$selected_service" sh
 
-# Build frontend for production
-web-build:
-    cd web && bun run build
+# Run a command inside a running service, or pick one with fzf
+exec service="" *cmd:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    selected_service="{{ service }}"
+    if [ -z "$selected_service" ]; then
+        selected_service="$(
+            docker compose config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+    fi
+    [ -n "$selected_service" ] || exit 0
+    docker compose exec "$selected_service" {{ cmd }}
 
-# Start redc API server
-start:
-    bun run src/index.ts
-
-# Run all tests
+# Run backend tests inside Docker
 test:
-    bun test
+    docker compose exec redc-api bun test
 
-# Type check
-check:
-    bunx tsc --noEmit
+# Run type checking inside Docker
+typecheck:
+    docker compose exec redc-api bunx tsc --noEmit
 
-# Type check + tests
-ci: check test
+# Build the production frontend bundle inside Docker
+web-build:
+    docker compose exec redc-web bun run build
+
+# Full local verification
+verify: typecheck test
 
 # ── CLI ─────────────────────────────────────────────────
 
 # Bootstrap Forgejo user, repo, and git remote from GitHub identity
 bootstrap:
-    bun run src/cli/index.ts bootstrap
+    docker compose exec redc-api bun run src/cli/index.ts bootstrap
 
 # Show merge velocity and review queue
 status:
-    bun run src/cli/index.ts status
+    docker compose exec redc-api bun run src/cli/index.ts status
 
 # Browse all Forgejo repos with fzf
 repos:
@@ -135,4 +109,4 @@ repos:
 
 # Dry-run policy evaluation
 policy-test path=".redc/policy.yaml":
-    bun run src/cli/index.ts policy test {{ path }}
+    docker compose exec redc-api bun run src/cli/index.ts policy test {{ path }}

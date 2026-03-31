@@ -32,7 +32,11 @@ export class RepoTaskRunner {
 
   async run(request: RepoTaskRequest): Promise<RepoTaskResult> {
     const timeout = request.timeoutMs ?? this.config.defaultTimeoutMs ?? 120_000;
-    const repoUrl = `${this.config.forgejoBaseUrl.replace(/\/+$/, "")}/${request.repo}.git`;
+    // Rewrite localhost URLs to host.docker.internal so the container can reach the host
+    const dockerBaseUrl = this.config.forgejoBaseUrl
+      .replace(/\/+$/, "")
+      .replace(/localhost|127\.0\.0\.1/, "host.docker.internal");
+    const repoUrl = `${dockerBaseUrl}/${request.repo}.git`;
     const tmpDir = await mkdtemp(join(tmpdir(), "redc-runner-"));
     const start = Date.now();
 

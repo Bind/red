@@ -4,7 +4,7 @@ set dotenv-load
 
 FORGEJO_ADMIN := "redc-admin"
 FORGEJO_PASS := "admin1234"
-REDC_PORT := env("REDC_PORT", "3000")
+REDC_PORT := env("REDC_PORT", "3002")
 TEST_REPO := "test-repo"
 
 # Push a test commit to trigger the full pipeline

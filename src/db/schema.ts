@@ -114,4 +114,39 @@ function migrate(db: Database): void {
       received_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS codex_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      change_id INTEGER NOT NULL,
+      job_id INTEGER,
+      job_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      duration_ms INTEGER,
+      FOREIGN KEY (change_id) REFERENCES changes(id)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_codex_sessions_change_id
+    ON codex_sessions(change_id)
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS codex_session_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      line TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (session_id) REFERENCES codex_sessions(id)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_codex_session_logs_session_seq
+    ON codex_session_logs(session_id, seq)
+  `);
 }

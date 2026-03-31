@@ -7,6 +7,7 @@ import {
   EventQueries,
   JobQueries,
   DeliveryQueries,
+  SessionQueries,
 } from "./db/queries";
 import { ForgejoClient } from "./forgejo/client";
 import { createWebhookRoutes } from "./api/webhooks";
@@ -63,6 +64,7 @@ export function createApp(config: AppConfig) {
   const events = new EventQueries(db);
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
+  const sessions = new SessionQueries(db);
   const forgejo = new ForgejoClient(config.forgejo);
   const stateMachine = new ChangeStateMachine(changes, events);
 
@@ -262,25 +264,70 @@ export function createApp(config: AppConfig) {
   // Log streaming
   const logBus = new LogBus();
 
-  // SSE endpoint for streaming Codex logs
+  // List sessions for a change
+  app.get("/api/changes/:id/sessions", (c) => {
+    const changeId = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(changeId);
+    if (!change) return c.json({ error: "Not found" }, 404);
+    return c.json(sessions.listByChangeId(changeId));
+  });
+
+  // Fetch persisted logs for a session
+  app.get("/api/sessions/:id/logs", (c) => {
+    const sessionId = parseInt(c.req.param("id"), 10);
+    const session = sessions.getById(sessionId);
+    if (!session) return c.json({ error: "Not found" }, 404);
+    const afterSeq = parseInt(c.req.query("after") ?? "0", 10);
+    const limit = parseInt(c.req.query("limit") ?? "1000", 10);
+    return c.json(sessions.getLogsAfter(sessionId, afterSeq, limit));
+  });
+
+  // SSE endpoint for streaming Codex logs (session-aware)
   app.get("/api/changes/:id/logs", (c) => {
     const changeId = parseInt(c.req.param("id"), 10);
     const change = changes.getById(changeId);
     if (!change) return c.json({ error: "Not found" }, 404);
 
-    // If change is no longer summarizing and logBus has no data, send done immediately
-    if (change.status !== "summarizing") {
+    const session = sessions.getLatestByChangeId(changeId);
+
+    // No session exists — send done immediately
+    if (!session) {
       return streamSSE(c, async (stream) => {
         await stream.writeSSE({ event: "done", data: "" });
       });
     }
 
+    // Completed/failed session — replay all persisted lines, then done
+    if (session.status !== "running") {
+      return streamSSE(c, async (stream) => {
+        const logs = sessions.getLogsAfter(session.id, 0, 100000);
+        for (const log of logs) {
+          await stream.writeSSE({ event: "log", data: log.line });
+        }
+        await stream.writeSSE({
+          event: "done",
+          data: JSON.stringify({
+            session_id: session.id,
+            status: session.status,
+            duration_ms: session.duration_ms,
+          }),
+        });
+      });
+    }
+
+    // Running session — replay persisted lines, then subscribe for live
     return streamSSE(c, async (stream) => {
       let closed = false;
       stream.onAbort(() => { closed = true; });
 
+      // Replay persisted lines first
+      const persisted = sessions.getLogsAfter(session.id, 0, 100000);
+      for (const log of persisted) {
+        if (closed) return;
+        await stream.writeSSE({ event: "log", data: log.line });
+      }
+
       await new Promise<void>((resolve) => {
-        // Safety timeout — if no done signal in 5 minutes, close the stream
         const timeout = setTimeout(() => {
           unsub();
           resolve();
@@ -297,7 +344,16 @@ export function createApp(config: AppConfig) {
           () => {
             clearTimeout(timeout);
             if (!closed) {
-              stream.writeSSE({ event: "done", data: "" }).catch(() => {});
+              // Re-fetch session for final status
+              const final = sessions.getById(session.id);
+              stream.writeSSE({
+                event: "done",
+                data: JSON.stringify({
+                  session_id: session.id,
+                  status: final?.status ?? "completed",
+                  duration_ms: final?.duration_ms ?? null,
+                }),
+              }).catch(() => {});
             }
             resolve();
           },
@@ -344,6 +400,7 @@ export function createApp(config: AppConfig) {
     notifier,
     notificationConfigs: [], // loaded from policy at runtime
     logBus,
+    sessions,
   }, {
     fetchRemoteAfterMerge: process.env.FETCH_REMOTE_AFTER_MERGE ?? null,
   });
