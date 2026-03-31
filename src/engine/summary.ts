@@ -57,6 +57,7 @@ const SUMMARY_SCHEMA = {
     recommended_action: { type: "string" as const, enum: ["approve", "review", "block"] },
   },
   required: ["title", "what_changed", "risk_assessment", "affected_modules", "recommended_action"],
+  additionalProperties: false as const,
 };
 
 /**
