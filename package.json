@@ -14,7 +14,7 @@
     "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@openai/codex-sdk": "^0.117.0",
     "hono": "^4.7.0",
     "yaml": "^2.7.0"
   },

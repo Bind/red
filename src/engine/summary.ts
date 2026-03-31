@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { Codex } from "@openai/codex-sdk";
 import type { DiffStats, LLMSummary, ConfidenceLevel } from "../types";
 
 /**
@@ -47,22 +47,32 @@ export class StubSummaryGenerator implements SummaryGenerator {
   }
 }
 
-/**
- * LLM-backed summary generator using Claude.
- */
-export class ClaudeSummaryGenerator implements SummaryGenerator {
-  private client: Anthropic;
-  private model: string;
+const SUMMARY_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    title: { type: "string" as const, description: "Short PR title, imperative mood, under 60 chars" },
+    what_changed: { type: "string" as const, description: "1-2 sentence description of the functional change" },
+    risk_assessment: { type: "string" as const, description: "1-2 sentence risk analysis noting specific concerns or confirming safety" },
+    affected_modules: { type: "array" as const, items: { type: "string" as const }, description: "Top-level directory paths affected" },
+    recommended_action: { type: "string" as const, enum: ["approve", "review", "block"] },
+  },
+  required: ["title", "what_changed", "risk_assessment", "affected_modules", "recommended_action"],
+};
 
-  constructor(opts: { apiKey: string; model?: string }) {
-    this.client = new Anthropic({ apiKey: opts.apiKey });
-    this.model = opts.model ?? "claude-sonnet-4-5-20250929";
+/**
+ * LLM-backed summary generator using the Codex SDK.
+ * Uses your existing OpenAI subscription — no separate API key needed.
+ */
+export class CodexSummaryGenerator implements SummaryGenerator {
+  private codex: Codex;
+
+  constructor() {
+    this.codex = new Codex();
   }
 
   async generate(params: SummaryInput): Promise<LLMSummary> {
     const { repo, branch, diff, diffStats, confidence, commitMessages } = params;
 
-    // Truncate diff to ~12k chars to stay within token limits
     const truncatedDiff = diff.length > 12000
       ? diff.slice(0, 12000) + "\n... (truncated)"
       : diff;
@@ -78,39 +88,23 @@ ${commitMessages.length > 0 ? `Commits: ${commitMessages.join("; ")}` : ""}
 Diff:
 \`\`\`
 ${truncatedDiff}
-\`\`\`
+\`\`\``;
 
-Respond with ONLY valid JSON matching this exact schema:
-{
-  "title": "short PR title, imperative mood, under 60 chars",
-  "what_changed": "1-2 sentence description of the functional change",
-  "risk_assessment": "1-2 sentence risk analysis noting specific concerns or confirming safety",
-  "affected_modules": ["top/level", "directory/paths"],
-  "recommended_action": "approve" | "review" | "block"
-}`;
+    const thread = this.codex.startThread({ skipGitRepoCheck: true });
+    const turn = await thread.run(prompt, { outputSchema: SUMMARY_SCHEMA });
 
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 512,
-      messages: [{ role: "user", content: prompt }],
-    });
+    // Extract text from the final response
+    const text = turn.finalResponse ?? "";
 
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    // Extract JSON from response (handle markdown code blocks)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("LLM response did not contain valid JSON");
+      throw new Error("Codex response did not contain valid JSON");
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as LLMSummary;
 
-    // Validate required fields
     if (!parsed.title || !parsed.what_changed || !parsed.risk_assessment || !parsed.recommended_action) {
-      throw new Error("LLM response missing required fields");
+      throw new Error("Codex response missing required fields");
     }
 
     return parsed;
