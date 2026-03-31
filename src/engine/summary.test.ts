@@ -8,6 +8,8 @@ function makeInput(overrides: Partial<SummaryInput> = {}): SummaryInput {
   return {
     repo: "owner/repo",
     branch: "feature-1",
+    baseRef: "main",
+    headRef: "abc123",
     diff: "diff text",
     diffStats: {
       files_changed: 2,
@@ -63,6 +65,37 @@ describe("StubSummaryGenerator", () => {
       },
     }));
     expect(result.risk_assessment).toContain("deletions");
+  });
+
+  test("generates annotations grouped by file status", async () => {
+    const result = await generator.generate(makeInput({
+      diffStats: {
+        files_changed: 4,
+        additions: 30,
+        deletions: 10,
+        files: [
+          { filename: "src/new.ts", additions: 10, deletions: 0, status: "added" },
+          { filename: "src/another-new.ts", additions: 5, deletions: 0, status: "added" },
+          { filename: "src/old.ts", additions: 0, deletions: 5, status: "deleted" },
+          { filename: "src/app.ts", additions: 15, deletions: 5, status: "modified" },
+        ],
+      },
+    }));
+    expect(result.annotations).toBeDefined();
+    expect(result.annotations!.length).toBe(3); // added, deleted, modified groups
+    for (const ann of result.annotations!) {
+      expect(ann.text).toBeTruthy();
+      expect(ann.files.length).toBeGreaterThan(0);
+      expect(["new_module", "refactor", "bugfix", "config", "change"]).toContain(ann.type);
+    }
+  });
+
+  test("annotations cover all files from diffStats", async () => {
+    const result = await generator.generate(makeInput());
+    expect(result.annotations).toBeDefined();
+    const allFiles = result.annotations!.flatMap((a) => a.files);
+    expect(allFiles).toContain("src/app.ts");
+    expect(allFiles).toContain("src/utils.ts");
   });
 
   test("extracts modules from file paths", async () => {

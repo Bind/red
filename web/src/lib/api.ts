@@ -80,8 +80,22 @@ export function fetchPendingJobs(): Promise<{ pending: number }> {
   return apiFetch("/api/jobs/pending");
 }
 
+export async function fetchDiff(id: number): Promise<string> {
+  const res = await fetch(`/api/changes/${id}/diff`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.text();
+}
+
 export async function approveChange(id: number): Promise<void> {
   const res = await fetch(`/api/changes/${id}/approve`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(body.error ?? `API error: ${res.status}`);
+  }
+}
+
+export async function regenerateSummary(id: number): Promise<void> {
+  const res = await fetch(`/api/changes/${id}/regenerate-summary`, { method: "POST" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
     throw new Error(body.error ?? `API error: ${res.status}`);
@@ -94,4 +108,31 @@ export async function retryMerge(id: number): Promise<void> {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
     throw new Error(body.error ?? `API error: ${res.status}`);
   }
+}
+
+/**
+ * Subscribe to real-time Codex log lines via SSE.
+ * Returns a cleanup function to close the connection.
+ */
+export function subscribeToLogs(
+  changeId: number,
+  onLine: (line: string) => void,
+  onDone: () => void,
+): () => void {
+  const es = new EventSource(`/api/changes/${changeId}/logs`);
+
+  es.addEventListener("log", (e) => {
+    onLine(e.data);
+  });
+
+  es.addEventListener("done", () => {
+    onDone();
+    es.close();
+  });
+
+  es.onerror = () => {
+    es.close();
+  };
+
+  return () => es.close();
 }

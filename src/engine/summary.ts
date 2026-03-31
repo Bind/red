@@ -1,15 +1,19 @@
-import type { DiffStats, LLMSummary, ConfidenceLevel } from "../types";
+import type { DiffStats, LLMSummary, ConfidenceLevel, SummaryAnnotation } from "../types";
+import type { RepoTaskRunner } from "./runner";
+import { buildSummaryPrompt, validateSummaryOutput } from "./tasks/summary";
 
 /**
  * Summary generator interface — allows swapping in a real LLM backend later.
  */
 export interface SummaryGenerator {
-  generate(params: SummaryInput): Promise<LLMSummary>;
+  generate(params: SummaryInput, onLog?: (line: string) => void): Promise<LLMSummary>;
 }
 
 export interface SummaryInput {
   repo: string;
   branch: string;
+  baseRef: string;
+  headRef: string;
   diff: string;
   diffStats: DiffStats;
   confidence: ConfidenceLevel;
@@ -35,6 +39,7 @@ export class StubSummaryGenerator implements SummaryGenerator {
 
     const risk = buildRiskAssessment(diffStats, confidence);
     const action = mapConfidenceToAction(confidence);
+    const annotations = buildStubAnnotations(diffStats);
 
     return {
       title: `${params.branch}: ${diffStats.files_changed} files changed`,
@@ -42,96 +47,73 @@ export class StubSummaryGenerator implements SummaryGenerator {
       risk_assessment: risk,
       affected_modules: modules,
       recommended_action: action,
+      annotations,
     };
   }
 }
 
-export interface CodexRunnerConfig {
-  /** Docker image name for the codex runner. */
-  image: string;
-  /** Base URL for git clone (e.g. http://user:pass@localhost:3001). Repo path is appended. */
-  forgejoBaseUrl: string;
-  /** OpenAI API key passed into the container. */
-  openaiApiKey: string;
-  /** Timeout in ms. Default: 120000 (2 min). */
-  timeout?: number;
+/**
+ * Runs Codex as an agent inside a Docker container with the full codebase.
+ * Delegates Docker lifecycle to RepoTaskRunner; handles prompt building and output validation.
+ */
+export class CodexSummaryGenerator implements SummaryGenerator {
+  constructor(private runner: RepoTaskRunner) {}
+
+  async generate(params: SummaryInput, onLog?: (line: string) => void): Promise<LLMSummary> {
+    const prompt = buildSummaryPrompt(params);
+
+    const result = await this.runner.run({
+      repo: params.repo,
+      baseRef: params.baseRef,
+      headRef: params.headRef,
+      prompt,
+      onLog,
+    });
+
+    if (!result.ok) {
+      throw new Error(`Codex runner failed (${result.durationMs}ms): ${result.logs.slice(0, 500)}`);
+    }
+
+    return validateSummaryOutput(result.output);
+  }
 }
 
 /**
- * Runs Codex as an agent inside a Docker container with the full codebase.
- * Codex can read files, trace imports, and understand context — not just a flat diff.
+ * Build annotations from diff stats by grouping files by status.
  */
-export class CodexSummaryGenerator implements SummaryGenerator {
-  private config: CodexRunnerConfig;
+function buildStubAnnotations(diffStats: DiffStats): SummaryAnnotation[] {
+  const groups: Record<string, { type: SummaryAnnotation["type"]; files: string[] }> = {};
 
-  constructor(config: CodexRunnerConfig) {
-    this.config = config;
+  for (const f of diffStats.files) {
+    let type: SummaryAnnotation["type"];
+    let label: string;
+    switch (f.status) {
+      case "added":
+        type = "new_module";
+        label = "added";
+        break;
+      case "deleted":
+        type = "refactor";
+        label = "deleted";
+        break;
+      default:
+        type = "change";
+        label = "modified";
+        break;
+    }
+    if (!groups[label]) groups[label] = { type, files: [] };
+    groups[label].files.push(f.filename);
   }
 
-  async generate(params: SummaryInput): Promise<LLMSummary> {
-    const { repo, branch, diffStats, confidence, commitMessages } = params;
-    const repoUrl = `${this.config.forgejoBaseUrl.replace(/\/+$/, "")}/${repo}.git`;
-
-    const prompt = [
-      `You are reviewing a change on branch "${branch}" in repo "${repo}".`,
-      `Run: git diff origin/main...HEAD to see what changed.`,
-      `Read the changed files to understand the full context.`,
-      ``,
-      `Stats: ${diffStats.files_changed} files, +${diffStats.additions}/-${diffStats.deletions}`,
-      `Scoring confidence: ${confidence}`,
-      commitMessages.length > 0 ? `Commits: ${commitMessages.join("; ")}` : "",
-      ``,
-      `After analyzing the code, respond with ONLY a JSON object:`,
-      `{`,
-      `  "title": "short PR title, imperative mood, under 60 chars",`,
-      `  "what_changed": "1-2 sentence description of the functional change",`,
-      `  "risk_assessment": "1-2 sentence risk analysis with specific concerns",`,
-      `  "affected_modules": ["top/level", "directory/paths"],`,
-      `  "recommended_action": "approve" | "review" | "block"`,
-      `}`,
-    ].filter(Boolean).join("\n");
-
-    const timeout = this.config.timeout ?? 120_000;
-
-    const proc = Bun.spawn([
-      "docker", "run", "--rm",
-      "-e", `REPO_URL=${repoUrl}`,
-      "-e", `BASE_REF=main`,
-      "-e", `HEAD_SHA=${branch}`,
-      "-e", `CODEX_PROMPT=${prompt}`,
-      "-e", `OPENAI_API_KEY=${this.config.openaiApiKey}`,
-      this.config.image,
-    ], {
-      stdout: "pipe",
-      stderr: "pipe",
+  const annotations: SummaryAnnotation[] = [];
+  for (const [label, { type, files }] of Object.entries(groups)) {
+    annotations.push({
+      text: `${files.length} file(s) ${label}`,
+      files,
+      type,
     });
-
-    const timer = setTimeout(() => proc.kill(), timeout);
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    clearTimeout(timer);
-
-    if (exitCode !== 0) {
-      throw new Error(`Codex runner exited ${exitCode}: ${stderr.slice(0, 500)}`);
-    }
-
-    // Extract JSON from stdout
-    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error(`Codex runner produced no JSON. stdout: ${stdout.slice(0, 500)}`);
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as LLMSummary;
-
-    if (!parsed.title || !parsed.what_changed || !parsed.risk_assessment || !parsed.recommended_action) {
-      throw new Error("Codex response missing required fields");
-    }
-
-    return parsed;
   }
+  return annotations;
 }
 
 /**

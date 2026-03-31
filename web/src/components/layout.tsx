@@ -1,11 +1,22 @@
-import { useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { Link, Outlet } from "react-router";
 import { Badge } from "@/components/ui/badge";
 
 import { fetchPendingJobs } from "@/lib/api";
 
+const HeaderContentContext = createContext<(node: ReactNode | null) => void>(() => {});
+
+export function useHeaderContent() {
+  return useContext(HeaderContentContext);
+}
+
 export function Layout() {
   const [pendingJobs, setPendingJobs] = useState<number | null>(null);
+  const [headerContent, setHeaderContent] = useState<ReactNode | null>(null);
+
+  const setHeader = useCallback((node: ReactNode | null) => {
+    setHeaderContent(node);
+  }, []);
 
   useEffect(() => {
     fetchPendingJobs().then((data) => setPendingJobs(data.pending)).catch(() => {});
@@ -33,12 +44,13 @@ export function Layout() {
               </Badge>
             )}
           </div>
-
-
+          {headerContent}
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">
-        <Outlet />
+        <HeaderContentContext.Provider value={setHeader}>
+          <Outlet />
+        </HeaderContentContext.Provider>
       </main>
     </div>
   );

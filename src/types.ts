@@ -102,12 +102,19 @@ export interface PolicyConfig {
   rules: PolicyRule[];
 }
 
+export interface SummaryAnnotation {
+  text: string;
+  files: string[];
+  type: "new_module" | "refactor" | "bugfix" | "config" | "change";
+}
+
 export interface LLMSummary {
   title: string;
   what_changed: string;
   risk_assessment: string;
   affected_modules: string[];
   recommended_action: "approve" | "review" | "block";
+  annotations?: SummaryAnnotation[];
 }
 
 /** Forgejo webhook push payload (relevant fields). */

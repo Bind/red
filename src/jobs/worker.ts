@@ -2,6 +2,7 @@ import type { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
 import type { ForgejoClient } from "../forgejo/client";
 import type { SummaryGenerator, SummaryInput } from "../engine/summary";
 import type { Change, DiffStats, Job, NotificationConfig } from "../types";
+import type { LogBus } from "../engine/log-bus";
 import { ScoringEngine } from "../engine/review";
 import { PolicyEngine } from "../engine/policy";
 import { ChangeStateMachine } from "../engine/state-machine";
@@ -18,6 +19,7 @@ export interface WorkerDeps {
   stateMachine: ChangeStateMachine;
   notifier: NotificationSender;
   notificationConfigs: NotificationConfig[];
+  logBus?: LogBus;
 }
 
 export interface WorkerConfig {
@@ -205,13 +207,24 @@ export class JobWorker {
     const input: SummaryInput = {
       repo: change.repo,
       branch: change.branch,
+      baseRef: change.base_branch,
+      headRef: change.head_sha,
       diff,
       diffStats: payload.diff_stats,
       confidence: change.confidence!,
       commitMessages,
     };
 
-    const summary = await this.deps.summary.generate(input);
+    const onLog = this.deps.logBus
+      ? (line: string) => this.deps.logBus!.emit(change.id, line)
+      : undefined;
+
+    let summary;
+    try {
+      summary = await this.deps.summary.generate(input, onLog);
+    } finally {
+      this.deps.logBus?.complete(change.id);
+    }
 
     // Store summary
     this.deps.changes.updateSummary(change.id, JSON.stringify(summary));

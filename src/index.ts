@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
 import {
@@ -13,6 +14,11 @@ import { ScoringEngine } from "./engine/review";
 import { PolicyEngine } from "./engine/policy";
 import { StubSummaryGenerator, CodexSummaryGenerator } from "./engine/summary";
 import type { SummaryGenerator } from "./engine/summary";
+import { RepoTaskRunner } from "./engine/runner";
+import { LogBus } from "./engine/log-bus";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { ChangeStateMachine } from "./engine/state-machine";
 import { JobWorker } from "./jobs/worker";
 import { NotificationSender } from "./jobs/notify";
@@ -53,6 +59,7 @@ export function createApp(config: AppConfig) {
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
   const forgejo = new ForgejoClient(config.forgejo);
+  const stateMachine = new ChangeStateMachine(changes, events);
 
   const app = new Hono();
 
@@ -73,6 +80,17 @@ export function createApp(config: AppConfig) {
     if (!change) return c.json({ error: "Not found" }, 404);
     const changeEvents = events.listByChangeId(id);
     return c.json({ ...change, events: changeEvents });
+  });
+
+  // Change diff endpoint (raw unified diff from Forgejo)
+  app.get("/api/changes/:id/diff", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(id);
+    if (!change) return c.json({ error: "Not found" }, 404);
+
+    const [owner, repo] = change.repo.split("/");
+    const diff = await forgejo.getDiff(owner, repo, change.base_branch, change.head_sha);
+    return c.text(diff);
   });
 
   // List changes for review
@@ -101,6 +119,33 @@ export function createApp(config: AppConfig) {
       payload: JSON.stringify({
         change_id: id,
         policy_decision: { action: "auto-approve" },
+      }),
+    });
+
+    return c.json({ ok: true });
+  });
+
+  // Regenerate summary
+  app.post("/api/changes/:id/regenerate-summary", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(id);
+    if (!change) return c.json({ error: "Not found" }, 404);
+    if (change.status !== "ready_for_review") {
+      return c.json({ error: `Cannot regenerate from status: ${change.status}` }, 400);
+    }
+
+    const diffStats = change.diff_stats ? JSON.parse(change.diff_stats as unknown as string) : null;
+    if (!diffStats) {
+      return c.json({ error: "No diff stats available for this change" }, 400);
+    }
+
+    stateMachine.transition(id, "summarizing");
+    jobs.enqueue({
+      org_id: change.org_id,
+      type: "generate_summary",
+      payload: JSON.stringify({
+        change_id: id,
+        diff_stats: diffStats,
       }),
     });
 
@@ -136,19 +181,74 @@ export function createApp(config: AppConfig) {
   });
   app.route("/", webhookRoutes);
 
+  // Log streaming
+  const logBus = new LogBus();
+
+  // SSE endpoint for streaming Codex logs
+  app.get("/api/changes/:id/logs", (c) => {
+    const changeId = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(changeId);
+    if (!change) return c.json({ error: "Not found" }, 404);
+
+    // If change is no longer summarizing and logBus has no data, send done immediately
+    if (change.status !== "summarizing") {
+      return streamSSE(c, async (stream) => {
+        await stream.writeSSE({ event: "done", data: "" });
+      });
+    }
+
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      stream.onAbort(() => { closed = true; });
+
+      await new Promise<void>((resolve) => {
+        // Safety timeout — if no done signal in 5 minutes, close the stream
+        const timeout = setTimeout(() => {
+          unsub();
+          resolve();
+        }, 5 * 60 * 1000);
+
+        const unsub = logBus.subscribe(
+          changeId,
+          (line) => {
+            if (closed) return;
+            stream.writeSSE({ event: "log", data: line }).catch(() => {
+              closed = true;
+            });
+          },
+          () => {
+            clearTimeout(timeout);
+            if (!closed) {
+              stream.writeSSE({ event: "done", data: "" }).catch(() => {});
+            }
+            resolve();
+          },
+        );
+
+        stream.onAbort(() => {
+          clearTimeout(timeout);
+          unsub();
+        });
+      });
+    });
+  });
+
   // Engines
   const scorer = new ScoringEngine();
   const policy = new PolicyEngine(forgejo);
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY ?? null;
   const codexImage = process.env.CODEX_RUNNER_IMAGE ?? "redc-codex-runner";
-  const summary: SummaryGenerator = openaiKey
-    ? new CodexSummaryGenerator({
+  const hasCodexAuth = existsSync(join(homedir(), ".codex", "auth.json"));
+  const runner = (openaiKey || hasCodexAuth)
+    ? new RepoTaskRunner({
         image: codexImage,
         forgejoBaseUrl: config.forgejo.baseUrl,
         openaiApiKey: openaiKey,
       })
+    : null;
+  const summary: SummaryGenerator = runner
+    ? new CodexSummaryGenerator(runner)
     : new StubSummaryGenerator();
-  const stateMachine = new ChangeStateMachine(changes, events);
 
   // Notifications
   const notifier = new NotificationSender();
@@ -165,6 +265,7 @@ export function createApp(config: AppConfig) {
     stateMachine,
     notifier,
     notificationConfigs: [], // loaded from policy at runtime
+    logBus,
   }, {
     fetchRemoteAfterMerge: process.env.FETCH_REMOTE_AFTER_MERGE ?? null,
   });
@@ -173,7 +274,7 @@ export function createApp(config: AppConfig) {
   app.use("/*", serveStatic({ root: "./web/dist" }));
   app.get("/*", serveStatic({ path: "./web/dist/index.html" }));
 
-  return { app, db, changes, events, jobs, deliveries, forgejo, worker };
+  return { app, db, changes, events, jobs, deliveries, forgejo, worker, runner };
 }
 
 // Start server when run directly
