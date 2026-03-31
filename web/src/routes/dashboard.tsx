@@ -2,6 +2,17 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -11,7 +22,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchVelocity, fetchReviewQueue, type Change, type Velocity } from "@/lib/api";
+import {
+  fetchVelocity,
+  fetchReviewQueue,
+  fetchRepos,
+  fetchBranches,
+  createPR,
+  type Change,
+  type Velocity,
+  type Branch,
+} from "@/lib/api";
 
 function timeAgo(dateStr: string): string {
   const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : dateStr + "Z";
@@ -61,6 +81,18 @@ export function Dashboard() {
   const [velocityError, setVelocityError] = useState(false);
   const [queue, setQueue] = useState<Change[] | null>(null);
   const [queueError, setQueueError] = useState(false);
+  const [branches, setBranches] = useState<Record<string, Branch[]>>({});
+  const [branchesLoading, setBranchesLoading] = useState(true);
+  const [branchesError, setBranchesError] = useState(false);
+
+  // PR creation dialog state
+  const [prDialogOpen, setPrDialogOpen] = useState(false);
+  const [prRepo, setPrRepo] = useState("");
+  const [prBranch, setPrBranch] = useState("");
+  const [prTitle, setPrTitle] = useState("");
+  const [prBody, setPrBody] = useState("");
+  const [prSubmitting, setPrSubmitting] = useState(false);
+  const [prError, setPrError] = useState<string | null>(null);
 
   const loadQueue = useCallback(() => {
     fetchReviewQueue()
@@ -77,15 +109,62 @@ export function Dashboard() {
       .catch(() => setVelocityError(true));
   }, []);
 
+  const loadBranches = useCallback(() => {
+    fetchRepos()
+      .then(async (repos) => {
+        const result: Record<string, Branch[]> = {};
+        await Promise.all(
+          repos.map(async (repo) => {
+            const repoBranches = await fetchBranches(repo);
+            if (repoBranches.length > 0) {
+              result[repo] = repoBranches;
+            }
+          })
+        );
+        setBranches(result);
+        setBranchesLoading(false);
+        setBranchesError(false);
+      })
+      .catch(() => {
+        setBranchesLoading(false);
+        setBranchesError(true);
+      });
+  }, []);
+
   useEffect(() => {
     loadVelocity();
     loadQueue();
+    loadBranches();
     const interval = setInterval(() => {
       loadVelocity();
       loadQueue();
+      loadBranches();
     }, 3000);
     return () => clearInterval(interval);
-  }, [loadQueue, loadVelocity]);
+  }, [loadQueue, loadVelocity, loadBranches]);
+
+  function openPrDialog(repo: string, branch: string) {
+    setPrRepo(repo);
+    setPrBranch(branch);
+    setPrTitle(branch);
+    setPrBody("");
+    setPrError(null);
+    setPrDialogOpen(true);
+  }
+
+  async function handleCreatePR() {
+    setPrSubmitting(true);
+    setPrError(null);
+    try {
+      await createPR(prRepo, prBranch, prTitle, prBody || undefined);
+      setPrDialogOpen(false);
+      loadBranches();
+    } catch (err) {
+      setPrError(err instanceof Error ? err.message : "Failed to create PR");
+    } finally {
+      setPrSubmitting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -208,6 +287,134 @@ export function Dashboard() {
           </Card>
         ))
       )}
+
+      {/* Remote Branches */}
+      {branchesError ? (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">
+              Unable to load remote branches.
+            </p>
+          </CardContent>
+        </Card>
+      ) : branchesLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : Object.keys(branches).length === 0 ? null : (
+        Object.entries(branches).map(([repo, repoBranches]) => (
+          <Card key={`branches-${repo}`}>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Remote Branches{" "}
+                <span className="font-mono text-muted-foreground font-normal">{repo}</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Last Commit</TableHead>
+                      <TableHead>Pipeline Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {repoBranches.map((branch) => (
+                      <TableRow key={branch.name}>
+                        <TableCell className="font-mono text-sm">
+                          {branch.change ? (
+                            <Link
+                              to={`/changes/${branch.change.id}`}
+                              className="text-foreground hover:underline"
+                            >
+                              {branch.name}
+                            </Link>
+                          ) : (
+                            branch.name
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {timeAgo(branch.commit.timestamp)}
+                        </TableCell>
+                        <TableCell>
+                          {branch.has_open_pr ? (
+                            <Badge variant="default">PR #{branch.change?.pr_number}</Badge>
+                          ) : branch.change ? (
+                            <Badge variant={statusVariant(branch.change.status)}>
+                              {branch.change.status}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No activity</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {!branch.has_open_pr && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openPrDialog(repo, branch.name)}
+                            >
+                              Open PR
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+      )}
+
+      {/* Create PR Dialog */}
+      <Dialog open={prDialogOpen} onOpenChange={setPrDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Open Pull Request</DialogTitle>
+            <DialogDescription>
+              Create a PR for <span className="font-mono">{prBranch}</span> on{" "}
+              <span className="font-mono">{prRepo}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Title</label>
+              <Input
+                value={prTitle}
+                onChange={(e) => setPrTitle(e.target.value)}
+                placeholder="PR title"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                value={prBody}
+                onChange={(e) => setPrBody(e.target.value)}
+                placeholder="Optional description"
+                rows={4}
+              />
+            </div>
+            {prError && (
+              <p className="text-sm text-destructive">{prError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPrDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreatePR} disabled={prSubmitting || !prTitle.trim()}>
+              {prSubmitting ? "Creating..." : "Create PR"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

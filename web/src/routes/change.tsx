@@ -10,7 +10,34 @@ import { FileTree } from "@pierre/trees/react";
 import type { GitStatusEntry } from "@pierre/trees";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHeaderContent } from "@/components/layout";
-import { fetchChange, fetchDiff, approveChange, retryMerge, regenerateSummary, subscribeToLogs, type ChangeDetail, type ChangeStatus } from "@/lib/api";
+import { fetchChange, fetchDiff, approveChange, retryMerge, regenerateSummary, subscribeToLogs, type ChangeDetail, type ChangeStatus, type ChangeEvent } from "@/lib/api";
+
+function Timeline({ events }: { events: ChangeEvent[] }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-medium text-muted-foreground">Timeline</h3>
+      <div className="relative space-y-0">
+        {events.map((event, i) => (
+          <div key={event.id} className="flex items-start gap-3 pb-3">
+            <div className="flex flex-col items-center">
+              <div className="h-2 w-2 rounded-full bg-muted-foreground mt-1.5" />
+              {i < events.length - 1 && <div className="w-px flex-1 bg-border" />}
+            </div>
+            <div className="flex-1 text-sm">
+              <span className="text-foreground">{event.event_type}</span>
+              {event.from_status && event.to_status && (
+                <span className="text-muted-foreground">
+                  {" "}{event.from_status} &rarr; {event.to_status}
+                </span>
+              )}
+              <span className="ml-2 text-xs text-muted-foreground">{timeAgo(event.created_at)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface SummaryAnnotation {
   text: string;

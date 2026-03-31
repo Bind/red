@@ -1,5 +1,7 @@
 # redc
 
+use the `justfile` as command runner. 
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

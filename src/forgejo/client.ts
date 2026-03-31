@@ -1,5 +1,6 @@
 import type {
   CommitStatusState,
+  ForgejoBranch,
   ForgejoCommitStatus,
   ForgejoCreateUserOptions,
   ForgejoPR,
@@ -168,6 +169,21 @@ export class ForgejoClient {
     return this.request<ForgejoPR[]>(
       `/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(branch)}`
     );
+  }
+
+  /** List all branches for a repo. */
+  async listBranches(owner: string, repo: string): Promise<ForgejoBranch[]> {
+    return this.request<ForgejoBranch[]>(`/repos/${owner}/${repo}/branches`);
+  }
+
+  /** Get repo info (to find default branch name). */
+  async getRepo(owner: string, repo: string): Promise<ForgejoRepo> {
+    return this.request<ForgejoRepo>(`/repos/${owner}/${repo}`);
+  }
+
+  /** List repos accessible by the current token. */
+  async listRepos(): Promise<ForgejoRepo[]> {
+    return this.request<ForgejoRepo[]>("/user/repos?limit=50");
   }
 
   // ── Admin methods (used by bootstrap) ──────────────────

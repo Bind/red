@@ -200,3 +200,14 @@ export interface ForgejoToken {
   name: string;
   sha1: string;
 }
+
+/** Forgejo branch from the branches API. */
+export interface ForgejoBranch {
+  name: string;
+  commit: {
+    id: string;
+    message: string;
+    timestamp: string;
+  };
+  protected: boolean;
+}

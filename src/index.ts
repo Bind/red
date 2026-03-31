@@ -31,6 +31,7 @@ export interface AppConfig {
     token: string;
   };
   webhookSecret: string;
+  repos: string[];
 }
 
 function loadConfig(): AppConfig {
@@ -48,6 +49,10 @@ function loadConfig(): AppConfig {
       token: required("FORGEJO_TOKEN"),
     },
     webhookSecret: required("WEBHOOK_SECRET"),
+    repos: (process.env.REDC_REPOS ?? "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean),
   };
 }
 
@@ -168,6 +173,79 @@ export function createApp(config: AppConfig) {
     });
 
     return c.json({ ok: true });
+  });
+
+  // List known repos (configured via REDC_REPOS, then DB, then Forgejo)
+  app.get("/api/repos", async (c) => {
+    if (config.repos.length > 0) {
+      return c.json(config.repos);
+    }
+    const dbRepos = changes.listRepos();
+    if (dbRepos.length > 0) {
+      return c.json(dbRepos);
+    }
+    // Fall back to querying Forgejo for all repos accessible by this token
+    const forgejoRepos = await forgejo.listRepos();
+    return c.json(forgejoRepos.map((r) => r.full_name));
+  });
+
+  // List remote branches for a repo
+  app.get("/api/branches", async (c) => {
+    const repo = c.req.query("repo");
+    if (!repo || !repo.includes("/")) {
+      return c.json({ error: "Missing or invalid repo query param (owner/repo)" }, 400);
+    }
+    const [owner, repoName] = repo.split("/");
+
+    const [repoInfo, branches] = await Promise.all([
+      forgejo.getRepo(owner, repoName),
+      forgejo.listBranches(owner, repoName),
+    ]);
+
+    const result = branches
+      .filter((b) => b.name !== repoInfo.default_branch)
+      .map((b) => {
+        const activeChange = changes.getActiveByRepoBranch(repo, b.name);
+        return {
+          name: b.name,
+          commit: b.commit,
+          change: activeChange
+            ? { id: activeChange.id, status: activeChange.status, pr_number: activeChange.pr_number }
+            : null,
+          has_open_pr: activeChange?.pr_number != null,
+        };
+      });
+
+    return c.json(result);
+  });
+
+  // Create a PR for a branch
+  app.post("/api/branches/create-pr", async (c) => {
+    const body = await c.req.json<{
+      repo: string;
+      branch: string;
+      title: string;
+      body?: string;
+    }>();
+
+    if (!body.repo || !body.branch || !body.title) {
+      return c.json({ error: "Missing required fields: repo, branch, title" }, 400);
+    }
+
+    const [owner, repoName] = body.repo.split("/");
+
+    // Get default branch to use as base
+    const repoInfo = await forgejo.getRepo(owner, repoName);
+    const defaultBranch = repoInfo.default_branch;
+
+    const pr = await forgejo.createPR(owner, repoName, {
+      title: body.title,
+      head: body.branch,
+      base: defaultBranch,
+      body: body.body,
+    });
+
+    return c.json({ number: pr.number, head: pr.head, base: pr.base });
   });
 
   // Mount webhook routes

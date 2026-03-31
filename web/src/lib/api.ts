@@ -110,6 +110,34 @@ export async function retryMerge(id: number): Promise<void> {
   }
 }
 
+export function fetchRepos(): Promise<string[]> {
+  return apiFetch("/api/repos");
+}
+
+export interface Branch {
+  name: string;
+  commit: { id: string; message: string; timestamp: string };
+  change: { id: number; status: ChangeStatus; pr_number: number | null } | null;
+  has_open_pr: boolean;
+}
+
+export function fetchBranches(repo: string): Promise<Branch[]> {
+  return apiFetch(`/api/branches?repo=${encodeURIComponent(repo)}`);
+}
+
+export async function createPR(repo: string, branch: string, title: string, body?: string): Promise<{ number: number }> {
+  const res = await fetch("/api/branches/create-pr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo, branch, title, body }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(data.error ?? `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
 /**
  * Subscribe to real-time Codex log lines via SSE.
  * Returns a cleanup function to close the connection.

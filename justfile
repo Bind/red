@@ -81,6 +81,12 @@ setup:
     echo "=== Setup complete ==="
     echo "Run: just dev"
 
+# ── Docker ──────────────────────────────────────────────
+
+# Build the Codex runner Docker image
+build-codex:
+    docker build -t redc-codex-runner codex-runner/
+
 # ── Development ─────────────────────────────────────────
 
 # Start redc API server (hot-reload)

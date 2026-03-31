@@ -143,6 +143,23 @@ export class ChangeQueries {
     return this.db.prepare(query).all(...params) as Change[];
   }
 
+  /** List distinct repos that have changes. */
+  listRepos(): string[] {
+    const rows = this.db.prepare(
+      "SELECT DISTINCT repo FROM changes ORDER BY repo"
+    ).all() as { repo: string }[];
+    return rows.map((r) => r.repo);
+  }
+
+  /** Get the latest active (non-terminal) change for a repo+branch. */
+  getActiveByRepoBranch(repo: string, branch: string): Change | null {
+    return this.db.prepare(
+      `SELECT * FROM changes WHERE repo = ? AND branch = ?
+       AND status NOT IN ('merged', 'closed', 'superseded')
+       ORDER BY created_at DESC LIMIT 1`
+    ).get(repo, branch) as Change | null;
+  }
+
   /** Merge velocity: count of changes merged in the last N hours. */
   mergeVelocity(hours: number = 24, org_id?: string): { merged: number; pending_review: number } {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
