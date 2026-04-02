@@ -110,6 +110,10 @@ rivet-summary-smoke branch="HEAD" base_ref="main" confidence="needs_review":
 git-sdk-lab-manual *args:
     cd experiments/git-sdk-lab && bun src/manual.ts {{args}}
 
+# Run tests for the git-backed SDK experiment
+git-sdk-lab-test:
+    cd experiments/git-sdk-lab && bun test
+
 # Install dependencies for the isolated OpenCode spike
 opencode-lab-install:
     cd experiments/opencode-lab && bun install

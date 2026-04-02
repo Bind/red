@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "manual": "bun run src/manual.ts"
+    "manual": "bun run src/manual.ts",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -6,3 +6,4 @@ node_modules/
 *.db-shm
 .sst/
 web/dist/
+.claw-artifacts/
