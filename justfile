@@ -26,10 +26,10 @@ up:
 down:
     just infra down
 
-# Rebuild app containers and the Codex runner image
+# Rebuild app containers and the Claw runner image
 build:
     docker compose build
-    docker build -t redc-codex-runner codex-runner/
+    docker build -t redc-claw-runner claw-runner/
 
 # Show local service status
 ps:
@@ -89,6 +89,58 @@ web-build:
 
 # Full local verification
 verify: typecheck test
+
+# Run a local self-hosted Rivet Engine
+rivet-engine:
+    docker run --rm --name redc-rivet-engine -p 6420:6420 rivetdev/engine
+
+# Run the Pi smoke actor runner against Rivet Engine
+rivet-pi-runner:
+    cd experiments/rivet-lab && bun run pi:rivet:runner
+
+# Execute the Pi smoke action and print inspector payloads
+rivet-pi-smoke prompt="Respond with exactly OK":
+    cd experiments/rivet-lab && bun run pi:rivet:smoke {{prompt}}
+
+# Prototype the summary workflow through the Rivet actor
+rivet-summary-smoke branch="HEAD" base_ref="main" confidence="needs_review":
+    cd experiments/rivet-lab && bun run summary:rivet:smoke {{branch}} {{base_ref}} {{confidence}}
+
+# Run the git-backed SDK experiment CLI
+git-sdk-lab-manual *args:
+    cd experiments/git-sdk-lab && bun src/manual.ts {{args}}
+
+# Install dependencies for the isolated OpenCode spike
+opencode-lab-install:
+    cd experiments/opencode-lab && bun install
+
+# Start an opencode server rooted at a given repo path
+opencode-lab-serve repo_path *args:
+    cd experiments/opencode-lab && bun src/serve-repo.ts {{repo_path}} {{args}}
+
+# Run manual SDK experiments against an opencode server
+opencode-lab-manual *args:
+    cd experiments/opencode-lab && bun src/manual.ts {{args}}
+
+# Build the isolated opencode manual-test container
+opencode-lab-container-build:
+    docker build -t redc-opencode-lab experiments/opencode-lab/container
+
+# Run a manual container test against a mounted repo using staged OpenCode auth
+opencode-lab-container-test repo_path prompt_file model="openai/gpt-5.4":
+    ./experiments/opencode-lab/container/run-in-container.sh --repo-path {{repo_path}} --prompt-file {{prompt_file}} --model {{model}}
+
+# Start opencode serve in a container, capture the full raw session event stream to JSONL
+opencode-lab-serve-capture repo_path prompt_file out_file model="openai/gpt-5.4":
+    ./experiments/opencode-lab/container/run-serve-capture.sh --repo-path {{repo_path}} --prompt-file {{prompt_file}} --out-file {{out_file}} --model {{model}}
+
+# Manual PR summary workflow using a cloned repo plus containerized opencode serve
+opencode-lab-pr-summary repo_url base_ref head_ref out_dir model="openai/gpt-5.4":
+    bun experiments/opencode-lab/src/pr-summary-manual.ts --repo-url {{repo_url}} --base-ref {{base_ref}} --head-ref {{head_ref}} --out-dir {{out_dir}} --model {{model}}
+
+# Manual PR summary workflow using a cloned repo plus containerized opencode run
+opencode-lab-pr-summary-run repo_url base_ref head_ref out_dir model="openai/gpt-5.4":
+    bun experiments/opencode-lab/src/pr-summary-manual.ts --repo-url {{repo_url}} --base-ref {{base_ref}} --head-ref {{head_ref}} --out-dir {{out_dir}} --model {{model}} --driver run
 
 # ── CLI ─────────────────────────────────────────────────
 

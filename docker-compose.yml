@@ -25,21 +25,65 @@ services:
     volumes:
       - forgejo-data:/data
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_API_PORT:-9003}:9000"
+      - "${MINIO_CONSOLE_PORT:-9002}:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+    entrypoint: >
+      /bin/sh -c '
+      until mc alias set local http://$$MINIO_ENDPOINT:$$MINIO_PORT "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"; do
+        sleep 1;
+      done &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET
+      '
+
   redc-api:
     build:
       context: .
     restart: unless-stopped
     depends_on:
       - forgejo
+      - minio
     env_file:
       - .env
     environment:
-      REDC_PORT: ${REDC_PORT:-3000}
+      REDC_PORT: 3000
       REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
       FORGEJO_URL: ${FORGEJO_URL:-http://forgejo:3000}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-dev-secret-123}
-      CODEX_RUNNER_IMAGE: ${CODEX_RUNNER_IMAGE:-redc-codex-runner}
+      OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-redc-claw-runner}
+      CLAW_RUNNER_IMAGE: ${CLAW_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-redc-claw-runner}}
       FETCH_REMOTE_AFTER_MERGE: ${FETCH_REMOTE_AFTER_MERGE:-}
+      HOST_OPENCODE_DIR: ${HOME}/.local/share/opencode
+      HOST_CODEX_DIR: ${HOME}/.codex
+      DOCKER_RUN_NETWORK: ${COMPOSE_PROJECT_NAME:-redc}_default
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
     ports:
       - "3000:3000"
     working_dir: /app
@@ -51,7 +95,9 @@ services:
       - redc-node-modules:/app/node_modules
       - web-node-modules:/app/web/node_modules
       - redc-data:/data
+      - /tmp:/tmp
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
       - ${HOME}/.codex:/root/.codex:ro
 
   redc-web:
@@ -76,6 +122,7 @@ services:
 
 volumes:
   forgejo-data:
+  minio-data:
   redc-data:
   redc-node-modules:
   web-node-modules:

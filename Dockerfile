@@ -1,6 +1,6 @@
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache docker-cli git
+RUN apk add --no-cache docker-cli git python3 make g++
 
 FROM base AS install
 COPY package.json bun.lock ./

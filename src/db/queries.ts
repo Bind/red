@@ -1,15 +1,16 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type {
+  AgentSession,
+  AgentSessionEvent,
+  AgentSessionStatus,
   Change,
   ChangeEvent,
   ChangeStatus,
-  CodexSession,
-  CodexSessionLog,
-  CodexSessionStatus,
   ConfidenceLevel,
   CreatedBy,
   Job,
 } from "../types";
+import type { AgentRuntimeEvent } from "../claw/runtime";
 
 export class ChangeQueries {
   constructor(private db: Database) {}
@@ -56,6 +57,15 @@ export class ChangeQueries {
     return this.db
       .prepare("SELECT * FROM changes WHERE delivery_id = ?")
       .get(deliveryId) as Change | null;
+  }
+
+  getLatestByRepoHead(repo: string, headSha: string): Change | null {
+    return this.db.prepare(
+      `SELECT * FROM changes
+       WHERE repo = ? AND head_sha = ?
+       ORDER BY created_at DESC
+       LIMIT 1`
+    ).get(repo, headSha) as Change | null;
   }
 
   updateStatus(id: number, status: ChangeStatus): void {
@@ -222,6 +232,10 @@ export class EventQueries {
 export class JobQueries {
   constructor(private db: Database) {}
 
+  getById(id: number): Job | null {
+    return this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job | null;
+  }
+
   enqueue(params: {
     org_id: string;
     type: string;
@@ -321,66 +335,110 @@ export class DeliveryQueries {
 export class SessionQueries {
   constructor(private db: Database) {}
 
-  create(changeId: number, jobId: number | null, jobType: string): CodexSession {
+  create(params: {
+    changeId: number;
+    jobId: number | null;
+    jobType: string;
+    runId: string;
+    runtime: string;
+  }): AgentSession {
     this.db
       .prepare(
-        `INSERT INTO codex_sessions (change_id, job_id, job_type)
-         VALUES (?, ?, ?)`
+        `INSERT INTO agent_sessions (change_id, job_id, job_type, run_id, runtime)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(changeId, jobId, jobType);
+      .run(params.changeId, params.jobId, params.jobType, params.runId, params.runtime);
     const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
     return this.getById(id)!;
   }
 
-  getById(id: number): CodexSession | null {
+  getById(id: number): AgentSession | null {
     return this.db
-      .prepare("SELECT * FROM codex_sessions WHERE id = ?")
-      .get(id) as CodexSession | null;
+      .prepare("SELECT * FROM agent_sessions WHERE id = ?")
+      .get(id) as AgentSession | null;
   }
 
-  getLatestByChangeId(changeId: number): CodexSession | null {
-    return this.db
-      .prepare(
-        "SELECT * FROM codex_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1"
-      )
-      .get(changeId) as CodexSession | null;
-  }
-
-  listByChangeId(changeId: number): CodexSession[] {
+  getLatestByChangeId(changeId: number): AgentSession | null {
     return this.db
       .prepare(
-        "SELECT * FROM codex_sessions WHERE change_id = ? ORDER BY started_at DESC"
+        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1"
       )
-      .all(changeId) as CodexSession[];
+      .get(changeId) as AgentSession | null;
   }
 
-  finish(id: number, status: CodexSessionStatus, durationMs: number): void {
+  listByChangeId(changeId: number): AgentSession[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC"
+      )
+      .all(changeId) as AgentSession[];
+  }
+
+  findLatestRunningByChangeAndJobType(changeId: number, jobType: string): AgentSession | null {
+    return this.db
+      .prepare(
+        `SELECT * FROM agent_sessions
+         WHERE change_id = ? AND job_type = ? AND status = 'running'
+         ORDER BY started_at DESC
+         LIMIT 1`
+      )
+      .get(changeId, jobType) as AgentSession | null;
+  }
+
+  attachRuntimeSessionId(id: number, runtimeSessionId: string): void {
     this.db
       .prepare(
-        `UPDATE codex_sessions
+        `UPDATE agent_sessions
+         SET runtime_session_id = ?
+         WHERE id = ?`
+      )
+      .run(runtimeSessionId, id);
+  }
+
+  finish(id: number, status: AgentSessionStatus, durationMs: number): void {
+    this.db
+      .prepare(
+        `UPDATE agent_sessions
          SET status = ?, finished_at = datetime('now'), duration_ms = ?
          WHERE id = ?`
       )
       .run(status, durationMs, id);
   }
 
-  appendLog(sessionId: number, line: string): void {
-    this.db
-      .prepare(
-        `INSERT INTO codex_session_logs (session_id, seq, line)
-         VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM codex_session_logs WHERE session_id = ?), ?)`
-      )
-      .run(sessionId, sessionId, line);
-  }
-
-  getLogsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): CodexSessionLog[] {
+  appendEvent(sessionId: number, event: AgentRuntimeEvent): void {
     return this.db
       .prepare(
-        `SELECT * FROM codex_session_logs
+        `INSERT INTO agent_session_events (
+          session_id, seq, event_id, kind, type, status, role, text, delta, data_json, raw_json
+        ) VALUES (
+          ?,
+          (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_session_events WHERE session_id = ?),
+          ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )`
+      )
+      .run(
+        sessionId,
+        sessionId,
+        event.id,
+        event.kind,
+        event.type,
+        event.status ?? null,
+        event.role ?? null,
+        event.text ?? null,
+        event.delta ?? null,
+        event.data ? JSON.stringify(event.data) : null,
+        event.raw ? JSON.stringify(event.raw) : null
+      );
+  }
+
+  getEventsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): AgentSessionEvent[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM agent_session_events
          WHERE session_id = ? AND seq > ?
          ORDER BY seq ASC
          LIMIT ?`
       )
-      .all(sessionId, afterSeq, limit) as CodexSessionLog[];
+      .all(sessionId, afterSeq, limit) as AgentSessionEvent[];
   }
 }

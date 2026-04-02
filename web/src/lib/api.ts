@@ -102,6 +102,14 @@ export async function regenerateSummary(id: number): Promise<void> {
   }
 }
 
+export async function requeueSummary(id: number): Promise<void> {
+  const res = await fetch(`/api/changes/${id}/requeue-summary`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(body.error ?? `API error: ${res.status}`);
+  }
+}
+
 export async function retryMerge(id: number): Promise<void> {
   const res = await fetch(`/api/changes/${id}/retry-merge`, { method: "POST" });
   if (!res.ok) {
@@ -138,48 +146,55 @@ export async function createPR(repo: string, branch: string, title: string, body
   return res.json();
 }
 
-export type CodexSessionStatus = "running" | "completed" | "failed";
+export type AgentSessionStatus = "running" | "completed" | "failed";
 
-export interface CodexSession {
+export interface AgentSession {
   id: number;
   change_id: number;
   job_id: number | null;
   job_type: string;
-  status: CodexSessionStatus;
+  run_id: string;
+  runtime: string;
+  runtime_session_id: string | null;
+  status: AgentSessionStatus;
   started_at: string;
   finished_at: string | null;
   duration_ms: number | null;
 }
 
-export interface CodexSessionLog {
+export interface AgentSessionEvent {
   id: number;
   session_id: number;
   seq: number;
-  line: string;
+  event_id: string;
+  kind: string;
+  type: string;
+  status: string | null;
+  role: string | null;
+  text: string | null;
+  delta: string | null;
+  data_json: string | null;
+  raw_json: string | null;
   created_at: string;
 }
 
-export function fetchSessions(changeId: number): Promise<CodexSession[]> {
+export function fetchSessions(changeId: number): Promise<AgentSession[]> {
   return apiFetch(`/api/changes/${changeId}/sessions`);
 }
 
-export function fetchSessionLogs(sessionId: number, afterSeq: number = 0): Promise<CodexSessionLog[]> {
-  return apiFetch(`/api/sessions/${sessionId}/logs?after=${afterSeq}`);
+export function fetchSessionEvents(sessionId: number, afterSeq: number = 0): Promise<AgentSessionEvent[]> {
+  return apiFetch(`/api/sessions/${sessionId}/events?after=${afterSeq}`);
 }
 
-/**
- * Subscribe to real-time Codex log lines via SSE.
- * Returns a cleanup function to close the connection.
- */
-export function subscribeToLogs(
+export function subscribeToAgentEvents(
   changeId: number,
-  onLine: (line: string) => void,
+  onEvent: (event: AgentSessionEvent) => void,
   onDone: (data?: string) => void,
 ): () => void {
-  const es = new EventSource(`/api/changes/${changeId}/logs`);
+  const es = new EventSource(`/api/changes/${changeId}/agent-events`);
 
-  es.addEventListener("log", (e) => {
-    onLine(e.data);
+  es.addEventListener("event", (e) => {
+    onEvent(JSON.parse(e.data) as AgentSessionEvent);
   });
 
   es.addEventListener("done", (e) => {

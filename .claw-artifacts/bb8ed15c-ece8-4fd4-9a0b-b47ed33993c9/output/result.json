@@ -1,0 +1,58 @@
+{
+  "title": "Fix change detail rollout issues",
+  "what_changed": "Refactor summary generation around a reusable `RepoTaskRunner` and new `src/engine/tasks/summary.ts` prompt/validation module, while extending summary types and tests to carry structured annotations and explicit base/head refs. Add backend support for summary regeneration, raw diff retrieval, and streamed Codex logs through a new in-memory `LogBus`, plus a state-machine transition from `ready_for_review` back to `summarizing`. Pin the `codex-runner` image to `@openai/codex@0.117.0` and change the runner script to write JSON output to `/output/result.json`, fetch the requested base/head refs, and stream stderr progress from the container. Expand the change detail UI with annotated summaries, live log viewing, diff tree and patch rendering, header slot content, and new API helpers backed by added diff/tree rendering dependencies.",
+  "risk_assessment": "Risk is high because `web/src/routes/change.tsx` renders `<Timeline />` without defining or importing it, which is likely a frontend build/runtime failure. There is also a backend behavior gap in `src/index.ts` where the logs SSE endpoint exits early for non-`summarizing` changes, preventing late subscribers from receiving buffered logs even though `LogBus` retains them for 30 seconds.",
+  "affected_modules": [
+    "src/engine",
+    "src/jobs",
+    "src/index.ts",
+    "codex-runner",
+    "web/src/routes",
+    "web/src/components",
+    "web/src/lib",
+    "web/package.json"
+  ],
+  "recommended_action": "block",
+  "annotations": [
+    {
+      "text": "Refactor summary generation around a reusable `RepoTaskRunner` and new `src/engine/tasks/summary.ts` prompt/validation module, while extending summary types and tests to carry structured annotations and explicit base/head refs.",
+      "files": [
+        "src/engine/runner.ts",
+        "src/engine/summary.ts",
+        "src/engine/tasks/summary.ts",
+        "src/types.ts",
+        "src/engine/summary.test.ts"
+      ],
+      "type": "refactor"
+    },
+    {
+      "text": "Add backend support for summary regeneration, raw diff retrieval, and streamed Codex logs through a new in-memory `LogBus`, plus a state-machine transition from `ready_for_review` back to `summarizing`.",
+      "files": [
+        "src/engine/log-bus.ts",
+        "src/index.ts",
+        "src/jobs/worker.ts",
+        "src/engine/state-machine.ts"
+      ],
+      "type": "new_module"
+    },
+    {
+      "text": "Pin the `codex-runner` image to `@openai/codex@0.117.0` and change the runner script to write JSON output to `/output/result.json`, fetch the requested base/head refs, and stream stderr progress from the container.",
+      "files": [
+        "codex-runner/Dockerfile",
+        "codex-runner/run.sh"
+      ],
+      "type": "config"
+    },
+    {
+      "text": "Expand the change detail UI with annotated summaries, live log viewing, diff tree and patch rendering, header slot content, and new API helpers backed by added diff/tree rendering dependencies.",
+      "files": [
+        "web/src/routes/change.tsx",
+        "web/src/components/layout.tsx",
+        "web/src/lib/api.ts",
+        "web/package.json",
+        "bun.lock"
+      ],
+      "type": "change"
+    }
+  ]
+}

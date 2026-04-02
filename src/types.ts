@@ -201,25 +201,36 @@ export interface ForgejoToken {
   sha1: string;
 }
 
-/** Codex session tracking. */
-export type CodexSessionStatus = "running" | "completed" | "failed";
+/** Agent session tracking. */
+export type AgentSessionStatus = "running" | "completed" | "failed";
 
-export interface CodexSession {
+export interface AgentSession {
   id: number;
   change_id: number;
   job_id: number | null;
   job_type: string;
-  status: CodexSessionStatus;
+  run_id: string;
+  runtime: string;
+  runtime_session_id: string | null;
+  status: AgentSessionStatus;
   started_at: string;
   finished_at: string | null;
   duration_ms: number | null;
 }
 
-export interface CodexSessionLog {
+export interface AgentSessionEvent {
   id: number;
   session_id: number;
   seq: number;
-  line: string;
+  event_id: string;
+  kind: string;
+  type: string;
+  status: string | null;
+  role: string | null;
+  text: string | null;
+  delta: string | null;
+  data_json: string | null;
+  raw_json: string | null;
   created_at: string;
 }
 

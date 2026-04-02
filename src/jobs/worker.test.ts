@@ -7,7 +7,7 @@ import { StubSummaryGenerator } from "../engine/summary";
 import { ChangeStateMachine } from "../engine/state-machine";
 import { JobWorker, type WorkerDeps } from "./worker";
 import { NotificationSender } from "./notify";
-import type { ForgejoClient } from "../forgejo/client";
+import type { RepoProvider } from "../repo/provider";
 import type { Database } from "bun:sqlite";
 
 let db: Database;
@@ -17,7 +17,7 @@ let worker: JobWorker;
 // Track Forgejo API calls
 let forgejoCallLog: Array<{ method: string; args: unknown[] }>;
 
-function createMockForgejo(): ForgejoClient {
+function createMockRepoProvider(): RepoProvider {
   forgejoCallLog = [];
   return {
     compareDiff: mock(async () => {
@@ -39,11 +39,28 @@ function createMockForgejo(): ForgejoClient {
     setCommitStatus: mock(async () => {
       forgejoCallLog.push({ method: "setCommitStatus", args: [] });
     }),
+    listPRsForBranch: mock(async () => {
+      forgejoCallLog.push({ method: "listPRsForBranch", args: [] });
+      return [];
+    }),
+    createPR: mock(async () => {
+      forgejoCallLog.push({ method: "createPR", args: [] });
+      return {
+        number: 42,
+        state: "open",
+        merged: false,
+        head: { ref: "feature-1", sha: "abc123" },
+        base: { ref: "main" },
+      };
+    }),
+    mergePR: mock(async () => {
+      forgejoCallLog.push({ method: "mergePR", args: [] });
+    }),
     getFileContent: mock(async () => {
       forgejoCallLog.push({ method: "getFileContent", args: [] });
       return null; // no policy file
     }),
-  } as unknown as ForgejoClient;
+  };
 }
 
 beforeEach(() => {
@@ -56,16 +73,16 @@ beforeEach(() => {
     changes,
     events,
     jobs,
-    forgejo: createMockForgejo(),
+    repoProvider: createMockRepoProvider(),
     scorer: new ScoringEngine(),
-    policy: new PolicyEngine(deps?.forgejo ?? createMockForgejo()),
+    policy: new PolicyEngine(deps?.repoProvider ?? createMockRepoProvider()),
     summary: new StubSummaryGenerator(),
     stateMachine: new ChangeStateMachine(changes, events),
     notifier: new NotificationSender(),
     notificationConfigs: [],
   };
   // Fix policy engine to use same forgejo mock
-  deps.policy = new PolicyEngine(deps.forgejo);
+  deps.policy = new PolicyEngine(deps.repoProvider);
 
   worker = new JobWorker(deps);
 });
@@ -111,11 +128,13 @@ describe("JobWorker", () => {
     const change = deps.changes.getById(changeId)!;
     expect(change.status).toBe("summarizing");
     expect(change.confidence).not.toBeNull();
+    expect(change.pr_number).toBe(42);
 
     // Should have enqueued a summary job
     expect(deps.jobs.pendingCount()).toBe(1);
     const summaryJob = deps.jobs.claimNext("generate_summary");
     expect(summaryJob).not.toBeNull();
+    expect(forgejoCallLog.map((entry) => entry.method)).toContain("createPR");
   });
 
   test("generate_summary: full summary pipeline", async () => {
@@ -173,6 +192,7 @@ describe("JobWorker", () => {
     expect(change.status).toBe("ready_for_review");
     expect(change.confidence).not.toBeNull();
     expect(change.summary).not.toBeNull();
+    expect(change.pr_number).toBe(42);
 
     // Verify event trail
     const events = deps.events.listByChangeId(changeId);
@@ -180,6 +200,36 @@ describe("JobWorker", () => {
     expect(types).toContain("push_received");
     expect(types).toContain("status_change");
     expect(types).toContain("summary_generated");
+  });
+
+  test("score_change reuses an existing open PR", async () => {
+    deps.repoProvider.listPRsForBranch = mock(async () => {
+      forgejoCallLog.push({ method: "listPRsForBranch", args: [] });
+      return [{
+        number: 7,
+        state: "open",
+        merged: false,
+        head: { ref: "feature-1", sha: "abc123" },
+        base: { ref: "main" },
+      }];
+    });
+    deps.repoProvider.createPR = mock(async () => {
+      forgejoCallLog.push({ method: "createPR", args: [] });
+      throw new Error("should not create PR");
+    });
+
+    const changeId = createTestChange();
+    deps.jobs.enqueue({
+      org_id: "default",
+      type: "score_change",
+      payload: JSON.stringify({ change_id: changeId }),
+    });
+
+    await worker.tick();
+
+    const change = deps.changes.getById(changeId)!;
+    expect(change.pr_number).toBe(7);
+    expect(forgejoCallLog.map((entry) => entry.method)).not.toContain("createPR");
   });
 
   test("skips superseded changes in score_change", async () => {

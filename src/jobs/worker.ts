@@ -1,8 +1,9 @@
 import type { ChangeQueries, EventQueries, JobQueries, SessionQueries } from "../db/queries";
-import type { ForgejoClient } from "../forgejo/client";
 import type { SummaryGenerator, SummaryInput } from "../engine/summary";
 import type { Change, DiffStats, Job, NotificationConfig } from "../types";
-import type { LogBus } from "../engine/log-bus";
+import type { AgentRuntimeEvent } from "../claw/runtime";
+import type { EventBus } from "../engine/event-bus";
+import type { RepoProvider } from "../repo/provider";
 import { ScoringEngine } from "../engine/review";
 import { PolicyEngine } from "../engine/policy";
 import { ChangeStateMachine } from "../engine/state-machine";
@@ -12,14 +13,14 @@ export interface WorkerDeps {
   changes: ChangeQueries;
   events: EventQueries;
   jobs: JobQueries;
-  forgejo: ForgejoClient;
+  repoProvider: RepoProvider;
   scorer: ScoringEngine;
   policy: PolicyEngine;
   summary: SummaryGenerator;
   stateMachine: ChangeStateMachine;
   notifier: NotificationSender;
   notificationConfigs: NotificationConfig[];
-  logBus?: LogBus;
+  eventBus?: EventBus;
   sessions?: SessionQueries;
 }
 
@@ -130,14 +131,14 @@ export class JobWorker {
     this.deps.stateMachine.transition(change_id, "scoring");
 
     // Set commit status to pending
-    await this.deps.forgejo.setCommitStatus(owner, repo, change.head_sha, {
+    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
       state: "pending",
       description: "Scoring change...",
       context: this.config.statusContext,
     });
 
     // Fetch diff stats
-    const diffStats = await this.deps.forgejo.compareDiff(
+    const diffStats = await this.deps.repoProvider.compareDiff(
       owner, repo, change.base_branch, change.head_sha
     );
 
@@ -161,10 +162,16 @@ export class JobWorker {
       : result.confidence === "critical" ? "failure" as const
       : "pending" as const;
 
-    await this.deps.forgejo.setCommitStatus(owner, repo, change.head_sha, {
+    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
       state: statusState,
       description: `${result.confidence}: ${result.reasons[0]}`,
       context: this.config.statusContext,
+    });
+
+    await this.ensurePullRequest(change, {
+      owner,
+      repo,
+      title: `Review ${change.branch}`,
     });
 
     // Transition to summarizing and enqueue summary job
@@ -194,7 +201,7 @@ export class JobWorker {
     const [owner, repo] = parseRepoFullName(change.repo);
 
     // Fetch the actual diff text for the summary generator
-    const diff = await this.deps.forgejo.getDiff(
+    const diff = await this.deps.repoProvider.getDiff(
       owner, repo, change.base_branch, change.head_sha
     );
 
@@ -210,6 +217,8 @@ export class JobWorker {
       branch: change.branch,
       baseRef: change.base_branch,
       headRef: change.head_sha,
+      changeId: change.id,
+      jobId: job.id,
       diff,
       diffStats: payload.diff_stats,
       confidence: change.confidence!,
@@ -217,17 +226,33 @@ export class JobWorker {
     };
 
     // Create a persistent session if sessions are available
-    const session = this.deps.sessions?.create(change.id, job.id, job.type);
+    const runId = crypto.randomUUID();
+    const session = this.deps.sessions?.create({
+      changeId: change.id,
+      jobId: job.id,
+      jobType: job.type,
+      runId,
+      runtime: "opencode",
+    });
     const startTime = Date.now();
 
-    const onLog = (line: string) => {
-      if (session) this.deps.sessions!.appendLog(session.id, line);
-      this.deps.logBus?.emit(change.id, line);
+    const onEvent = (event: AgentRuntimeEvent) => {
+      if (session) {
+        this.deps.sessions!.appendEvent(session.id, event);
+        if (event.runtimeSessionId && !session.runtime_session_id) {
+          this.deps.sessions!.attachRuntimeSessionId(session.id, event.runtimeSessionId);
+          session.runtime_session_id = event.runtimeSessionId;
+        }
+      }
+      this.deps.eventBus?.emit(change.id, event);
     };
 
     let summary;
     try {
-      summary = await this.deps.summary.generate(input, onLog);
+      summary = await this.deps.summary.generate({
+        ...input,
+        jobId: job.id,
+      }, onEvent);
       if (session) {
         this.deps.sessions!.finish(session.id, "completed", Date.now() - startTime);
       }
@@ -235,9 +260,14 @@ export class JobWorker {
       if (session) {
         this.deps.sessions!.finish(session.id, "failed", Date.now() - startTime);
       }
+      if (change.status === "summarizing") {
+        this.deps.stateMachine.transition(change.id, "scored", {
+          reason: "summary_generation_failed",
+        });
+      }
       throw err;
     } finally {
-      this.deps.logBus?.complete(change.id);
+      this.deps.eventBus?.complete(change.id);
     }
 
     // Store summary
@@ -252,7 +282,10 @@ export class JobWorker {
       event_type: "summary_generated",
       from_status: "summarizing",
       to_status: "ready_for_review",
-      metadata: JSON.stringify({ recommended_action: summary.recommended_action }),
+      metadata: JSON.stringify({
+        recommended_action: summary.recommended_action,
+        generator: this.deps.summary.getMetadata(),
+      }),
     });
 
     // Enqueue notification if configs exist
@@ -304,7 +337,7 @@ export class JobWorker {
     this.deps.stateMachine.transition(change_id, "approved");
 
     // Set commit status to success
-    await this.deps.forgejo.setCommitStatus(owner, repo, change.head_sha, {
+    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
       state: "success",
       description: "Approved by redc",
       context: this.config.statusContext,
@@ -335,39 +368,23 @@ export class JobWorker {
     if (change.status === "superseded") return;
 
     const [owner, repo] = parseRepoFullName(change.repo);
-
-    // Find or create PR
-    let prNumber = change.pr_number;
-
-    if (!prNumber) {
-      // Try to find an existing open PR for this branch
-      const prs = await this.deps.forgejo.listPRsForBranch(owner, repo, change.branch);
-      if (prs.length > 0) {
-        prNumber = prs[0].number;
-        this.deps.changes.updatePrNumber(change_id, prNumber);
-      }
-    }
-
-    if (!prNumber) {
-      // Create a new PR
-      const summary = change.summary ? JSON.parse(change.summary) : null;
-      const title = summary?.title || `Merge ${change.branch}`;
-      const pr = await this.deps.forgejo.createPR(owner, repo, {
-        title,
-        head: change.branch,
-        base: change.base_branch,
-        body: summary?.description || undefined,
-      });
-      prNumber = pr.number;
-      this.deps.changes.updatePrNumber(change_id, prNumber);
-    }
+    const summary = change.summary ? JSON.parse(change.summary) : null;
+    const prNumber = await this.ensurePullRequest(change, {
+      owner,
+      repo,
+      title: summary?.title || `Merge ${change.branch}`,
+      body: summary?.description || undefined,
+    });
 
     // Transition → merging
     this.deps.stateMachine.transition(change_id, "merging");
 
     // Merge the PR
     try {
-      await this.deps.forgejo.mergePR(owner, repo, prNumber, "merge");
+      if (!this.deps.repoProvider.mergePR) {
+        throw new Error("Repo provider does not support PR merge");
+      }
+      await this.deps.repoProvider.mergePR(owner, repo, prNumber, "merge");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.deps.stateMachine.transition(change_id, "merge_failed");
@@ -441,6 +458,48 @@ export class JobWorker {
         })),
       }),
     });
+  }
+
+  private async ensurePullRequest(
+    change: Change,
+    params: {
+      owner: string;
+      repo: string;
+      title: string;
+      body?: string;
+    }
+  ): Promise<number> {
+    if (change.pr_number) {
+      return change.pr_number;
+    }
+
+    if (!this.deps.repoProvider.listPRsForBranch) {
+      throw new Error("Repo provider does not support PR lookup");
+    }
+
+    const existing = await this.deps.repoProvider.listPRsForBranch(
+      params.owner,
+      params.repo,
+      change.branch
+    );
+    if (existing.length > 0) {
+      const prNumber = existing[0].number;
+      this.deps.changes.updatePrNumber(change.id, prNumber);
+      return prNumber;
+    }
+
+    if (!this.deps.repoProvider.createPR) {
+      throw new Error("Repo provider does not support PR creation");
+    }
+
+    const pr = await this.deps.repoProvider.createPR(params.owner, params.repo, {
+      title: params.title,
+      head: change.branch,
+      base: change.base_branch,
+      body: params.body,
+    });
+    this.deps.changes.updatePrNumber(change.id, pr.number);
+    return pr.number;
   }
 }
 

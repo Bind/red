@@ -10,6 +10,7 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "cli": "bun run src/cli/index.ts",
+    "claw:manual": "bun run src/claw/manual.ts",
     "test": "bun test",
     "deploy": "./scripts/deploy.sh"
   },

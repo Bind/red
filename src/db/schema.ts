@@ -116,11 +116,14 @@ function migrate(db: Database): void {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS codex_sessions (
+    CREATE TABLE IF NOT EXISTS agent_sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       change_id INTEGER NOT NULL,
       job_id INTEGER,
       job_type TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      runtime TEXT NOT NULL,
+      runtime_session_id TEXT,
       status TEXT NOT NULL DEFAULT 'running',
       started_at TEXT NOT NULL DEFAULT (datetime('now')),
       finished_at TEXT,
@@ -130,23 +133,36 @@ function migrate(db: Database): void {
   `);
 
   db.run(`
-    CREATE INDEX IF NOT EXISTS idx_codex_sessions_change_id
-    ON codex_sessions(change_id)
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_change_id
+    ON agent_sessions(change_id)
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS codex_session_logs (
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_run_id
+    ON agent_sessions(run_id)
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS agent_session_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL,
       seq INTEGER NOT NULL,
-      line TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT,
+      role TEXT,
+      text TEXT,
+      delta TEXT,
+      data_json TEXT,
+      raw_json TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (session_id) REFERENCES codex_sessions(id)
+      FOREIGN KEY (session_id) REFERENCES agent_sessions(id)
     )
   `);
 
   db.run(`
-    CREATE INDEX IF NOT EXISTS idx_codex_session_logs_session_seq
-    ON codex_session_logs(session_id, seq)
+    CREATE INDEX IF NOT EXISTS idx_agent_session_events_session_seq
+    ON agent_session_events(session_id, seq)
   `);
 }

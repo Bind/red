@@ -10,19 +10,31 @@ import {
   SessionQueries,
 } from "./db/queries";
 import { ForgejoClient } from "./forgejo/client";
+import { ForgejoRepoProvider } from "./repo/forgejo-provider";
 import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
 import { PolicyEngine } from "./engine/policy";
-import { StubSummaryGenerator, CodexSummaryGenerator } from "./engine/summary";
+import { StubSummaryGenerator, ClawSummaryGenerator } from "./engine/summary";
 import type { SummaryGenerator } from "./engine/summary";
-import { RepoTaskRunner } from "./engine/runner";
-import { LogBus } from "./engine/log-bus";
+import { EventBus } from "./engine/event-bus";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { ChangeStateMachine } from "./engine/state-machine";
 import { JobWorker } from "./jobs/worker";
 import { NotificationSender } from "./jobs/notify";
+import {
+  ClawRunReconciler,
+  ClawArtifactUploader,
+  DockerClawRunner,
+  OpenCodeBatchAgentRuntime,
+  LocalClawArtifactStore,
+  SqliteClawRunTracker,
+  MinioClawArtifactStore,
+  getRequiredMinioArtifactStoreConfig,
+  type AgentRuntimeEvent,
+} from "./claw";
+import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 
 export interface AppConfig {
   port: number;
@@ -33,6 +45,17 @@ export interface AppConfig {
   };
   webhookSecret: string;
   repos: string[];
+  artifacts: {
+    minio: {
+      endPoint: string;
+      port: number;
+      useSSL: boolean;
+      accessKey: string;
+      secretKey: string;
+      bucket: string;
+      prefix?: string;
+    };
+  };
 }
 
 function loadConfig(): AppConfig {
@@ -54,6 +77,9 @@ function loadConfig(): AppConfig {
       .split(",")
       .map((r) => r.trim())
       .filter(Boolean),
+    artifacts: {
+      minio: getRequiredMinioArtifactStoreConfig(),
+    },
   };
 }
 
@@ -66,7 +92,11 @@ export function createApp(config: AppConfig) {
   const deliveries = new DeliveryQueries(db);
   const sessions = new SessionQueries(db);
   const forgejo = new ForgejoClient(config.forgejo);
+  const repoProvider = new ForgejoRepoProvider(forgejo);
   const stateMachine = new ChangeStateMachine(changes, events);
+  const clawTracker = new SqliteClawRunTracker();
+  const localClawArtifactStore = new LocalClawArtifactStore();
+  const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
 
   const app = new Hono();
 
@@ -96,7 +126,7 @@ export function createApp(config: AppConfig) {
     if (!change) return c.json({ error: "Not found" }, 404);
 
     const [owner, repo] = change.repo.split("/");
-    const diff = await forgejo.getDiff(owner, repo, change.base_branch, change.head_sha);
+    const diff = await repoProvider.getDiff(owner, repo, change.base_branch, change.head_sha);
     return c.text(diff);
   });
 
@@ -109,6 +139,56 @@ export function createApp(config: AppConfig) {
   // Pending jobs count
   app.get("/api/jobs/pending", (c) => {
     return c.json({ pending: jobs.pendingCount() });
+  });
+
+  // Claw action catalog
+  app.get("/api/claw/actions", (c) => {
+    return c.json(listClawActions());
+  });
+
+  app.get("/api/claw/actions/:id", (c) => {
+    const action = getClawActionMetadata(c.req.param("id"));
+    if (!action) return c.json({ error: "Not found" }, 404);
+    return c.json(action);
+  });
+
+  app.get("/api/claw/actions/:id/prompt", (c) => {
+    const prompt = getClawActionPrompt(c.req.param("id"));
+    if (!prompt) return c.json({ error: "Not found" }, 404);
+    return c.json(prompt);
+  });
+
+  app.get("/api/claw/runs", (c) => {
+    const limit = parseInt(c.req.query("limit") ?? "20", 10);
+    return c.json(clawTracker.listRecent(limit));
+  });
+
+  app.get("/api/claw/runs/:runId", (c) => {
+    const run = clawTracker.getByRunId(c.req.param("runId"));
+    if (!run) return c.json({ error: "Not found" }, 404);
+    return c.json(run);
+  });
+
+  app.get("/api/claw/runs/:runId/artifacts/:kind", async (c) => {
+    const runId = c.req.param("runId");
+    const kind = c.req.param("kind");
+    if (kind !== "request" && kind !== "result" && kind !== "events") {
+      return c.json({ error: "Unknown artifact kind" }, 400);
+    }
+
+    const run = clawTracker.getByRunId(runId);
+    if (!run) return c.json({ error: "Not found" }, 404);
+
+    const artifactStore = run.rolloutPath?.startsWith("s3://")
+      ? remoteClawArtifactStore
+      : localClawArtifactStore;
+    const text = await artifactStore.readTextArtifact(runId, kind);
+    if (text == null) return c.json({ error: "Artifact not found" }, 404);
+
+    const contentType =
+      kind === "events" ? "application/x-ndjson; charset=utf-8" : "application/json; charset=utf-8";
+    c.header("Content-Type", contentType);
+    return c.text(text);
   });
 
   // Manual approve + merge
@@ -159,6 +239,35 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
+  // Requeue summary after a failed/dead summary attempt
+  app.post("/api/changes/:id/requeue-summary", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(id);
+    if (!change) return c.json({ error: "Not found" }, 404);
+    if (change.status !== "scored") {
+      return c.json({ error: `Cannot requeue summary from status: ${change.status}` }, 400);
+    }
+
+    const diffStats = change.diff_stats ? JSON.parse(change.diff_stats as unknown as string) : null;
+    if (!diffStats) {
+      return c.json({ error: "No diff stats available for this change" }, 400);
+    }
+
+    stateMachine.transition(id, "summarizing", {
+      reason: "manual_requeue_summary",
+    });
+    jobs.enqueue({
+      org_id: change.org_id,
+      type: "generate_summary",
+      payload: JSON.stringify({
+        change_id: id,
+        diff_stats: diffStats,
+      }),
+    });
+
+    return c.json({ ok: true });
+  });
+
   // Retry a failed merge
   app.post("/api/changes/:id/retry-merge", async (c) => {
     const id = parseInt(c.req.param("id"), 10);
@@ -187,7 +296,10 @@ export function createApp(config: AppConfig) {
       return c.json(dbRepos);
     }
     // Fall back to querying Forgejo for all repos accessible by this token
-    const forgejoRepos = await forgejo.listRepos();
+    const forgejoRepos = await repoProvider.listRepos?.();
+    if (!forgejoRepos) {
+      return c.json([]);
+    }
     return c.json(forgejoRepos.map((r) => r.full_name));
   });
 
@@ -199,9 +311,13 @@ export function createApp(config: AppConfig) {
     }
     const [owner, repoName] = repo.split("/");
 
+    if (!repoProvider.getRepo || !repoProvider.listBranches) {
+      return c.json({ error: "Repo provider does not support branch listing" }, 501);
+    }
+
     const [repoInfo, branches] = await Promise.all([
-      forgejo.getRepo(owner, repoName),
-      forgejo.listBranches(owner, repoName),
+      repoProvider.getRepo(owner, repoName),
+      repoProvider.listBranches(owner, repoName),
     ]);
 
     const result = branches
@@ -237,10 +353,13 @@ export function createApp(config: AppConfig) {
     const [owner, repoName] = body.repo.split("/");
 
     // Get default branch to use as base
-    const repoInfo = await forgejo.getRepo(owner, repoName);
+    if (!repoProvider.getRepo || !repoProvider.createPR) {
+      return c.json({ error: "Repo provider does not support PR creation" }, 501);
+    }
+    const repoInfo = await repoProvider.getRepo(owner, repoName);
     const defaultBranch = repoInfo.default_branch;
 
-    const pr = await forgejo.createPR(owner, repoName, {
+    const pr = await repoProvider.createPR(owner, repoName, {
       title: body.title,
       head: body.branch,
       base: defaultBranch,
@@ -261,8 +380,7 @@ export function createApp(config: AppConfig) {
   });
   app.route("/", webhookRoutes);
 
-  // Log streaming
-  const logBus = new LogBus();
+  const eventBus = new EventBus();
 
   // List sessions for a change
   app.get("/api/changes/:id/sessions", (c) => {
@@ -272,18 +390,16 @@ export function createApp(config: AppConfig) {
     return c.json(sessions.listByChangeId(changeId));
   });
 
-  // Fetch persisted logs for a session
-  app.get("/api/sessions/:id/logs", (c) => {
+  app.get("/api/sessions/:id/events", (c) => {
     const sessionId = parseInt(c.req.param("id"), 10);
     const session = sessions.getById(sessionId);
     if (!session) return c.json({ error: "Not found" }, 404);
     const afterSeq = parseInt(c.req.query("after") ?? "0", 10);
     const limit = parseInt(c.req.query("limit") ?? "1000", 10);
-    return c.json(sessions.getLogsAfter(sessionId, afterSeq, limit));
+    return c.json(sessions.getEventsAfter(sessionId, afterSeq, limit));
   });
 
-  // SSE endpoint for streaming Codex logs (session-aware)
-  app.get("/api/changes/:id/logs", (c) => {
+  app.get("/api/changes/:id/agent-events", (c) => {
     const changeId = parseInt(c.req.param("id"), 10);
     const change = changes.getById(changeId);
     if (!change) return c.json({ error: "Not found" }, 404);
@@ -297,12 +413,11 @@ export function createApp(config: AppConfig) {
       });
     }
 
-    // Completed/failed session — replay all persisted lines, then done
     if (session.status !== "running") {
       return streamSSE(c, async (stream) => {
-        const logs = sessions.getLogsAfter(session.id, 0, 100000);
-        for (const log of logs) {
-          await stream.writeSSE({ event: "log", data: log.line });
+        const events = sessions.getEventsAfter(session.id, 0, 100000);
+        for (const event of events) {
+          await stream.writeSSE({ event: "event", data: JSON.stringify(event) });
         }
         await stream.writeSSE({
           event: "done",
@@ -315,16 +430,14 @@ export function createApp(config: AppConfig) {
       });
     }
 
-    // Running session — replay persisted lines, then subscribe for live
     return streamSSE(c, async (stream) => {
       let closed = false;
       stream.onAbort(() => { closed = true; });
 
-      // Replay persisted lines first
-      const persisted = sessions.getLogsAfter(session.id, 0, 100000);
-      for (const log of persisted) {
+      const persisted = sessions.getEventsAfter(session.id, 0, 100000);
+      for (const event of persisted) {
         if (closed) return;
-        await stream.writeSSE({ event: "log", data: log.line });
+        await stream.writeSSE({ event: "event", data: JSON.stringify(event) });
       }
 
       await new Promise<void>((resolve) => {
@@ -333,11 +446,11 @@ export function createApp(config: AppConfig) {
           resolve();
         }, 5 * 60 * 1000);
 
-        const unsub = logBus.subscribe(
+        const unsub = eventBus.subscribe(
           changeId,
-          (line) => {
+          (event) => {
             if (closed) return;
-            stream.writeSSE({ event: "log", data: line }).catch(() => {
+            stream.writeSSE({ event: "event", data: JSON.stringify(event) }).catch(() => {
               closed = true;
             });
           },
@@ -367,21 +480,63 @@ export function createApp(config: AppConfig) {
     });
   });
 
+  app.get("/api/changes/:id/logs", (c) => {
+    const changeId = parseInt(c.req.param("id"), 10);
+    const change = changes.getById(changeId);
+    if (!change) return c.json({ error: "Not found" }, 404);
+
+    const session = sessions.getLatestByChangeId(changeId);
+    if (!session) {
+      return streamSSE(c, async (stream) => {
+        await stream.writeSSE({ event: "done", data: "" });
+      });
+    }
+
+    return streamSSE(c, async (stream) => {
+      const events = sessions.getEventsAfter(session.id, 0, 100000);
+      for (const event of events) {
+        for (const line of eventToLogLines(event)) {
+          await stream.writeSSE({ event: "log", data: line });
+        }
+      }
+      await stream.writeSSE({
+        event: "done",
+        data: JSON.stringify({
+          session_id: session.id,
+          status: session.status,
+          duration_ms: session.duration_ms,
+        }),
+      });
+    });
+  });
+
   // Engines
   const scorer = new ScoringEngine();
-  const policy = new PolicyEngine(forgejo);
+  const policy = new PolicyEngine(repoProvider);
   const openaiKey = process.env.OPENAI_API_KEY ?? null;
-  const codexImage = process.env.CODEX_RUNNER_IMAGE ?? "redc-codex-runner";
-  const hasCodexAuth = existsSync(join(homedir(), ".codex", "auth.json"));
-  const runner = (openaiKey || hasCodexAuth)
-    ? new RepoTaskRunner({
-        image: codexImage,
+  const clawImage =
+    process.env.OPENCODE_RUNNER_IMAGE ??
+    process.env.CLAW_RUNNER_IMAGE ??
+    process.env.CODEX_RUNNER_IMAGE ??
+    "redc-claw-runner";
+  const hasClawAuth = existsSync(join(homedir(), ".local", "share", "opencode", "auth.json"));
+  const runner = (openaiKey || hasClawAuth)
+    ? new DockerClawRunner({
+        image: clawImage,
         forgejoBaseUrl: config.forgejo.baseUrl,
         openaiApiKey: openaiKey,
+        tracker: clawTracker,
+        artifactStore: localClawArtifactStore,
       })
     : null;
-  const summary: SummaryGenerator = runner
-    ? new CodexSummaryGenerator(runner)
+  const agentRuntime = runner
+    ? new OpenCodeBatchAgentRuntime({
+        runner,
+        tracker: clawTracker,
+      })
+    : null;
+  const summary: SummaryGenerator = agentRuntime
+    ? new ClawSummaryGenerator(agentRuntime)
     : new StubSummaryGenerator();
 
   // Notifications
@@ -392,32 +547,69 @@ export function createApp(config: AppConfig) {
     changes,
     events,
     jobs,
-    forgejo,
+    repoProvider,
     scorer,
     policy,
     summary,
     stateMachine,
     notifier,
     notificationConfigs: [], // loaded from policy at runtime
-    logBus,
+    eventBus,
     sessions,
   }, {
     fetchRemoteAfterMerge: process.env.FETCH_REMOTE_AFTER_MERGE ?? null,
+  });
+
+  const clawReconciler = new ClawRunReconciler({
+    tracker: clawTracker,
+    changes,
+    jobs,
+    sessions,
+    stateMachine,
+  });
+  const clawArtifactUploader = new ClawArtifactUploader({
+    tracker: clawTracker,
+    remoteStore: remoteClawArtifactStore,
   });
 
   // Serve frontend static files (production)
   app.use("/*", serveStatic({ root: "./web/dist" }));
   app.get("/*", serveStatic({ path: "./web/dist/index.html" }));
 
-  return { app, db, changes, events, jobs, deliveries, forgejo, worker, runner };
+  return {
+    app,
+    db,
+    changes,
+    events,
+    jobs,
+    deliveries,
+    forgejo,
+    repoProvider,
+    worker,
+    runner,
+    clawReconciler,
+    clawArtifactUploader,
+  };
+}
+
+function eventToLogLines(event: { kind: string; type: string; text: string | null; delta: string | null }): string[] {
+  if (event.kind === "message" && event.text) {
+    return event.text.split(/\r?\n/).filter(Boolean);
+  }
+  if (event.kind === "lifecycle" && event.type === "session.failed" && event.text) {
+    return [event.text];
+  }
+  return [];
 }
 
 // Start server when run directly
 if (import.meta.main) {
   const config = loadConfig();
-  const { app, worker } = createApp(config);
+  const { app, worker, clawReconciler, clawArtifactUploader } = createApp(config);
 
   worker.start();
+  clawReconciler.start();
+  clawArtifactUploader.start();
   console.log(`redc listening on port ${config.port}`);
   Bun.serve({
     port: config.port,

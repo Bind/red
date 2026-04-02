@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { PolicyEngine } from "./policy";
 import type { PolicyConfig, DiffStats } from "../types";
-import type { ForgejoClient } from "../forgejo/client";
+import type { RepoProvider } from "../repo/provider";
 
 // Minimal mock — we only test evaluate() here, loadPolicy() needs integration tests
-const mockForgejo = {} as ForgejoClient;
-const engine = new PolicyEngine(mockForgejo);
+const mockRepoProvider = {} as RepoProvider;
+const engine = new PolicyEngine(mockRepoProvider);
 
 function makeDiff(overrides: Partial<DiffStats> = {}): DiffStats {
   return {

@@ -12,6 +12,18 @@ const testConfig: AppConfig = {
     token: "test-token",
   },
   webhookSecret: "test-secret",
+  repos: [],
+  artifacts: {
+    minio: {
+      endPoint: "localhost",
+      port: 9000,
+      useSSL: false,
+      accessKey: "minioadmin",
+      secretKey: "minioadmin",
+      bucket: "test-artifacts",
+      prefix: "claw-runs",
+    },
+  },
 };
 
 describe("App integration", () => {
@@ -54,11 +66,97 @@ describe("App integration", () => {
     expect(json.pending).toBe(0);
   });
 
+  test("claw actions endpoint returns action metadata", async () => {
+    const { app } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/claw/actions"));
+    expect(res.status).toBe(200);
+    const json = await res.json() as Array<{ id: string; promptHash: string }>;
+    expect(json.some((action) => action.id === "generate-summary")).toBe(true);
+    expect(json.every((action) => action.promptHash.length > 0)).toBe(true);
+  });
+
+  test("claw prompt endpoint returns prompt details", async () => {
+    const { app } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/claw/actions/generate-summary/prompt"));
+    expect(res.status).toBe(200);
+    const json = await res.json() as { id: string; prompt: string; promptHash: string };
+    expect(json.id).toBe("generate-summary");
+    expect(json.prompt).toContain('You are reviewing a change on branch "{{branch}}"');
+    expect(json.promptHash.length).toBeGreaterThan(0);
+  });
+
+  test("claw runs endpoint returns a list", async () => {
+    const { app } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/claw/runs"));
+    expect(res.status).toBe(200);
+    const json = await res.json() as unknown[];
+    expect(Array.isArray(json)).toBe(true);
+  });
+
+  test("missing claw run returns 404", async () => {
+    const { app } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/claw/runs/missing-run"));
+    expect(res.status).toBe(404);
+  });
+
+  test("missing claw artifact returns 404", async () => {
+    const { app } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/claw/runs/missing-run/artifacts/result"));
+    expect(res.status).toBe(404);
+  });
+
   test("createApp with file-based db", async () => {
     const dir = await mkdtemp(join(tmpdir(), "redc-test-"));
     const { app, db } = createApp({ ...testConfig, dbPath: join(dir, "test.db") });
     const res = await app.fetch(new Request("http://localhost/health"));
     expect(res.status).toBe(200);
+    db.close();
+  });
+
+  test("requeue summary enqueues a generate_summary job from scored", async () => {
+    const { app, changes, jobs, db } = createApp(testConfig);
+    const change = changes.create({
+      org_id: "default",
+      repo: "redc-admin/test-repo",
+      branch: "feature/test",
+      base_branch: "main",
+      head_sha: "abc123",
+      created_by: "human",
+      delivery_id: "delivery-1",
+      diff_stats: JSON.stringify({ files_changed: 1, additions: 1, deletions: 0, files: ["test-file.txt"] }),
+    });
+    changes.updateStatus(change.id, "scored");
+
+    const res = await app.fetch(new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
+      method: "POST",
+    }));
+
+    expect(res.status).toBe(200);
+    expect(changes.getById(change.id)?.status).toBe("summarizing");
+    const pending = jobs.claimNext("generate_summary");
+    expect(pending).not.toBeNull();
+    expect(JSON.parse(pending!.payload).change_id).toBe(change.id);
+    db.close();
+  });
+
+  test("requeue summary rejects non-scored changes", async () => {
+    const { app, changes, db } = createApp(testConfig);
+    const change = changes.create({
+      org_id: "default",
+      repo: "redc-admin/test-repo",
+      branch: "feature/test",
+      base_branch: "main",
+      head_sha: "abc123",
+      created_by: "human",
+      delivery_id: "delivery-2",
+      diff_stats: JSON.stringify({ files_changed: 1, additions: 1, deletions: 0, files: ["test-file.txt"] }),
+    });
+
+    const res = await app.fetch(new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
+      method: "POST",
+    }));
+
+    expect(res.status).toBe(400);
     db.close();
   });
 });

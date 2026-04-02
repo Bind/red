@@ -20,7 +20,7 @@ const VALID_TRANSITIONS: Record<ChangeStatus, ChangeStatus[]> = {
   pushed: ["scoring", "superseded"],
   scoring: ["scored", "superseded"],
   scored: ["summarizing", "superseded"],
-  summarizing: ["ready_for_review", "superseded"],
+  summarizing: ["scored", "ready_for_review", "superseded"],
   ready_for_review: ["approved", "rejected", "summarizing", "superseded"],
   approved: ["merging", "superseded"],
   rejected: ["superseded"],

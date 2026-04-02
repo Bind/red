@@ -10,8 +10,18 @@ TEST_REPO="${TEST_REPO:-test-repo}"
 REDC_DB_PATH="${REDC_DB_PATH:-/data/redc-dev.db}"
 FORGEJO_WAIT_SECONDS="${FORGEJO_WAIT_SECONDS:-90}"
 FORGEJO_INTERNAL_URL="${FORGEJO_INTERNAL_URL:-http://forgejo:3000}"
+MINIO_ENDPOINT="${MINIO_ENDPOINT:-minio}"
+MINIO_PORT="${MINIO_PORT:-9000}"
+MINIO_USE_SSL="${MINIO_USE_SSL:-false}"
+MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-minioadmin}"
+MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-minioadmin}"
+MINIO_BUCKET="${MINIO_BUCKET:-redc-artifacts}"
+MINIO_PREFIX="${MINIO_PREFIX:-claw-runs}"
+MINIO_API_PORT="${MINIO_API_PORT:-9003}"
+MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9002}"
 
-docker compose up -d forgejo
+docker compose up -d forgejo minio
+docker compose run --rm minio-init > /dev/null
 
 echo "Waiting for Forgejo..."
 for i in $(seq 1 "$FORGEJO_WAIT_SECONDS"); do
@@ -91,11 +101,20 @@ FORGEJO_TOKEN=$forgejo_token
 WEBHOOK_SECRET=$WEBHOOK_SECRET
 REDC_PORT=$REDC_PORT
 REDC_DB_PATH=$REDC_DB_PATH
-CODEX_RUNNER_IMAGE=redc-codex-runner
+CLAW_RUNNER_IMAGE=redc-claw-runner
+MINIO_ENDPOINT=$MINIO_ENDPOINT
+MINIO_PORT=$MINIO_PORT
+MINIO_USE_SSL=$MINIO_USE_SSL
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
+MINIO_BUCKET=$MINIO_BUCKET
+MINIO_PREFIX=$MINIO_PREFIX
+MINIO_API_PORT=$MINIO_API_PORT
+MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
 EOF
 
-echo "Building Codex runner image..."
-docker build -t redc-codex-runner codex-runner/
+echo "Building Claw runner image..."
+docker build -t redc-claw-runner claw-runner/
 
 echo "Starting app containers..."
 docker compose up -d --build redc-api redc-web
@@ -105,3 +124,5 @@ echo "=== Setup complete ==="
 echo "UI:      http://localhost:5173"
 echo "API:     http://localhost:3000"
 echo "Forgejo: http://localhost:3001"
+echo "MinIO:   http://localhost:$MINIO_CONSOLE_PORT"
+echo "S3 API:  http://localhost:$MINIO_API_PORT"

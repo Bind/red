@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# redc — agent-native code forge CLI
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+USAGE="redc — agent-native code forge
+
+Usage:
+  redc <command> [args...]
+
+Commands:
+  changes                List review queue
+  change <id>            Show change detail
+  diff <id>              Show change diff
+  approve <id>           Approve a change
+  regenerate-summary <id> Regenerate summary
+  requeue-summary <id>   Retry failed summary
+  retry-merge <id>       Retry failed merge
+  repos                  List repos
+  branches <owner/repo>  List branches for a repo
+  create-pr              Create PR from branch
+  velocity               Merge velocity metrics
+  health                 Health check
+  jobs                   Pending job count
+  actions                List claw actions
+  runs                   List recent agent runs
+  run <runId>            Show run detail
+  sessions <changeId>    List agent sessions
+  events <changeId>      Stream agent events (SSE)
+
+Options:
+  --api-url <url>   API base URL (default: http://localhost:3000, env: REDC_API_URL)
+  --json            Machine-readable JSON output
+  help              Show this help message
+"
+
+# Parse global flags, collect remaining args
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --api-url)
+      REDC_API="${2:?missing value for --api-url}"
+      shift 2
+      ;;
+    --json)
+      JSON_OUTPUT=true
+      shift
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Export for subcommands
+export REDC_API JSON_OUTPUT
+
+COMMAND="${ARGS[0]:-help}"
+CMD_ARGS=()
+if [[ ${#ARGS[@]} -gt 1 ]]; then
+  CMD_ARGS=("${ARGS[@]:1}")
+fi
+
+case "$COMMAND" in
+  help|-h|--help)
+    echo "$USAGE"
+    exit 0
+    ;;
+  *)
+    CMD_FILE="$SCRIPT_DIR/commands/${COMMAND}.sh"
+    if [[ ! -f "$CMD_FILE" ]]; then
+      echo "error: unknown command '$COMMAND'" >&2
+      echo >&2
+      echo "$USAGE" >&2
+      exit 1
+    fi
+    source "$CMD_FILE" ${CMD_ARGS[@]+"${CMD_ARGS[@]}"}
+    ;;
+esac

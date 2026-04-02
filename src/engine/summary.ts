@@ -1,12 +1,13 @@
 import type { DiffStats, LLMSummary, ConfidenceLevel, SummaryAnnotation } from "../types";
-import type { RepoTaskRunner } from "./runner";
-import { buildSummaryPrompt, validateSummaryOutput } from "./tasks/summary";
+import type { AgentRuntime, AgentRuntimeEvent } from "../claw/runtime";
+import { getClawActionMetadata, productClawActions } from "../claw/actions";
 
 /**
  * Summary generator interface — allows swapping in a real LLM backend later.
  */
 export interface SummaryGenerator {
-  generate(params: SummaryInput, onLog?: (line: string) => void): Promise<LLMSummary>;
+  generate(params: SummaryInput, onEvent?: (event: AgentRuntimeEvent) => void): Promise<LLMSummary>;
+  getMetadata(): Record<string, unknown> | null;
 }
 
 export interface SummaryInput {
@@ -14,6 +15,8 @@ export interface SummaryInput {
   branch: string;
   baseRef: string;
   headRef: string;
+  changeId?: number;
+  jobId?: number;
   diff: string;
   diffStats: DiffStats;
   confidence: ConfidenceLevel;
@@ -50,31 +53,83 @@ export class StubSummaryGenerator implements SummaryGenerator {
       annotations,
     };
   }
+
+  getMetadata(): Record<string, unknown> | null {
+    return { action_id: "stub-summary", surfaces: ["product"] };
+  }
 }
 
 /**
- * Runs Codex as an agent inside a Docker container with the full codebase.
+ * Runs Claw as an agent inside a Docker container with the full codebase.
  * Delegates Docker lifecycle to RepoTaskRunner; handles prompt building and output validation.
  */
-export class CodexSummaryGenerator implements SummaryGenerator {
-  constructor(private runner: RepoTaskRunner) {}
+export class ClawSummaryGenerator implements SummaryGenerator {
+  constructor(private runtime: AgentRuntime) {}
 
-  async generate(params: SummaryInput, onLog?: (line: string) => void): Promise<LLMSummary> {
-    const prompt = buildSummaryPrompt(params);
-
-    const result = await this.runner.run({
-      repo: params.repo,
-      baseRef: params.baseRef,
-      headRef: params.headRef,
-      prompt,
-      onLog,
-    });
-
-    if (!result.ok) {
-      throw new Error(`Codex runner failed (${result.durationMs}ms): ${result.logs.slice(0, 500)}`);
+  async generate(params: SummaryInput, onEvent?: (event: AgentRuntimeEvent) => void): Promise<LLMSummary> {
+    const action = getClawActionMetadata(productClawActions.generateSummary.name);
+    if (!action) {
+      throw new Error("Missing action metadata for generate-summary");
     }
 
-    return validateSummaryOutput(result.output);
+    const request = productClawActions.generateSummary.build(params);
+    const session = await this.runtime.startRun({
+      identity: {
+        runId: request.metadata.runId ?? crypto.randomUUID(),
+        jobName: request.metadata.jobName,
+        jobId: request.metadata.jobId,
+        changeId: request.metadata.changeId,
+        workerId: request.metadata.workerId,
+      },
+      workspace: {
+        repo: request.repo,
+        headRef: request.headRef,
+        baseRef: request.baseRef,
+        setupScript: request.setupScript,
+      },
+      prompt: {
+        actionId: action.id,
+        promptName: action.promptName,
+        promptHash: action.promptHash,
+        instructions: request.instructions,
+      },
+      output: {
+        expectJson: request.output.json,
+        expectedFiles: request.output.files,
+        parseJson: request.parseJson,
+      },
+      timeoutMs: request.timeoutMs,
+    });
+
+    if (onEvent) {
+      (async () => {
+        for await (const event of session.events) {
+          onEvent(event);
+        }
+      })().catch(() => {});
+    }
+
+    const result = await session.result();
+
+    if (result.status !== "completed" || !result.json) {
+      throw new Error(
+        `Agent runtime failed (${result.durationMs}ms): ${result.errorMessage ?? "unknown error"}`
+      );
+    }
+
+    return result.json;
+  }
+
+  getMetadata(): Record<string, unknown> | null {
+    const action = getClawActionMetadata(productClawActions.generateSummary.name);
+    if (!action) return null;
+    return {
+      action_id: action.id,
+      prompt_name: action.promptName,
+      prompt_path: action.promptPath,
+      prompt_hash: action.promptHash,
+      surfaces: action.surfaces,
+    };
   }
 }
 

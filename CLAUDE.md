@@ -1,6 +1,6 @@
 # redc
 
-use the `justfile` as command runner. 
+use the `justfile` as command runner. Run `./scripts/redc` to see available CLI commands.
 
 ## Skill routing
 
