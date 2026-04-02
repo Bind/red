@@ -1,9 +1,10 @@
-import type { ChangeQueries, EventQueries, JobQueries, SessionQueries } from "../db/queries";
+import type { ChangeQueries, EventQueries, JobQueries, PullRequestQueries, SessionQueries } from "../db/queries";
 import type { SummaryGenerator, SummaryInput } from "../engine/summary";
-import type { Change, DiffStats, Job, NotificationConfig } from "../types";
+import type { Change, DiffStats, Job, NotificationConfig, PullRequest } from "../types";
 import type { AgentRuntimeEvent } from "../claw/runtime";
 import type { EventBus } from "../engine/event-bus";
-import type { RepoProvider } from "../repo/provider";
+import type { RepositoryProvider } from "../repo/repository-provider";
+import type { ReviewHostProvider } from "../review/review-host-provider";
 import { ScoringEngine } from "../engine/review";
 import { PolicyEngine } from "../engine/policy";
 import { ChangeStateMachine } from "../engine/state-machine";
@@ -13,7 +14,9 @@ export interface WorkerDeps {
   changes: ChangeQueries;
   events: EventQueries;
   jobs: JobQueries;
-  repoProvider: RepoProvider;
+  pullRequests: PullRequestQueries;
+  repositoryProvider: RepositoryProvider;
+  reviewHostProvider?: ReviewHostProvider;
   scorer: ScoringEngine;
   policy: PolicyEngine;
   summary: SummaryGenerator;
@@ -131,14 +134,14 @@ export class JobWorker {
     this.deps.stateMachine.transition(change_id, "scoring");
 
     // Set commit status to pending
-    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
+    await this.deps.reviewHostProvider?.publishStatus?.(owner, repo, change.head_sha, {
       state: "pending",
       description: "Scoring change...",
       context: this.config.statusContext,
     });
 
     // Fetch diff stats
-    const diffStats = await this.deps.repoProvider.compareDiff(
+    const diffStats = await this.deps.repositoryProvider.compareDiff(
       owner, repo, change.base_branch, change.head_sha
     );
 
@@ -162,7 +165,7 @@ export class JobWorker {
       : result.confidence === "critical" ? "failure" as const
       : "pending" as const;
 
-    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
+    await this.deps.reviewHostProvider?.publishStatus?.(owner, repo, change.head_sha, {
       state: statusState,
       description: `${result.confidence}: ${result.reasons[0]}`,
       context: this.config.statusContext,
@@ -172,6 +175,7 @@ export class JobWorker {
       owner,
       repo,
       title: `Review ${change.branch}`,
+      status: "draft",
     });
 
     // Transition to summarizing and enqueue summary job
@@ -201,7 +205,7 @@ export class JobWorker {
     const [owner, repo] = parseRepoFullName(change.repo);
 
     // Fetch the actual diff text for the summary generator
-    const diff = await this.deps.repoProvider.getDiff(
+    const diff = await this.deps.repositoryProvider.getDiff(
       owner, repo, change.base_branch, change.head_sha
     );
 
@@ -238,13 +242,14 @@ export class JobWorker {
 
     const onEvent = (event: AgentRuntimeEvent) => {
       if (session) {
-        this.deps.sessions!.appendEvent(session.id, event);
+        const persistedEvent = this.deps.sessions!.appendEvent(session.id, event);
         if (event.runtimeSessionId && !session.runtime_session_id) {
           this.deps.sessions!.attachRuntimeSessionId(session.id, event.runtimeSessionId);
           session.runtime_session_id = event.runtimeSessionId;
         }
+        this.deps.eventBus?.emit(change.id, persistedEvent);
+        return;
       }
-      this.deps.eventBus?.emit(change.id, event);
     };
 
     let summary;
@@ -275,6 +280,14 @@ export class JobWorker {
 
     // Transition to ready_for_review
     this.deps.stateMachine.transition(change.id, "ready_for_review");
+    const internalPr = await this.ensurePullRequest(change, {
+      owner,
+      repo,
+      title: summary.title,
+      body: summary.what_changed,
+      status: "open",
+    });
+    this.deps.pullRequests.updateDetails(internalPr.id, summary.title, summary.what_changed);
 
     // Log summary event
     this.deps.events.append({
@@ -335,9 +348,16 @@ export class JobWorker {
 
     // Transition → approved
     this.deps.stateMachine.transition(change_id, "approved");
+    const internalPr = await this.ensurePullRequest(change, {
+      owner,
+      repo,
+      title: change.branch,
+      status: "approved",
+    });
+    this.deps.pullRequests.updateStatus(internalPr.id, "approved");
 
     // Set commit status to success
-    await this.deps.repoProvider.setCommitStatus?.(owner, repo, change.head_sha, {
+    await this.deps.reviewHostProvider?.publishStatus?.(owner, repo, change.head_sha, {
       state: "success",
       description: "Approved by redc",
       context: this.config.statusContext,
@@ -369,22 +389,27 @@ export class JobWorker {
 
     const [owner, repo] = parseRepoFullName(change.repo);
     const summary = change.summary ? JSON.parse(change.summary) : null;
-    const prNumber = await this.ensurePullRequest(change, {
+    const internalPr = await this.ensurePullRequest(change, {
       owner,
       repo,
       title: summary?.title || `Merge ${change.branch}`,
-      body: summary?.description || undefined,
+      body: summary?.what_changed || undefined,
+      status: "approved",
     });
+    const prNumber = internalPr.provider_ref ? parseInt(internalPr.provider_ref, 10) : null;
 
     // Transition → merging
     this.deps.stateMachine.transition(change_id, "merging");
 
     // Merge the PR
     try {
-      if (!this.deps.repoProvider.mergePR) {
-        throw new Error("Repo provider does not support PR merge");
+      if (!this.deps.reviewHostProvider?.mergeExternalReview) {
+        throw new Error("Review host provider does not support external review merge");
       }
-      await this.deps.repoProvider.mergePR(owner, repo, prNumber, "merge");
+      if (!prNumber) {
+        throw new Error("Repo provider does not have an external PR reference to merge");
+      }
+      await this.deps.reviewHostProvider.mergeExternalReview(owner, repo, String(prNumber));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.deps.stateMachine.transition(change_id, "merge_failed");
@@ -400,6 +425,7 @@ export class JobWorker {
 
     // Transition → merged
     this.deps.stateMachine.transition(change_id, "merged");
+    this.deps.pullRequests.markMerged(internalPr.id, change.head_sha);
 
     // Fetch the updated remote so local refs stay in sync
     if (this.config.fetchRemoteAfterMerge) {
@@ -467,39 +493,67 @@ export class JobWorker {
       repo: string;
       title: string;
       body?: string;
+      status: PullRequest["status"];
     }
-  ): Promise<number> {
+  ): Promise<PullRequest> {
+    let internalPr = this.deps.pullRequests.getLatestByChangeId(change.id);
+    if (!internalPr) {
+      internalPr = this.deps.pullRequests.create({
+        change_id: change.id,
+        repo: change.repo,
+        head_branch: change.branch,
+        base_branch: change.base_branch,
+        title: params.title,
+        body: params.body,
+        status: params.status,
+      });
+    } else {
+      this.deps.pullRequests.updateDetails(internalPr.id, params.title, params.body);
+      this.deps.pullRequests.updateStatus(internalPr.id, params.status);
+      internalPr = this.deps.pullRequests.getById(internalPr.id)!;
+    }
+
+    if (internalPr.provider_ref) {
+      if (!change.pr_number) {
+        this.deps.changes.updatePrNumber(change.id, parseInt(internalPr.provider_ref, 10));
+      }
+      return internalPr;
+    }
+
     if (change.pr_number) {
-      return change.pr_number;
+      this.deps.pullRequests.attachProviderRef(internalPr.id, "forgejo", String(change.pr_number));
+      return this.deps.pullRequests.getById(internalPr.id)!;
     }
 
-    if (!this.deps.repoProvider.listPRsForBranch) {
-      throw new Error("Repo provider does not support PR lookup");
+    if (this.deps.reviewHostProvider?.findOpenReviewForBranch) {
+      const existing = await this.deps.reviewHostProvider.findOpenReviewForBranch(
+        params.owner,
+        params.repo,
+        change.branch
+      );
+      if (existing) {
+        this.deps.pullRequests.attachProviderRef(internalPr.id, "forgejo", existing.providerRef);
+        const prNumber = parseInt(existing.providerRef, 10);
+        this.deps.changes.updatePrNumber(change.id, prNumber);
+        return this.deps.pullRequests.getById(internalPr.id)!;
+      }
     }
 
-    const existing = await this.deps.repoProvider.listPRsForBranch(
-      params.owner,
-      params.repo,
-      change.branch
-    );
-    if (existing.length > 0) {
-      const prNumber = existing[0].number;
-      this.deps.changes.updatePrNumber(change.id, prNumber);
-      return prNumber;
+    if (this.deps.reviewHostProvider?.createExternalReview) {
+      const review = await this.deps.reviewHostProvider.createExternalReview({
+        owner: params.owner,
+        repo: params.repo,
+        title: params.title,
+        head: change.branch,
+        base: change.base_branch,
+        body: params.body,
+      });
+      this.deps.pullRequests.attachProviderRef(internalPr.id, "forgejo", review.providerRef);
+      this.deps.changes.updatePrNumber(change.id, parseInt(review.providerRef, 10));
+      return this.deps.pullRequests.getById(internalPr.id)!;
     }
 
-    if (!this.deps.repoProvider.createPR) {
-      throw new Error("Repo provider does not support PR creation");
-    }
-
-    const pr = await this.deps.repoProvider.createPR(params.owner, params.repo, {
-      title: params.title,
-      head: change.branch,
-      base: change.base_branch,
-      body: params.body,
-    });
-    this.deps.changes.updatePrNumber(change.id, pr.number);
-    return pr.number;
+    return internalPr;
   }
 }
 

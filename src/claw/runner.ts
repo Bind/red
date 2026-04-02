@@ -208,7 +208,10 @@ export class DockerClawRunner {
         request.onLog?.(normalized);
       });
       const stderrDone = drainStream(proc.stderr, (line) => {
-        stderrLines.push(line);
+        const normalized = line.trimEnd();
+        if (!normalized.trim()) return;
+        stderrLines.push(normalized);
+        request.onLog?.(normalized);
       });
 
       const [, , exitCode] = await Promise.all([stdoutDone, stderrDone, proc.exited]);

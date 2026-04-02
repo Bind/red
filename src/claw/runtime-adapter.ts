@@ -190,6 +190,10 @@ export class OpenCodeBatchAgentRuntime implements AgentRuntime {
 
 export const LegacyClawCliAgentRuntime = OpenCodeBatchAgentRuntime;
 
+export function summarizeRunnerLine(line: string): AgentRuntimeEvent {
+  return normalizeRunnerLine("test-run", 1, line);
+}
+
 function pushEvent(
   queue: AsyncEventQueue<AgentRuntimeEvent>,
   runId: string,
@@ -222,6 +226,7 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
         kind: "lifecycle",
         type: "step.started",
         status: "running",
+        text: describeOpenCodeStep(raw),
         data: raw,
         raw,
       };
@@ -237,6 +242,24 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
         kind: "lifecycle",
         type: "step.completed",
         status: raw.part?.reason === "stop" ? "completed" : "running",
+        text: describeOpenCodeStepCompletion(raw),
+        data: raw,
+        raw,
+      };
+    }
+
+    if (raw.type === "tool_use") {
+      return {
+        id: `${runId}:${sequence}`,
+        runId,
+        runtimeSessionId: sessionId,
+        timestamp,
+        sequence,
+        kind: "lifecycle",
+        type: "tool.used",
+        status: normalizeToolStatus(raw.part?.state?.status),
+        role: "tool",
+        text: describeOpenCodeToolUse(raw),
         data: raw,
         raw,
       };
@@ -281,6 +304,64 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
       text: line,
     };
   }
+}
+
+function describeOpenCodeStep(raw: Record<string, any>): string {
+  const snapshot = typeof raw.part?.snapshot === "string" ? raw.part.snapshot.slice(0, 12) : null;
+  return snapshot ? `Model step started (${snapshot})` : "Model step started";
+}
+
+function describeOpenCodeStepCompletion(raw: Record<string, any>): string {
+  const reason = typeof raw.part?.reason === "string" ? raw.part.reason : null;
+  const tokens = raw.part?.tokens && typeof raw.part.tokens.total === "number"
+    ? `${raw.part.tokens.total} tokens`
+    : null;
+  return [reason ? `Step finished: ${reason}` : "Model step completed", tokens].filter(Boolean).join(" | ");
+}
+
+function describeOpenCodeToolUse(raw: Record<string, any>): string {
+  const tool = typeof raw.part?.tool === "string" ? raw.part.tool : "tool";
+  const status = typeof raw.part?.state?.status === "string" ? raw.part.state.status : null;
+  const input = describeToolInput(raw.part?.state?.input);
+  const output = describeToolOutput(raw.part?.state?.output);
+
+  return [
+    status ? `${capitalize(status)} ${tool}` : `Used ${tool}`,
+    input,
+    output,
+  ].filter(Boolean).join(" | ");
+}
+
+function describeToolInput(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  if (typeof record.filePath === "string") {
+    return record.filePath;
+  }
+  if (typeof record.title === "string") {
+    return record.title;
+  }
+  const keys = Object.keys(record);
+  if (keys.length === 0) return null;
+  return `input: ${keys.join(", ")}`;
+}
+
+function describeToolOutput(output: unknown): string | null {
+  if (typeof output !== "string") return null;
+  const compact = output.replace(/\s+/g, " ").trim();
+  if (!compact) return null;
+  return compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
+}
+
+function normalizeToolStatus(value: unknown): AgentRuntimeEvent["status"] {
+  if (value === "completed" || value === "running" || value === "failed" || value === "cancelled") {
+    return value;
+  }
+  return undefined;
+}
+
+function capitalize(value: string): string {
+  return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {

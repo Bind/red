@@ -50,6 +50,29 @@ export interface Change {
   updated_at: string;
 }
 
+export type PullRequestStatus =
+  | "draft"
+  | "open"
+  | "approved"
+  | "merged"
+  | "closed";
+
+export interface PullRequest {
+  id: number;
+  change_id: number;
+  repo: string;
+  head_branch: string;
+  base_branch: string;
+  title: string;
+  body: string | null;
+  status: PullRequestStatus;
+  provider: string;
+  provider_ref: string | null;
+  merge_commit_sha: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DiffStats {
   files_changed: number;
   additions: number;

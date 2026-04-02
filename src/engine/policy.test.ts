@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import { PolicyEngine } from "./policy";
 import type { PolicyConfig, DiffStats } from "../types";
-import type { RepoProvider } from "../repo/provider";
+import type { RepositoryProvider } from "../repo/repository-provider";
 
 // Minimal mock — we only test evaluate() here, loadPolicy() needs integration tests
-const mockRepoProvider = {} as RepoProvider;
+const mockRepoProvider = {} as RepositoryProvider;
 const engine = new PolicyEngine(mockRepoProvider);
 
 function makeDiff(overrides: Partial<DiffStats> = {}): DiffStats {

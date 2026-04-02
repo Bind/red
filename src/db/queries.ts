@@ -9,6 +9,8 @@ import type {
   ConfidenceLevel,
   CreatedBy,
   Job,
+  PullRequest,
+  PullRequestStatus,
 } from "../types";
 import type { AgentRuntimeEvent } from "../claw/runtime";
 
@@ -332,6 +334,102 @@ export class DeliveryQueries {
   }
 }
 
+export class PullRequestQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    change_id: number;
+    repo: string;
+    head_branch: string;
+    base_branch: string;
+    title: string;
+    body?: string | null;
+    status?: PullRequestStatus;
+    provider?: string;
+    provider_ref?: string | null;
+    merge_commit_sha?: string | null;
+  }): PullRequest {
+    this.db
+      .prepare(
+        `INSERT INTO pull_requests (
+          change_id, repo, head_branch, base_branch, title, body, status, provider, provider_ref, merge_commit_sha
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        params.change_id,
+        params.repo,
+        params.head_branch,
+        params.base_branch,
+        params.title,
+        params.body ?? null,
+        params.status ?? "draft",
+        params.provider ?? "internal",
+        params.provider_ref ?? null,
+        params.merge_commit_sha ?? null
+      );
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.getById(id)!;
+  }
+
+  getById(id: number): PullRequest | null {
+    return this.db.prepare("SELECT * FROM pull_requests WHERE id = ?").get(id) as PullRequest | null;
+  }
+
+  getLatestByChangeId(changeId: number): PullRequest | null {
+    return this.db
+      .prepare(
+        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC LIMIT 1"
+      )
+      .get(changeId) as PullRequest | null;
+  }
+
+  listByChangeId(changeId: number): PullRequest[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC"
+      )
+      .all(changeId) as PullRequest[];
+  }
+
+  updateStatus(id: number, status: PullRequestStatus): void {
+    this.db
+      .prepare(
+        "UPDATE pull_requests SET status = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(status, id);
+  }
+
+  updateDetails(id: number, title: string, body?: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET title = ?, body = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(title, body ?? null, id);
+  }
+
+  attachProviderRef(id: number, provider: string, providerRef: string): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET provider = ?, provider_ref = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(provider, providerRef, id);
+  }
+
+  markMerged(id: number, mergeCommitSha?: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET status = 'merged', merge_commit_sha = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(mergeCommitSha ?? null, id);
+  }
+}
+
 export class SessionQueries {
   constructor(private db: Database) {}
 
@@ -405,8 +503,8 @@ export class SessionQueries {
       .run(status, durationMs, id);
   }
 
-  appendEvent(sessionId: number, event: AgentRuntimeEvent): void {
-    return this.db
+  appendEvent(sessionId: number, event: AgentRuntimeEvent): AgentSessionEvent {
+    this.db
       .prepare(
         `INSERT INTO agent_session_events (
           session_id, seq, event_id, kind, type, status, role, text, delta, data_json, raw_json
@@ -429,6 +527,10 @@ export class SessionQueries {
         event.data ? JSON.stringify(event.data) : null,
         event.raw ? JSON.stringify(event.raw) : null
       );
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.db
+      .prepare("SELECT * FROM agent_session_events WHERE id = ?")
+      .get(id) as AgentSessionEvent;
   }
 
   getEventsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): AgentSessionEvent[] {

@@ -292,7 +292,12 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
   }, [changeId, sessions, isSummarizing]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const viewport = bottomRef.current?.closest("[data-slot='scroll-area-viewport']");
+    if (!(viewport instanceof HTMLElement)) return;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: "smooth",
+    });
   }, [events]);
 
   // Don't render anything if there are no sessions and we're not summarizing
@@ -556,6 +561,7 @@ function formatEventLabel(event: AgentSessionEvent): string {
     "session.failed": "Session failed",
     "step.started": "Model step started",
     "step.completed": "Model step completed",
+    "tool.used": "Tool activity",
     "result.completed": "Result prepared",
     "artifact.available": "Artifact available",
   };

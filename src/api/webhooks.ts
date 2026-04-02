@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import type { ForgejoPushPayload } from "../types";
 import type { ChangeQueries, DeliveryQueries, EventQueries, JobQueries } from "../db/queries";
 import type { ForgejoClient } from "../forgejo/client";
-import { ChangeStateMachine } from "../engine/state-machine";
+import { ingestRefUpdate } from "../ingest/ref-updates";
 
 export interface WebhookDeps {
   changes: ChangeQueries;
   events: EventQueries;
   deliveries: DeliveryQueries;
   jobs: JobQueries;
-  forgejo: ForgejoClient;
+  forgejo: ForgejoClient | null;
   webhookSecret: string;
 }
 
@@ -55,58 +55,35 @@ export function createWebhookRoutes(deps: WebhookDeps): Hono {
     const payload: ForgejoPushPayload = JSON.parse(body);
     const branch = payload.ref.replace("refs/heads/", "");
     const defaultBranch = payload.repository.default_branch;
+    const result = ingestRefUpdate(
+      {
+        changes: deps.changes,
+        events: deps.events,
+        deliveries: deps.deliveries,
+        jobs: deps.jobs,
+      },
+      {
+        repo: payload.repository.full_name,
+        branch,
+        baseBranch: defaultBranch,
+        headSha: payload.after,
+        createdBy: detectCreatedBy(payload),
+        deliveryId,
+        metadata: {
+          commits: payload.commits.length,
+          sender: payload.sender.login,
+          source: "forgejo_webhook",
+        },
+      }
+    );
 
-    // Ignore pushes directly to the default branch
-    if (branch === defaultBranch) {
-      deps.deliveries.record(deliveryId);
-      return c.json({ status: "skipped", reason: "default branch" }, 200);
+    if (result.status === "duplicate") {
+      return c.json(result, 200);
     }
-
-    // Determine creator type from commit messages (simple heuristic)
-    const createdBy = detectCreatedBy(payload);
-
-    // 4. Create change record
-    const repoFullName = payload.repository.full_name;
-    const change = deps.changes.create({
-      org_id: "default",
-      repo: repoFullName,
-      branch,
-      base_branch: defaultBranch,
-      head_sha: payload.after,
-      created_by: createdBy,
-      delivery_id: deliveryId,
-    });
-
-    // Log initial event
-    deps.events.append({
-      change_id: change.id,
-      event_type: "push_received",
-      to_status: "pushed",
-      metadata: JSON.stringify({
-        commits: payload.commits.length,
-        sender: payload.sender.login,
-      }),
-    });
-
-    // Supersede prior changes on same branch
-    const sm = new ChangeStateMachine(deps.changes, deps.events);
-    const superseded = sm.supersedePrior(repoFullName, branch, change.id);
-
-    // 5. Enqueue scoring job
-    deps.jobs.enqueue({
-      org_id: "default",
-      type: "score_change",
-      payload: JSON.stringify({ change_id: change.id }),
-    });
-
-    // Record delivery as processed
-    deps.deliveries.record(deliveryId);
-
-    return c.json({
-      status: "accepted",
-      change_id: change.id,
-      superseded_count: superseded,
-    }, 201);
+    if (result.status === "skipped") {
+      return c.json(result, 200);
+    }
+    return c.json(result, 201);
   });
 
   return app;

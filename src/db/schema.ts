@@ -116,6 +116,35 @@ function migrate(db: Database): void {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS pull_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      change_id INTEGER NOT NULL,
+      repo TEXT NOT NULL,
+      head_branch TEXT NOT NULL,
+      base_branch TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      provider TEXT NOT NULL DEFAULT 'internal',
+      provider_ref TEXT,
+      merge_commit_sha TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (change_id) REFERENCES changes(id)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_pull_requests_change_id
+    ON pull_requests(change_id)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_pull_requests_repo_status
+    ON pull_requests(repo, status)
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS agent_sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       change_id INTEGER NOT NULL,

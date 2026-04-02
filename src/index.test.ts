@@ -7,9 +7,12 @@ import { join } from "node:path";
 const testConfig: AppConfig = {
   port: 0,
   dbPath: ":memory:",
-  forgejo: {
-    baseUrl: "http://localhost:3000",
-    token: "test-token",
+  repoBackend: {
+    kind: "forgejo",
+    forgejo: {
+      baseUrl: "http://localhost:3000",
+      token: "test-token",
+    },
   },
   webhookSecret: "test-secret",
   repos: [],
@@ -158,5 +161,25 @@ describe("App integration", () => {
 
     expect(res.status).toBe(400);
     db.close();
+  });
+
+  test("local ref-update ingestion endpoint creates a change", async () => {
+    const { app, changes } = createApp(testConfig);
+    const res = await app.fetch(new Request("http://localhost/api/ingest/ref-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: "owner/repo",
+        branch: "feature/local",
+        base_branch: "main",
+        head_sha: "sha-local-1",
+        created_by: "human",
+      }),
+    }));
+
+    expect(res.status).toBe(201);
+    const json = await res.json() as { status: string; change_id: number };
+    expect(json.status).toBe("accepted");
+    expect(changes.getById(json.change_id)?.branch).toBe("feature/local");
   });
 });

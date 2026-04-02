@@ -78,7 +78,7 @@ api_get() {
 
 api_post() {
   local path="$1"
-  local data="$2"
+  local data="${2:-}"
   local url="${REDC_API}${path}"
   local http_code body
   local -a curl_args=(-sS -X POST)

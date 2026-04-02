@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { initInMemoryDatabase } from "./schema";
-import { ChangeQueries, EventQueries, JobQueries, DeliveryQueries } from "./queries";
+import { ChangeQueries, EventQueries, JobQueries, DeliveryQueries, PullRequestQueries } from "./queries";
 import type { Database } from "bun:sqlite";
 
 let db: Database;
@@ -8,6 +8,7 @@ let changes: ChangeQueries;
 let events: EventQueries;
 let jobs: JobQueries;
 let deliveries: DeliveryQueries;
+let pullRequests: PullRequestQueries;
 
 beforeEach(() => {
   db = initInMemoryDatabase();
@@ -15,6 +16,7 @@ beforeEach(() => {
   events = new EventQueries(db);
   jobs = new JobQueries(db);
   deliveries = new DeliveryQueries(db);
+  pullRequests = new PullRequestQueries(db);
 });
 
 describe("ChangeQueries", () => {
@@ -241,5 +243,72 @@ describe("DeliveryQueries", () => {
     deliveries.record("del-2");
     deliveries.record("del-2"); // should not throw
     expect(deliveries.isDuplicate("del-2")).toBe(true);
+  });
+});
+
+describe("PullRequestQueries", () => {
+  const makeChange = () =>
+    changes.create({
+      org_id: "default",
+      repo: "owner/repo",
+      branch: "feature-1",
+      base_branch: "main",
+      head_sha: "abc123",
+      created_by: "human",
+      delivery_id: `pr-${Math.random()}`,
+    });
+
+  test("create and getLatestByChangeId", () => {
+    const change = makeChange();
+    const pr = pullRequests.create({
+      change_id: change.id,
+      repo: change.repo,
+      head_branch: change.branch,
+      base_branch: change.base_branch,
+      title: "Add feature",
+      body: "PR body",
+      status: "open",
+    });
+
+    expect(pr.id).toBeGreaterThan(0);
+    expect(pullRequests.getLatestByChangeId(change.id)?.title).toBe("Add feature");
+  });
+
+  test("updateStatus, attachProviderRef, and markMerged", () => {
+    const change = makeChange();
+    const pr = pullRequests.create({
+      change_id: change.id,
+      repo: change.repo,
+      head_branch: change.branch,
+      base_branch: change.base_branch,
+      title: "Ship it",
+    });
+
+    pullRequests.updateStatus(pr.id, "approved");
+    pullRequests.attachProviderRef(pr.id, "forgejo", "42");
+    pullRequests.markMerged(pr.id, "deadbeef");
+
+    const updated = pullRequests.getById(pr.id)!;
+    expect(updated.status).toBe("merged");
+    expect(updated.provider).toBe("forgejo");
+    expect(updated.provider_ref).toBe("42");
+    expect(updated.merge_commit_sha).toBe("deadbeef");
+  });
+
+  test("updateDetails rewrites title and body", () => {
+    const change = makeChange();
+    const pr = pullRequests.create({
+      change_id: change.id,
+      repo: change.repo,
+      head_branch: change.branch,
+      base_branch: change.base_branch,
+      title: "Initial title",
+    });
+
+    pullRequests.updateDetails(pr.id, "New title", "Updated body");
+
+    const updated = pullRequests.getById(pr.id)!;
+    expect(updated.title).toBe("New title");
+    expect(updated.body).toBe("Updated body");
   });
 });

@@ -1,13 +1,14 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { initInMemoryDatabase } from "../db/schema";
-import { ChangeQueries, EventQueries, JobQueries, DeliveryQueries } from "../db/queries";
+import { ChangeQueries, EventQueries, JobQueries, PullRequestQueries } from "../db/queries";
 import { ScoringEngine } from "../engine/review";
 import { PolicyEngine } from "../engine/policy";
 import { StubSummaryGenerator } from "../engine/summary";
 import { ChangeStateMachine } from "../engine/state-machine";
 import { JobWorker, type WorkerDeps } from "./worker";
 import { NotificationSender } from "./notify";
-import type { RepoProvider } from "../repo/provider";
+import type { RepositoryProvider } from "../repo/repository-provider";
+import type { ReviewHostProvider } from "../review/review-host-provider";
 import type { Database } from "bun:sqlite";
 
 let db: Database;
@@ -17,7 +18,7 @@ let worker: JobWorker;
 // Track Forgejo API calls
 let forgejoCallLog: Array<{ method: string; args: unknown[] }>;
 
-function createMockRepoProvider(): RepoProvider {
+function createMockRepositoryProvider(): RepositoryProvider {
   forgejoCallLog = [];
   return {
     compareDiff: mock(async () => {
@@ -36,29 +37,34 @@ function createMockRepoProvider(): RepoProvider {
       forgejoCallLog.push({ method: "getDiff", args: [] });
       return "diff --git a/src/app.ts b/src/app.ts\n+console.log('hello')";
     }),
-    setCommitStatus: mock(async () => {
-      forgejoCallLog.push({ method: "setCommitStatus", args: [] });
-    }),
-    listPRsForBranch: mock(async () => {
-      forgejoCallLog.push({ method: "listPRsForBranch", args: [] });
-      return [];
-    }),
-    createPR: mock(async () => {
-      forgejoCallLog.push({ method: "createPR", args: [] });
-      return {
-        number: 42,
-        state: "open",
-        merged: false,
-        head: { ref: "feature-1", sha: "abc123" },
-        base: { ref: "main" },
-      };
-    }),
-    mergePR: mock(async () => {
-      forgejoCallLog.push({ method: "mergePR", args: [] });
-    }),
     getFileContent: mock(async () => {
       forgejoCallLog.push({ method: "getFileContent", args: [] });
       return null; // no policy file
+    }),
+  };
+}
+
+function createMockReviewHostProvider(): ReviewHostProvider {
+  return {
+    publishStatus: mock(async () => {
+      forgejoCallLog.push({ method: "publishStatus", args: [] });
+    }),
+    findOpenReviewForBranch: mock(async () => {
+      forgejoCallLog.push({ method: "findOpenReviewForBranch", args: [] });
+      return null;
+    }),
+    createExternalReview: mock(async () => {
+      forgejoCallLog.push({ method: "createExternalReview", args: [] });
+      return {
+        providerRef: "42",
+        state: "open" as const,
+        merged: false,
+        headRef: "feature-1",
+        baseRef: "main",
+      };
+    }),
+    mergeExternalReview: mock(async () => {
+      forgejoCallLog.push({ method: "mergeExternalReview", args: [] });
     }),
   };
 }
@@ -68,21 +74,24 @@ beforeEach(() => {
   const changes = new ChangeQueries(db);
   const events = new EventQueries(db);
   const jobs = new JobQueries(db);
+  const pullRequests = new PullRequestQueries(db);
 
   deps = {
     changes,
     events,
     jobs,
-    repoProvider: createMockRepoProvider(),
+    pullRequests,
+    repositoryProvider: createMockRepositoryProvider(),
+    reviewHostProvider: createMockReviewHostProvider(),
     scorer: new ScoringEngine(),
-    policy: new PolicyEngine(deps?.repoProvider ?? createMockRepoProvider()),
+    policy: new PolicyEngine(deps?.repositoryProvider ?? createMockRepositoryProvider()),
     summary: new StubSummaryGenerator(),
     stateMachine: new ChangeStateMachine(changes, events),
     notifier: new NotificationSender(),
     notificationConfigs: [],
   };
   // Fix policy engine to use same forgejo mock
-  deps.policy = new PolicyEngine(deps.repoProvider);
+  deps.policy = new PolicyEngine(deps.repositoryProvider);
 
   worker = new JobWorker(deps);
 });
@@ -129,12 +138,15 @@ describe("JobWorker", () => {
     expect(change.status).toBe("summarizing");
     expect(change.confidence).not.toBeNull();
     expect(change.pr_number).toBe(42);
+    const pr = deps.pullRequests.getLatestByChangeId(changeId);
+    expect(pr?.status).toBe("draft");
+    expect(pr?.provider_ref).toBe("42");
 
     // Should have enqueued a summary job
     expect(deps.jobs.pendingCount()).toBe(1);
     const summaryJob = deps.jobs.claimNext("generate_summary");
     expect(summaryJob).not.toBeNull();
-    expect(forgejoCallLog.map((entry) => entry.method)).toContain("createPR");
+    expect(forgejoCallLog.map((entry) => entry.method)).toContain("createExternalReview");
   });
 
   test("generate_summary: full summary pipeline", async () => {
@@ -169,6 +181,9 @@ describe("JobWorker", () => {
     const change = deps.changes.getById(changeId)!;
     expect(change.status).toBe("ready_for_review");
     expect(change.summary).not.toBeNull();
+    const pr = deps.pullRequests.getLatestByChangeId(changeId);
+    expect(pr?.status).toBe("open");
+    expect(pr?.title).toBe("feature-1: 2 files changed");
 
     const summary = JSON.parse(change.summary!);
     expect(summary.recommended_action).toBe("approve"); // safe confidence
@@ -203,18 +218,18 @@ describe("JobWorker", () => {
   });
 
   test("score_change reuses an existing open PR", async () => {
-    deps.repoProvider.listPRsForBranch = mock(async () => {
-      forgejoCallLog.push({ method: "listPRsForBranch", args: [] });
-      return [{
-        number: 7,
-        state: "open",
+    deps.reviewHostProvider!.findOpenReviewForBranch = mock(async () => {
+      forgejoCallLog.push({ method: "findOpenReviewForBranch", args: [] });
+      return {
+        providerRef: "7",
+        state: "open" as const,
         merged: false,
-        head: { ref: "feature-1", sha: "abc123" },
-        base: { ref: "main" },
-      }];
+        headRef: "feature-1",
+        baseRef: "main",
+      };
     });
-    deps.repoProvider.createPR = mock(async () => {
-      forgejoCallLog.push({ method: "createPR", args: [] });
+    deps.reviewHostProvider!.createExternalReview = mock(async () => {
+      forgejoCallLog.push({ method: "createExternalReview", args: [] });
       throw new Error("should not create PR");
     });
 
@@ -229,7 +244,34 @@ describe("JobWorker", () => {
 
     const change = deps.changes.getById(changeId)!;
     expect(change.pr_number).toBe(7);
-    expect(forgejoCallLog.map((entry) => entry.method)).not.toContain("createPR");
+    const pr = deps.pullRequests.getLatestByChangeId(changeId);
+    expect(pr?.provider_ref).toBe("7");
+    expect(forgejoCallLog.map((entry) => entry.method)).not.toContain("createExternalReview");
+  });
+
+  test("approve_change marks internal PR approved", async () => {
+    const changeId = createTestChange();
+    deps.jobs.enqueue({
+      org_id: "default",
+      type: "score_change",
+      payload: JSON.stringify({ change_id: changeId }),
+    });
+    await worker.tick();
+    await worker.tick();
+
+    deps.jobs.enqueue({
+      org_id: "default",
+      type: "approve_change",
+      payload: JSON.stringify({
+        change_id: changeId,
+        policy_decision: { action: "auto-approve" },
+      }),
+    });
+
+    await worker.tick();
+
+    const pr = deps.pullRequests.getLatestByChangeId(changeId);
+    expect(pr?.status).toBe("approved");
   });
 
   test("skips superseded changes in score_change", async () => {

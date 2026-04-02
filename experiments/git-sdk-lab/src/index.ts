@@ -1,12 +1,43 @@
-export interface GitStorageExperimentOptions {
-  namespace: string;
-  signingKey?: string;
-  endpoint?: string;
+export type RepoVisibility = "private" | "internal" | "public";
+export type RemoteProtocol = "smart-http";
+
+export interface BaseRepoInput {
+  owner: string;
+  name: string;
+  defaultBranch: string;
+  provider?: "github" | "forgejo" | "git";
 }
 
-export interface RepoIdentity {
+export interface CreateRepoOptions {
+  name: string;
+  owner?: string;
+  defaultBranch?: string;
+  visibility?: RepoVisibility;
+  baseRepo?: BaseRepoInput;
+  ephemeral?: boolean;
+}
+
+export interface RepoInfo {
   id: string;
+  owner: string;
+  name: string;
   defaultBranch: string;
+  visibility: RepoVisibility;
+  ephemeral: boolean;
+  baseRepo?: BaseRepoInput;
+}
+
+export interface RemoteUrlOptions {
+  actorId: string;
+  ttlSeconds?: number;
+}
+
+export interface RemoteUrlResult {
+  url: string;
+  fetchUrl: string;
+  pushUrl: string;
+  protocol: RemoteProtocol;
+  expiresAt?: string;
 }
 
 export interface CommitAuthor {
@@ -14,65 +45,125 @@ export interface CommitAuthor {
   email: string;
 }
 
-export interface CreateRepoInput {
-  id: string;
-  defaultBranch?: string;
-}
-
-export interface CreateCommitInput {
-  targetBranch: string;
-  commitMessage: string;
+export interface CreateCommitOptions {
+  branch: string;
+  message: string;
   author: CommitAuthor;
-  baseBranch?: string;
   parentSha?: string;
 }
 
-export interface FileWrite {
-  path: string;
-  content: string;
-}
-
-export interface CommitResult {
+export interface CreateCommitResult {
   commitSha: string;
   branch: string;
+}
+
+export interface CommitDiffRange {
+  baseRef: string;
+  headRef: string;
+  pathPrefix?: string;
+}
+
+export interface CommitDiffFile {
+  path: string;
+  status: "added" | "modified" | "deleted" | "renamed";
+}
+
+export interface CommitDiffResult {
+  baseRef: string;
+  headRef: string;
+  files: CommitDiffFile[];
+}
+
+export interface RefInfo {
+  name: string;
+  sha: string;
 }
 
 export interface ListFilesResult {
   paths: string[];
 }
 
-export interface RemoteUrlOptions {
-  ttlSeconds?: number;
+export interface CommitBuilder {
+  put(path: string, content: string): CommitBuilder;
+  delete(path: string): CommitBuilder;
+  send(): Promise<CreateCommitResult>;
 }
 
-export interface CommitBuilderExperiment {
-  addFileFromString(path: string, content: string): CommitBuilderExperiment;
-  deleteFile(path: string): CommitBuilderExperiment;
-  send(): Promise<CommitResult>;
-}
-
-export interface GitRepoExperiment extends RepoIdentity {
-  getRemoteURL(options?: RemoteUrlOptions): Promise<string>;
+export interface Repo {
+  info(): Promise<RepoInfo>;
+  getRemoteUrl(options: RemoteUrlOptions): Promise<RemoteUrlResult>;
+  createCommit(options: CreateCommitOptions): CommitBuilder;
+  getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult>;
+  listRefs(): Promise<RefInfo[]>;
+  resolveRef(name: string): Promise<RefInfo | null>;
+  createBranch(name: string, fromSha: string): Promise<RefInfo>;
+  updateBranch(name: string, toSha: string, expectedOldSha?: string): Promise<RefInfo>;
   listFiles(ref?: string): Promise<ListFilesResult>;
-  createCommit(input: CreateCommitInput): CommitBuilderExperiment;
 }
 
-export interface GitStorageExperiment {
-  createRepo(input: CreateRepoInput): Promise<GitRepoExperiment>;
-  findRepo(id: string): Promise<GitRepoExperiment | null>;
-  listRepos(): Promise<RepoIdentity[]>;
+export interface GitStorage {
+  createRepo(options: CreateRepoOptions): Promise<Repo>;
+  getRepo(id: string): Promise<Repo | null>;
+  listRepos(): Promise<RepoInfo[]>;
 }
 
-export function describeExperimentApi() {
+export interface ChangeRecord {
+  id: string;
+  repoId: string;
+  baseRef: string;
+  headRef: string;
+  status: "draft" | "in_review" | "accepted" | "rejected" | "merged";
+  pathPrefix?: string;
+  headRepoId?: string;
+}
+
+export interface ChangeStore {
+  create(change: Omit<ChangeRecord, "id">): Promise<ChangeRecord>;
+  get(id: string): Promise<ChangeRecord | null>;
+}
+
+export interface GitStorageAdapter extends GitStorage {
+  readonly name: string;
+  readonly capabilities: {
+    createCommit: boolean;
+    getRemoteUrl: boolean;
+    getCommitDiff: boolean;
+    ephemeralBranches: boolean;
+    baseRepoSync: boolean;
+    normalGitPush: boolean;
+  };
+}
+
+export function describeExperimentArchitecture() {
   return {
-    client: "GitStorageExperiment",
-    repository: "GitRepoExperiment",
-    flows: [
-      "create repo",
-      "discover repo",
-      "mint authenticated remote URL",
-      "read files",
-      "create direct commit",
-    ],
+    api: {
+      client: "GitStorage",
+      repo: "Repo",
+      coreMethods: [
+        "createRepo",
+        "getRepo",
+        "getRemoteUrl",
+        "createCommit",
+        "getCommitDiff",
+        "listRefs",
+        "resolveRef",
+      ],
+    },
+    separation: {
+      storage: [
+        "repo lifecycle",
+        "git remotes",
+        "direct commits",
+        "ref resolution",
+        "diffs",
+      ],
+      product: [
+        "redc review/change lifecycle",
+        "policy",
+        "audit trail",
+        "permissions",
+      ],
+    },
+    principle: "match code.storage semantics at the SDK layer; keep redc review semantics above it",
   };
 }

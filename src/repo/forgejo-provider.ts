@@ -1,7 +1,12 @@
 import type { ForgejoClient } from "../forgejo/client";
-import type { RepoProvider } from "./provider";
+import type { RepositoryProvider } from "./repository-provider";
+import type {
+  CreateExternalReviewInput,
+  ExternalReviewRef,
+  ReviewHostProvider,
+} from "../review/review-host-provider";
 
-export class ForgejoRepoProvider implements RepoProvider {
+export class ForgejoRepositoryProvider implements RepositoryProvider, ReviewHostProvider {
   constructor(private client: ForgejoClient) {}
 
   compareDiff(owner: string, repo: string, base: string, head: string) {
@@ -16,29 +21,47 @@ export class ForgejoRepoProvider implements RepoProvider {
     return this.client.getFileContent(owner, repo, filepath, ref);
   }
 
-  setCommitStatus(owner: string, repo: string, sha: string, status: Parameters<ForgejoClient["setCommitStatus"]>[3]) {
+  publishStatus(owner: string, repo: string, sha: string, status: Parameters<ForgejoClient["setCommitStatus"]>[3]) {
     return this.client.setCommitStatus(owner, repo, sha, status);
   }
 
-  listPRsForBranch(owner: string, repo: string, branch: string) {
-    return this.client.listPRsForBranch(owner, repo, branch);
+  async findOpenReviewForBranch(owner: string, repo: string, branch: string): Promise<ExternalReviewRef | null> {
+    const prs = await this.client.listPRsForBranch(owner, repo, branch);
+    const pr = prs[0];
+    if (!pr) return null;
+    return {
+      providerRef: String(pr.number),
+      state: pr.state,
+      merged: pr.merged,
+      headRef: pr.head.ref,
+      baseRef: pr.base.ref,
+    };
   }
 
-  createPR(
-    owner: string,
-    repo: string,
-    opts: Parameters<ForgejoClient["createPR"]>[2]
-  ) {
-    return this.client.createPR(owner, repo, opts);
+  async createExternalReview(
+    input: CreateExternalReviewInput
+  ): Promise<ExternalReviewRef> {
+    const pr = await this.client.createPR(input.owner, input.repo, {
+      title: input.title,
+      head: input.head,
+      base: input.base,
+      body: input.body,
+    });
+    return {
+      providerRef: String(pr.number),
+      state: pr.state,
+      merged: pr.merged,
+      headRef: pr.head.ref,
+      baseRef: pr.base.ref,
+    };
   }
 
-  mergePR(
+  mergeExternalReview(
     owner: string,
     repo: string,
-    prNumber: number,
-    method: "merge" | "rebase" | "squash" = "merge"
+    providerRef: string
   ) {
-    return this.client.mergePR(owner, repo, prNumber, method);
+    return this.client.mergePR(owner, repo, parseInt(providerRef, 10), "merge");
   }
 
   listRepos() {

@@ -7,10 +7,14 @@ import {
   EventQueries,
   JobQueries,
   DeliveryQueries,
+  PullRequestQueries,
   SessionQueries,
 } from "./db/queries";
 import { ForgejoClient } from "./forgejo/client";
-import { ForgejoRepoProvider } from "./repo/forgejo-provider";
+import { ForgejoRepositoryProvider } from "./repo/forgejo-provider";
+import { LocalGitProvider } from "./repo/local-git-provider";
+import type { RepositoryProvider } from "./repo/repository-provider";
+import type { ReviewHostProvider } from "./review/review-host-provider";
 import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
 import { PolicyEngine } from "./engine/policy";
@@ -35,14 +39,23 @@ import {
   type AgentRuntimeEvent,
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
+import { ingestRefUpdate } from "./ingest/ref-updates";
 
 export interface AppConfig {
   port: number;
   dbPath: string;
-  forgejo: {
-    baseUrl: string;
-    token: string;
-  };
+  repoBackend:
+    | {
+        kind: "forgejo";
+        forgejo: {
+          baseUrl: string;
+          token: string;
+        };
+      }
+    | {
+        kind: "local_git";
+        reposRoot: string;
+      };
   webhookSecret: string;
   repos: string[];
   artifacts: {
@@ -68,10 +81,18 @@ function loadConfig(): AppConfig {
   return {
     port: parseInt(process.env.REDC_PORT ?? "3000", 10),
     dbPath: process.env.REDC_DB_PATH ?? "redc.db",
-    forgejo: {
-      baseUrl: required("FORGEJO_URL"),
-      token: required("FORGEJO_TOKEN"),
-    },
+    repoBackend: process.env.REPO_PROVIDER === "local_git"
+      ? {
+          kind: "local_git",
+          reposRoot: required("LOCAL_GIT_REPOS_ROOT"),
+        }
+      : {
+          kind: "forgejo",
+          forgejo: {
+            baseUrl: required("FORGEJO_URL"),
+            token: required("FORGEJO_TOKEN"),
+          },
+        },
     webhookSecret: required("WEBHOOK_SECRET"),
     repos: (process.env.REDC_REPOS ?? "")
       .split(",")
@@ -90,9 +111,18 @@ export function createApp(config: AppConfig) {
   const events = new EventQueries(db);
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
+  const pullRequests = new PullRequestQueries(db);
   const sessions = new SessionQueries(db);
-  const forgejo = new ForgejoClient(config.forgejo);
-  const repoProvider = new ForgejoRepoProvider(forgejo);
+  const forgejo = config.repoBackend.kind === "forgejo"
+    ? new ForgejoClient(config.repoBackend.forgejo)
+    : null;
+  const forgejoProvider = forgejo ? new ForgejoRepositoryProvider(forgejo) : null;
+  const repositoryProvider: RepositoryProvider = config.repoBackend.kind === "forgejo"
+    ? forgejoProvider!
+    : new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot });
+  const reviewHostProvider: ReviewHostProvider | undefined = config.repoBackend.kind === "forgejo"
+    ? forgejoProvider!
+    : undefined;
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
@@ -116,7 +146,7 @@ export function createApp(config: AppConfig) {
     const change = changes.getById(id);
     if (!change) return c.json({ error: "Not found" }, 404);
     const changeEvents = events.listByChangeId(id);
-    return c.json({ ...change, events: changeEvents });
+    return c.json({ ...change, events: changeEvents, pull_requests: pullRequests.listByChangeId(id) });
   });
 
   // Change diff endpoint (raw unified diff from Forgejo)
@@ -126,7 +156,7 @@ export function createApp(config: AppConfig) {
     if (!change) return c.json({ error: "Not found" }, 404);
 
     const [owner, repo] = change.repo.split("/");
-    const diff = await repoProvider.getDiff(owner, repo, change.base_branch, change.head_sha);
+    const diff = await repositoryProvider.getDiff(owner, repo, change.base_branch, change.head_sha);
     return c.text(diff);
   });
 
@@ -139,6 +169,46 @@ export function createApp(config: AppConfig) {
   // Pending jobs count
   app.get("/api/jobs/pending", (c) => {
     return c.json({ pending: jobs.pendingCount() });
+  });
+
+  app.post("/api/ingest/ref-update", async (c) => {
+    const body = await c.req.json<{
+      repo: string;
+      branch: string;
+      base_branch: string;
+      head_sha: string;
+      created_by?: "human" | "agent";
+      delivery_id?: string;
+      metadata?: Record<string, unknown>;
+    }>();
+
+    if (!body.repo || !body.branch || !body.base_branch || !body.head_sha) {
+      return c.json({ error: "Missing required fields: repo, branch, base_branch, head_sha" }, 400);
+    }
+
+    const result = ingestRefUpdate(
+      { changes, events, deliveries, jobs },
+      {
+        repo: body.repo,
+        branch: body.branch,
+        baseBranch: body.base_branch,
+        headSha: body.head_sha,
+        createdBy: body.created_by ?? "human",
+        deliveryId: body.delivery_id ?? null,
+        metadata: {
+          ...(body.metadata ?? {}),
+          source: (body.metadata?.source as string | undefined) ?? "local_api",
+        },
+      }
+    );
+
+    if (result.status === "duplicate") {
+      return c.json(result, 200);
+    }
+    if (result.status === "skipped") {
+      return c.json(result, 200);
+    }
+    return c.json(result, 201);
   });
 
   // Claw action catalog
@@ -296,7 +366,7 @@ export function createApp(config: AppConfig) {
       return c.json(dbRepos);
     }
     // Fall back to querying Forgejo for all repos accessible by this token
-    const forgejoRepos = await repoProvider.listRepos?.();
+    const forgejoRepos = await repositoryProvider.listRepos?.();
     if (!forgejoRepos) {
       return c.json([]);
     }
@@ -311,13 +381,13 @@ export function createApp(config: AppConfig) {
     }
     const [owner, repoName] = repo.split("/");
 
-    if (!repoProvider.getRepo || !repoProvider.listBranches) {
+    if (!repositoryProvider.getRepo || !repositoryProvider.listBranches) {
       return c.json({ error: "Repo provider does not support branch listing" }, 501);
     }
 
     const [repoInfo, branches] = await Promise.all([
-      repoProvider.getRepo(owner, repoName),
-      repoProvider.listBranches(owner, repoName),
+      repositoryProvider.getRepo(owner, repoName),
+      repositoryProvider.listBranches(owner, repoName),
     ]);
 
     const result = branches
@@ -353,20 +423,24 @@ export function createApp(config: AppConfig) {
     const [owner, repoName] = body.repo.split("/");
 
     // Get default branch to use as base
-    if (!repoProvider.getRepo || !repoProvider.createPR) {
+    const getRepo = repositoryProvider.getRepo;
+    const createPR = reviewHostProvider?.createExternalReview;
+    if (!getRepo || !createPR) {
       return c.json({ error: "Repo provider does not support PR creation" }, 501);
     }
-    const repoInfo = await repoProvider.getRepo(owner, repoName);
+    const repoInfo = await getRepo(owner, repoName);
     const defaultBranch = repoInfo.default_branch;
 
-    const pr = await repoProvider.createPR(owner, repoName, {
+    const pr = await createPR({
+      owner,
+      repo: repoName,
       title: body.title,
       head: body.branch,
       base: defaultBranch,
       body: body.body,
     });
 
-    return c.json({ number: pr.number, head: pr.head, base: pr.base });
+    return c.json({ provider_ref: pr.providerRef, head: pr.headRef, base: pr.baseRef });
   });
 
   // Mount webhook routes
@@ -378,7 +452,9 @@ export function createApp(config: AppConfig) {
     forgejo,
     webhookSecret: config.webhookSecret,
   });
-  app.route("/", webhookRoutes);
+  if (forgejo) {
+    app.route("/", webhookRoutes);
+  }
 
   const eventBus = new EventBus();
 
@@ -512,7 +588,7 @@ export function createApp(config: AppConfig) {
 
   // Engines
   const scorer = new ScoringEngine();
-  const policy = new PolicyEngine(repoProvider);
+  const policy = new PolicyEngine(repositoryProvider);
   const openaiKey = process.env.OPENAI_API_KEY ?? null;
   const clawImage =
     process.env.OPENCODE_RUNNER_IMAGE ??
@@ -523,7 +599,9 @@ export function createApp(config: AppConfig) {
   const runner = (openaiKey || hasClawAuth)
     ? new DockerClawRunner({
         image: clawImage,
-        forgejoBaseUrl: config.forgejo.baseUrl,
+        forgejoBaseUrl: config.repoBackend.kind === "forgejo"
+          ? config.repoBackend.forgejo.baseUrl
+          : "http://localhost",
         openaiApiKey: openaiKey,
         tracker: clawTracker,
         artifactStore: localClawArtifactStore,
@@ -547,7 +625,9 @@ export function createApp(config: AppConfig) {
     changes,
     events,
     jobs,
-    repoProvider,
+    pullRequests,
+    repositoryProvider,
+    reviewHostProvider,
     scorer,
     policy,
     summary,
@@ -583,8 +663,10 @@ export function createApp(config: AppConfig) {
     events,
     jobs,
     deliveries,
+    pullRequests,
     forgejo,
-    repoProvider,
+    repositoryProvider,
+    reviewHostProvider,
     worker,
     runner,
     clawReconciler,

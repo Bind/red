@@ -1,11 +1,11 @@
-import type { AgentRuntimeEvent } from "../claw/runtime";
+import type { AgentSessionEvent } from "../types";
 
 const BUFFER_SIZE = 200;
 const CLEANUP_DELAY_MS = 30_000;
 
 interface ChannelState {
-  buffer: AgentRuntimeEvent[];
-  listeners: Set<(event: AgentRuntimeEvent) => void>;
+  buffer: AgentSessionEvent[];
+  listeners: Set<(event: AgentSessionEvent) => void>;
   doneListeners: Set<() => void>;
   completed: boolean;
 }
@@ -22,7 +22,7 @@ export class EventBus {
     return ch;
   }
 
-  emit(changeId: number, event: AgentRuntimeEvent): void {
+  emit(changeId: number, event: AgentSessionEvent): void {
     const ch = this.ensure(changeId);
     ch.buffer.push(event);
     if (ch.buffer.length > BUFFER_SIZE) {
@@ -33,7 +33,7 @@ export class EventBus {
 
   subscribe(
     changeId: number,
-    onEvent: (event: AgentRuntimeEvent) => void,
+    onEvent: (event: AgentSessionEvent) => void,
     onDone: () => void,
   ): () => void {
     const ch = this.ensure(changeId);

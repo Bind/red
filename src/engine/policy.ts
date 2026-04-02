@@ -1,6 +1,6 @@
 import { parse as parseYaml } from "yaml";
 import type { PolicyConfig, ConfidenceLevel, DiffStats } from "../types";
-import type { RepoProvider } from "../repo/provider";
+import type { RepositoryProvider } from "../repo/repository-provider";
 import { matchGlob } from "./review";
 import {
   ruleMatches,
@@ -22,7 +22,7 @@ export interface PolicyDecision {
  * PRs from modifying their own review policy.
  */
 export class PolicyEngine {
-  constructor(private repoProvider: RepoProvider) {}
+  constructor(private repositoryProvider: RepositoryProvider) {}
 
   /**
    * Load policy from the repo's base branch.
@@ -33,7 +33,7 @@ export class PolicyEngine {
     repo: string,
     baseBranch: string
   ): Promise<PolicyConfig | null> {
-    const content = await this.repoProvider.getFileContent(
+    const content = await this.repositoryProvider.getFileContent(
       owner,
       repo,
       ".redc/policy.yaml",

@@ -1,0 +1,57 @@
+{
+  "title": "Add streaming Codex review detail flow",
+  "what_changed": "The backend now introduces a reusable repo task runner and in-memory log bus so Codex summaries can stream progress, write JSON results to a mounted output directory, and expose diff and log SSE endpoints for each change. Summary generation is refactored to pass base and head refs through a dedicated prompt builder/validator path, and the worker/state machine now support rerunning summarization from `ready_for_review`. The change detail UI is expanded with annotated summaries, live Codex log streaming, raw diff and file tree viewers, header injection, and a regenerate-summary action wired to new API helpers. Dependency and styling updates add Pierre diff/tree packages, Preact runtime support, and a new global theme stylesheet to support the richer review experience.",
+  "risk_assessment": "Main risk is in the new log-stream lifecycle: `/api/changes/:id/logs` returns `done` immediately once a change leaves `summarizing`, which can bypass the buffered replay behavior that `LogBus` is designed to provide for late subscribers. The Docker runner also now relies on either a pinned Codex CLI plus mounted host `~/.codex` auth or an API key, so environment mismatches could break summary generation outside the primary dev setup.",
+  "affected_modules": [
+    "codex-runner",
+    "src/engine",
+    "src/jobs",
+    "src/index.ts",
+    "web/src",
+    "web/package.json"
+  ],
+  "recommended_action": "review",
+  "annotations": [
+    {
+      "text": "The backend now introduces a reusable repo task runner and in-memory log bus so Codex summaries can stream progress, write JSON results to a mounted output directory, and expose diff and log SSE endpoints for each change.",
+      "files": [
+        "codex-runner/Dockerfile",
+        "codex-runner/run.sh",
+        "src/engine/log-bus.ts",
+        "src/engine/runner.ts",
+        "src/index.ts"
+      ],
+      "type": "new_module"
+    },
+    {
+      "text": "Summary generation is refactored to pass base and head refs through a dedicated prompt builder/validator path, and the worker/state machine now support rerunning summarization from `ready_for_review`.",
+      "files": [
+        "src/engine/summary.ts",
+        "src/engine/tasks/summary.ts",
+        "src/engine/state-machine.ts",
+        "src/engine/summary.test.ts",
+        "src/jobs/worker.ts"
+      ],
+      "type": "refactor"
+    },
+    {
+      "text": "The change detail UI is expanded with annotated summaries, live Codex log streaming, raw diff and file tree viewers, header injection, and a regenerate-summary action wired to new API helpers.",
+      "files": [
+        "web/src/components/layout.tsx",
+        "web/src/lib/api.ts",
+        "web/src/routes/change.tsx",
+        "src/index.ts"
+      ],
+      "type": "change"
+    },
+    {
+      "text": "Dependency and styling updates add Pierre diff/tree packages, Preact runtime support, and a new global theme stylesheet to support the richer review experience.",
+      "files": [
+        "bun.lock",
+        "web/package.json",
+        "src/globals.css"
+      ],
+      "type": "config"
+    }
+  ]
+}
