@@ -12,12 +12,14 @@ describe("git-sdk live integration", () => {
     expect(result.checks.clientPushResolved).toBe(true);
     expect(result.checks.clientDiffHasFile).toBe(true);
     expect(result.checks.clientDiffHasPatch).toBe(true);
+    expect(result.checks.clientDiffHasPerFilePatch).toBe(true);
     expect(result.checks.clientDiffHasStats).toBe(true);
     expect(result.checks.readTextFileWorks).toBe(true);
     expect(result.checks.missingFileReturnsNull).toBe(true);
     expect(result.checks.directCommitResolved).toBe(true);
     expect(result.checks.directDiffHasFile).toBe(true);
     expect(result.checks.directDiffHasPatch).toBe(true);
+    expect(result.checks.directDiffHasPerFilePatch).toBe(true);
     expect(result.checks.directListFilesIncludesNested).toBe(true);
     expect(result.checks.directReadTextFileWorks).toBe(true);
     expect(result.checks.refsIncludeMetadata).toBe(true);

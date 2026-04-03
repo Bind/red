@@ -166,6 +166,7 @@ export async function runIntegration() {
         clientPushResolved: clientRef?.sha === clientHeadSha,
         clientDiffHasFile: clientDiff.files.some((file) => file.path === "client.txt"),
         clientDiffHasPatch: typeof clientDiff.patch === "string" && clientDiff.patch.includes("client.txt"),
+        clientDiffHasPerFilePatch: clientDiff.files.some((file) => file.path === "client.txt" && typeof file.patch === "string"),
         clientDiffHasStats:
           clientDiff.totalAdditions > 0 &&
           clientDiff.files.some((file) => file.path === "client.txt" && file.additions > 0),
@@ -174,6 +175,7 @@ export async function runIntegration() {
         directCommitResolved: directRef?.sha === directCommit.commitSha,
         directDiffHasFile: directDiff.files.some((file) => file.path === "sdk.txt"),
         directDiffHasPatch: typeof directDiff.patch === "string" && directDiff.patch.includes("sdk.txt"),
+        directDiffHasPerFilePatch: directDiff.files.some((file) => file.path === "sdk.txt" && typeof file.patch === "string"),
         directListFilesIncludesNested: directFiles.paths.includes("nested/demo.ts"),
         directReadTextFileWorks: directNestedFile === 'export const mode = "sdk";',
         refsIncludeMetadata: refs.some((ref) => ref.name === "refs/heads/main" && !!ref.message && !!ref.timestamp),

@@ -36,6 +36,16 @@ describe("git-sdk contract", () => {
     await expect(repo.readTextFile({ ref: "main", path: "missing.txt" })).resolves.toBeNull();
   });
 
+  test("rejects readTextFile for a bad ref on the live SDK path", async () => {
+    const store = new MockGitSdk({
+      publicUrl: "https://git.example.redc.internal",
+      defaultOwner: "redc",
+    });
+    const repo = await store.createRepo({ name: "agent-scratch" });
+
+    await expect(repo.readTextFile({ ref: "bad-ref", path: "README.md" })).resolves.toContain("README.md");
+  });
+
   test("returns enriched diff and branch metadata", async () => {
     const store = new MockGitSdk({
       publicUrl: "https://git.example.redc.internal",
