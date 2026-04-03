@@ -1,6 +1,4 @@
 import type {
-  ChangeRecord,
-  ChangeStore,
   CommitBuilder,
   CommitDiffRange,
   CommitDiffResult,
@@ -14,15 +12,15 @@ import type {
   RemoteUrlResult,
   Repo,
   RepoInfo,
-} from "./index";
+} from "./api";
 
-export interface GittyAdapterOptions {
-  baseUrl: string;
+export interface MockGitSdkOptions {
+  publicUrl: string;
   defaultOwner: string;
 }
 
-export class GittyAdapter implements GitStorageAdapter {
-  readonly name = "gitty";
+export class MockGitSdk implements GitStorageAdapter {
+  readonly name = "git-sdk-mock";
   readonly capabilities = {
     createCommit: true,
     getRemoteUrl: true,
@@ -32,10 +30,10 @@ export class GittyAdapter implements GitStorageAdapter {
     normalGitPush: true,
   } as const;
 
-  constructor(private readonly options: GittyAdapterOptions) {}
+  constructor(private readonly options: MockGitSdkOptions) {}
 
   async createRepo(options: CreateRepoOptions): Promise<Repo> {
-    return new GittyRepo(this.options, {
+    return new MockGitSdkRepo(this.options, {
       id: `${options.owner ?? this.options.defaultOwner}/${options.name}`,
       owner: options.owner ?? this.options.defaultOwner,
       name: options.name,
@@ -49,7 +47,7 @@ export class GittyAdapter implements GitStorageAdapter {
   async getRepo(id: string): Promise<Repo | null> {
     const [owner, name] = id.split("/", 2);
     if (!owner || !name) return null;
-    return new GittyRepo(this.options, {
+    return new MockGitSdkRepo(this.options, {
       id,
       owner,
       name,
@@ -64,9 +62,9 @@ export class GittyAdapter implements GitStorageAdapter {
   }
 }
 
-class GittyRepo implements Repo {
+class MockGitSdkRepo implements Repo {
   constructor(
-    private readonly adapterOptions: GittyAdapterOptions,
+    private readonly adapterOptions: MockGitSdkOptions,
     private readonly repoInfo: RepoInfo
   ) {}
 
@@ -81,7 +79,7 @@ class GittyRepo implements Repo {
         : new Date(Date.now() + options.ttlSeconds * 1000).toISOString();
     const token = `${options.actorId}-token`;
     const encodedRepoId = this.repoInfo.id.replace("/", "%2F");
-    const url = `${this.adapterOptions.baseUrl}/git/${encodedRepoId}?token=${token}`;
+    const url = `${this.adapterOptions.publicUrl}/git/${encodedRepoId}?token=${token}`;
 
     return {
       url,
@@ -107,7 +105,7 @@ class GittyRepo implements Repo {
       async send(): Promise<CreateCommitResult> {
         void mutations;
         return {
-          commitSha: "gitty-placeholder-commit",
+          commitSha: "git-sdk-placeholder-commit",
           branch: options.branch,
         };
       },
@@ -125,11 +123,11 @@ class GittyRepo implements Repo {
   }
 
   async listRefs(): Promise<RefInfo[]> {
-    return [{ name: `refs/heads/${this.repoInfo.defaultBranch}`, sha: "gitty-main-sha" }];
+    return [{ name: `refs/heads/${this.repoInfo.defaultBranch}`, sha: "git-sdk-main-sha" }];
   }
 
   async resolveRef(name: string): Promise<RefInfo | null> {
-    return { name, sha: "gitty-resolved-sha" };
+    return { name, sha: "git-sdk-resolved-sha" };
   }
 
   async createBranch(name: string, fromSha: string): Promise<RefInfo> {
@@ -142,20 +140,5 @@ class GittyRepo implements Repo {
 
   async listFiles(_ref?: string): Promise<ListFilesResult> {
     return { paths: ["README.md"] };
-  }
-}
-
-export class InMemoryChangeStore implements ChangeStore {
-  private readonly records = new Map<string, ChangeRecord>();
-  private nextId = 1;
-
-  async create(change: Omit<ChangeRecord, "id">): Promise<ChangeRecord> {
-    const record = { ...change, id: `change-${this.nextId++}` };
-    this.records.set(record.id, record);
-    return record;
-  }
-
-  async get(id: string): Promise<ChangeRecord | null> {
-    return this.records.get(id) ?? null;
   }
 }

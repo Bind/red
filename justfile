@@ -106,13 +106,30 @@ rivet-pi-smoke prompt="Respond with exactly OK":
 rivet-summary-smoke branch="HEAD" base_ref="main" confidence="needs_review":
     cd experiments/rivet-lab && bun run summary:rivet:smoke {{branch}} {{base_ref}} {{confidence}}
 
-# Run the git-backed SDK experiment CLI
-git-sdk-lab-manual *args:
-    cd experiments/git-sdk-lab && bun src/manual.ts {{args}}
+# Run the git server/manual SDK CLI
+git-server-manual *args:
+    cd git-server && bun src/manual/cli.ts {{args}}
 
-# Run tests for the git-backed SDK experiment
-git-sdk-lab-test:
-    cd experiments/git-sdk-lab && bun test
+# Run tests for the git server package
+git-server-test:
+    cd git-server && bun test
+
+# Run the live git-backed integration harness
+git-server-integration:
+    cd git-server && bun src/manual/cli.ts integration
+
+# Run the live git-backed integration test
+git-server-integration-test:
+    cd git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
+    cd git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
+
+# Start git server dependencies and service from the root compose stack
+git-server-up:
+    docker compose up --build git-server minio minio-init
+
+# Stop the git server service from the root compose stack
+git-server-down:
+    docker compose rm -sf git-server minio-init
 
 # Install dependencies for the isolated OpenCode spike
 opencode-lab-install:

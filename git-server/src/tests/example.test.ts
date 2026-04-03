@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { runExample, runForkedExample } from "./example";
+import { runExample, runForkedExample } from "../examples/sdk-examples";
 
 async function runCli(command: "example" | "forked-example") {
-  const proc = Bun.spawn(["bun", "src/manual.ts", command], {
-    cwd: import.meta.dir + "/..",
+  const proc = Bun.spawn(["bun", "src/manual/cli.ts", command], {
+    cwd: import.meta.dir + "/../..",
     stdout: "pipe",
     stderr: "pipe",
   });

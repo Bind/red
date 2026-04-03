@@ -123,12 +123,12 @@ describe("ChangeQueries", () => {
   test("mergeVelocity", () => {
     const c1 = makeChange({ delivery_id: "d1" });
     const c2 = makeChange({ delivery_id: "d2" });
-    changes.updateStatus(c1.id, "merged");
+    changes.updateStatus(c1.id, "ready_for_review");
     changes.updateStatus(c2.id, "ready_for_review");
 
     const v = changes.mergeVelocity(24);
-    expect(v.merged).toBe(1);
-    expect(v.pending_review).toBe(1);
+    expect(v.summarized).toBe(2);
+    expect(v.pending_review).toBe(2);
   });
 });
 

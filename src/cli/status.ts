@@ -1,7 +1,7 @@
 import type { CliContext } from "./index";
 
 interface VelocityResponse {
-  merged: number;
+  summarized: number;
   pending_review: number;
 }
 
@@ -34,8 +34,8 @@ export async function statusCommand(ctx: CliContext): Promise<number> {
     console.log();
 
     // Velocity
-    console.log("Merge velocity (24h):");
-    console.log(`  Merged:          ${velocity.merged}`);
+    console.log("Queue summary (24h):");
+    console.log(`  Summarized:      ${velocity.summarized}`);
     console.log(`  Pending review:  ${velocity.pending_review}`);
     console.log();
 

@@ -5,14 +5,6 @@ import type { ChangeQueries, EventQueries } from "../db/queries";
  * Valid state transitions for the change lifecycle:
  *
  *   pushed → scoring → scored → summarizing → ready_for_review
- *                                                  ↓           ↓
- *                                              approved    rejected
- *                                                  ↓
- *                                              merging → merged
- *                                                ↓   ↑
- *                                          merge_failed
- *                                                  ↓
- *                                               closed
  *
  *   Any state → superseded (new push to same branch)
  */
@@ -21,11 +13,11 @@ const VALID_TRANSITIONS: Record<ChangeStatus, ChangeStatus[]> = {
   scoring: ["scored", "superseded"],
   scored: ["summarizing", "superseded"],
   summarizing: ["scored", "ready_for_review", "superseded"],
-  ready_for_review: ["approved", "rejected", "summarizing", "superseded"],
-  approved: ["merging", "superseded"],
-  rejected: ["superseded"],
-  merging: ["merged", "merge_failed", "closed", "superseded"],
-  merge_failed: ["merging", "superseded"],
+  ready_for_review: ["summarizing", "superseded"],
+  approved: [],
+  rejected: [],
+  merging: [],
+  merge_failed: [],
   merged: [],
   closed: [],
   superseded: [],

@@ -1,9 +1,9 @@
-#!/usr/bin/env bun
-import { GittyAdapter, InMemoryChangeStore } from "./gitty-adapter";
+import { InMemoryChangeStore } from "../core/change-store";
+import { MockGitSdk } from "../core/mock-git-sdk";
 
 export async function runExample() {
-  const store = new GittyAdapter({
-    baseUrl: "https://git.example.redc.internal",
+  const store = new MockGitSdk({
+    publicUrl: "https://git.example.redc.internal",
     defaultOwner: "redc",
   });
 
@@ -62,8 +62,8 @@ export async function runExample() {
 }
 
 export async function runForkedExample() {
-  const store = new GittyAdapter({
-    baseUrl: "https://git.example.redc.internal",
+  const store = new MockGitSdk({
+    publicUrl: "https://git.example.redc.internal",
     defaultOwner: "redc",
   });
 
@@ -136,8 +136,4 @@ export async function runForkedExample() {
       "# redc then opens a review from redc/app:refs/heads/main to agents/app-agent-123:refs/heads/agents/agent-123/fix-login",
     ],
   };
-}
-
-if (import.meta.main) {
-  console.log(JSON.stringify(await runExample(), null, 2));
 }

@@ -49,13 +49,40 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-git-server-repos}
     entrypoint: >
       /bin/sh -c '
       until mc alias set local http://$$MINIO_ENDPOINT:$$MINIO_PORT "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"; do
         sleep 1;
       done &&
-      mc mb --ignore-existing local/$$MINIO_BUCKET
+      mc mb --ignore-existing local/$$MINIO_BUCKET &&
+      mc mb --ignore-existing local/$$GIT_SERVER_S3_BUCKET
       '
+
+  git-server:
+    build:
+      context: ./git-server
+      dockerfile: docker/gitty/Dockerfile
+      args:
+        GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - minio-init
+    environment:
+      GIT_SERVER_PORT: 8080
+      GIT_SERVER_PUBLIC_URL: ${GIT_SERVER_PUBLIC_URL:-http://127.0.0.1:9080}
+      GIT_SERVER_S3_ENDPOINT: ${GIT_SERVER_S3_ENDPOINT:-http://minio:9000}
+      GIT_SERVER_S3_REGION: ${GIT_SERVER_S3_REGION:-us-east-1}
+      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-git-server-repos}
+      GIT_SERVER_S3_PREFIX: ${GIT_SERVER_S3_PREFIX:-repos}
+      GIT_SERVER_S3_ACCESS_KEY_ID: ${GIT_SERVER_S3_ACCESS_KEY_ID:-minioadmin}
+      GIT_SERVER_S3_SECRET_ACCESS_KEY: ${GIT_SERVER_S3_SECRET_ACCESS_KEY:-minioadmin}
+      GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
+      GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
+      GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
+    ports:
+      - "${GIT_SERVER_PUBLIC_PORT:-9080}:8080"
 
   redc-api:
     build:
@@ -64,6 +91,7 @@ services:
     depends_on:
       - forgejo
       - minio
+      - git-server
     env_file:
       - .env
     environment:

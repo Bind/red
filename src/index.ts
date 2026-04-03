@@ -7,14 +7,12 @@ import {
   EventQueries,
   JobQueries,
   DeliveryQueries,
-  PullRequestQueries,
   SessionQueries,
 } from "./db/queries";
 import { ForgejoClient } from "./forgejo/client";
 import { ForgejoRepositoryProvider } from "./repo/forgejo-provider";
 import { LocalGitProvider } from "./repo/local-git-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
-import type { ReviewHostProvider } from "./review/review-host-provider";
 import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
 import { PolicyEngine } from "./engine/policy";
@@ -111,7 +109,6 @@ export function createApp(config: AppConfig) {
   const events = new EventQueries(db);
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
-  const pullRequests = new PullRequestQueries(db);
   const sessions = new SessionQueries(db);
   const forgejo = config.repoBackend.kind === "forgejo"
     ? new ForgejoClient(config.repoBackend.forgejo)
@@ -120,9 +117,6 @@ export function createApp(config: AppConfig) {
   const repositoryProvider: RepositoryProvider = config.repoBackend.kind === "forgejo"
     ? forgejoProvider!
     : new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot });
-  const reviewHostProvider: ReviewHostProvider | undefined = config.repoBackend.kind === "forgejo"
-    ? forgejoProvider!
-    : undefined;
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
@@ -133,7 +127,7 @@ export function createApp(config: AppConfig) {
   // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
 
-  // Merge velocity endpoint
+  // Queue stats endpoint
   app.get("/api/velocity", (c) => {
     const hours = parseInt(c.req.query("hours") ?? "24", 10);
     const velocity = changes.mergeVelocity(hours);
@@ -146,7 +140,7 @@ export function createApp(config: AppConfig) {
     const change = changes.getById(id);
     if (!change) return c.json({ error: "Not found" }, 404);
     const changeEvents = events.listByChangeId(id);
-    return c.json({ ...change, events: changeEvents, pull_requests: pullRequests.listByChangeId(id) });
+    return c.json({ ...change, events: changeEvents });
   });
 
   // Change diff endpoint (raw unified diff from Forgejo)
@@ -261,27 +255,6 @@ export function createApp(config: AppConfig) {
     return c.text(text);
   });
 
-  // Manual approve + merge
-  app.post("/api/changes/:id/approve", async (c) => {
-    const id = parseInt(c.req.param("id"), 10);
-    const change = changes.getById(id);
-    if (!change) return c.json({ error: "Not found" }, 404);
-    if (change.status !== "ready_for_review") {
-      return c.json({ error: `Cannot approve from status: ${change.status}` }, 400);
-    }
-
-    jobs.enqueue({
-      org_id: change.org_id,
-      type: "approve_change",
-      payload: JSON.stringify({
-        change_id: id,
-        policy_decision: { action: "auto-approve" },
-      }),
-    });
-
-    return c.json({ ok: true });
-  });
-
   // Regenerate summary
   app.post("/api/changes/:id/regenerate-summary", async (c) => {
     const id = parseInt(c.req.param("id"), 10);
@@ -338,24 +311,6 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
-  // Retry a failed merge
-  app.post("/api/changes/:id/retry-merge", async (c) => {
-    const id = parseInt(c.req.param("id"), 10);
-    const change = changes.getById(id);
-    if (!change) return c.json({ error: "Not found" }, 404);
-    if (change.status !== "merge_failed") {
-      return c.json({ error: `Cannot retry from status: ${change.status}` }, 400);
-    }
-
-    jobs.enqueue({
-      org_id: change.org_id,
-      type: "merge_change",
-      payload: JSON.stringify({ change_id: id }),
-    });
-
-    return c.json({ ok: true });
-  });
-
   // List known repos (configured via REDC_REPOS, then DB, then Forgejo)
   app.get("/api/repos", async (c) => {
     if (config.repos.length > 0) {
@@ -398,49 +353,12 @@ export function createApp(config: AppConfig) {
           name: b.name,
           commit: b.commit,
           change: activeChange
-            ? { id: activeChange.id, status: activeChange.status, pr_number: activeChange.pr_number }
+            ? { id: activeChange.id, status: activeChange.status }
             : null,
-          has_open_pr: activeChange?.pr_number != null,
         };
       });
 
     return c.json(result);
-  });
-
-  // Create a PR for a branch
-  app.post("/api/branches/create-pr", async (c) => {
-    const body = await c.req.json<{
-      repo: string;
-      branch: string;
-      title: string;
-      body?: string;
-    }>();
-
-    if (!body.repo || !body.branch || !body.title) {
-      return c.json({ error: "Missing required fields: repo, branch, title" }, 400);
-    }
-
-    const [owner, repoName] = body.repo.split("/");
-
-    // Get default branch to use as base
-    const getRepo = repositoryProvider.getRepo;
-    const createPR = reviewHostProvider?.createExternalReview;
-    if (!getRepo || !createPR) {
-      return c.json({ error: "Repo provider does not support PR creation" }, 501);
-    }
-    const repoInfo = await getRepo(owner, repoName);
-    const defaultBranch = repoInfo.default_branch;
-
-    const pr = await createPR({
-      owner,
-      repo: repoName,
-      title: body.title,
-      head: body.branch,
-      base: defaultBranch,
-      body: body.body,
-    });
-
-    return c.json({ provider_ref: pr.providerRef, head: pr.headRef, base: pr.baseRef });
   });
 
   // Mount webhook routes
@@ -625,9 +543,7 @@ export function createApp(config: AppConfig) {
     changes,
     events,
     jobs,
-    pullRequests,
     repositoryProvider,
-    reviewHostProvider,
     scorer,
     policy,
     summary,
@@ -663,10 +579,8 @@ export function createApp(config: AppConfig) {
     events,
     jobs,
     deliveries,
-    pullRequests,
     forgejo,
     repositoryProvider,
-    reviewHostProvider,
     worker,
     runner,
     clawReconciler,

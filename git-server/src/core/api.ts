@@ -30,6 +30,7 @@ export interface RepoInfo {
 export interface RemoteUrlOptions {
   actorId: string;
   ttlSeconds?: number;
+  access?: "read" | "write";
 }
 
 export interface RemoteUrlResult {
@@ -38,6 +39,8 @@ export interface RemoteUrlResult {
   pushUrl: string;
   protocol: RemoteProtocol;
   expiresAt?: string;
+  username?: string;
+  password?: string;
 }
 
 export interface CommitAuthor {

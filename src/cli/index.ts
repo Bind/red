@@ -7,7 +7,7 @@ const USAGE = `redc — agent-native code forge
 
 Usage:
   redc bootstrap           Bootstrap Forgejo user, repo, and git remote
-  redc status              Show merge velocity and pending reviews
+  redc status              Show summary throughput and pending reviews
   redc policy test [path]  Dry-run policy evaluation
   redc help                Show this help message
 

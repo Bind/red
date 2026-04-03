@@ -142,8 +142,14 @@ export class LocalGitProvider implements RepositoryProvider {
     return this.runGit(repoPath, ["symbolic-ref", "--short", "HEAD"]).replace(/^heads\//, "");
   }
 
-  private runGit(repoPath: string, args: string[]): string {
-    const result = Bun.spawnSync(["git", "--git-dir", repoPath, ...args], {
+  private runGit(repoPath: string | undefined, args: string[]): string {
+    const command = repoPath
+      ? (isGitRepository(repoPath) && repoPath.endsWith(".git")
+        ? ["git", "--git-dir", repoPath, ...args]
+        : ["git", ...args])
+      : ["git", ...args];
+    const result = Bun.spawnSync(command, {
+      cwd: repoPath && !repoPath.endsWith(".git") ? repoPath : undefined,
       stdout: "pipe",
       stderr: "pipe",
     });

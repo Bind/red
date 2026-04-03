@@ -14,7 +14,7 @@ import { FileTree } from "@pierre/trees/react";
 import type { GitStatusEntry } from "@pierre/trees";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHeaderContent } from "@/components/layout";
-import { fetchChange, fetchDiff, approveChange, retryMerge, regenerateSummary, requeueSummary, subscribeToAgentEvents, fetchSessions, type ChangeDetail, type ChangeStatus, type ChangeEvent, type AgentSession, type AgentSessionEvent } from "@/lib/api";
+import { fetchChange, fetchDiff, regenerateSummary, requeueSummary, subscribeToAgentEvents, fetchSessions, type ChangeDetail, type ChangeStatus, type ChangeEvent, type AgentSession, type AgentSessionEvent } from "@/lib/api";
 
 interface SummaryGeneratorMetadata {
   action_id?: string;
@@ -142,12 +142,12 @@ function timeAgo(dateStr: string): string {
 
 const FORWARD_STATES: ChangeStatus[] = [
   "pushed", "scoring", "scored", "summarizing",
-  "ready_for_review", "approved", "merging", "merged",
+  "ready_for_review",
 ];
 
 function timelineDotColor(toStatus: ChangeStatus | null): string {
   if (!toStatus) return "bg-muted-foreground";
-  if (toStatus === "rejected" || toStatus === "closed" || toStatus === "merge_failed") return "bg-destructive";
+  if (toStatus === "superseded") return "bg-muted-foreground";
   if (FORWARD_STATES.includes(toStatus)) return "bg-primary";
   return "bg-muted-foreground";
 }
@@ -624,8 +624,6 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [change, setChange] = useState<ChangeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [approving, setApproving] = useState(false);
-  const [retrying, setRetrying] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
   const [diff, setDiff] = useState<string | null>(null);
@@ -689,18 +687,6 @@ export function ChangeDetailPage() {
       .catch(() => {}); // diff is optional — don't block the page
   }, [id]);
 
-  const handleApprove = async () => {
-    if (!change) return;
-    setApproving(true);
-    try {
-      await approveChange(change.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Approve failed");
-    } finally {
-      setApproving(false);
-    }
-  };
-
   const handleRegenerateSummary = async () => {
     if (!change) return;
     setRegenerating(true);
@@ -710,18 +696,6 @@ export function ChangeDetailPage() {
       setError(err instanceof Error ? err.message : "Regenerate failed");
     } finally {
       setRegenerating(false);
-    }
-  };
-
-  const handleRetryMerge = async () => {
-    if (!change) return;
-    setRetrying(true);
-    try {
-      await retryMerge(change.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Retry failed");
-    } finally {
-      setRetrying(false);
     }
   };
 
@@ -768,43 +742,12 @@ export function ChangeDetailPage() {
 
       <LogViewer changeId={change.id} isSummarizing={change.status === "summarizing"} />
 
-      {change.status === "ready_for_review" && (
-        <div className="flex gap-2">
-          <Button onClick={handleApprove} disabled={approving}>
-            {approving ? "Approving..." : "Approve & Merge"}
-          </Button>
-        </div>
-      )}
-
       {change.status === "scored" && (
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleRequeueSummary} disabled={requeueing}>
             {requeueing ? "Requeueing..." : "Requeue Summary"}
           </Button>
         </div>
-      )}
-
-      {change.status === "merge_failed" && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-destructive">Merge failed</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {change.events
-                    .filter((e) => e.event_type === "merge_failed")
-                    .slice(-1)
-                    .map((e) => {
-                      try { return JSON.parse(e.metadata ?? "{}").error; } catch { return null; }
-                    })[0] || "Unknown error"}
-                </p>
-              </div>
-              <Button onClick={handleRetryMerge} disabled={retrying} variant="destructive" size="sm">
-                {retrying ? "Retrying..." : "Retry Merge"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {change.summary && (() => {

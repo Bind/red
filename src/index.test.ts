@@ -43,7 +43,7 @@ describe("App integration", () => {
     const res = await app.fetch(new Request("http://localhost/api/velocity"));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.merged).toBe(0);
+    expect(json.summarized).toBe(0);
     expect(json.pending_review).toBe(0);
   });
 

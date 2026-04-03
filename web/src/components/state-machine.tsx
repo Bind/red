@@ -6,27 +6,19 @@ const STATES: { id: ChangeStatus; label: string }[] = [
   { id: "scoring", label: "scoring" },
   { id: "scored", label: "scored" },
   { id: "summarizing", label: "summarizing" },
-  { id: "ready_for_review", label: "review" },
-  { id: "approved", label: "approved" },
-  { id: "merging", label: "merging" },
-  { id: "merged", label: "merged" },
+  { id: "ready_for_review", label: "ready" },
 ];
 
 const BRANCHES: { id: ChangeStatus; label: string; afterIdx: number }[] = [
-  { id: "rejected", label: "rejected", afterIdx: 4 },       // branches off ready_for_review
-  { id: "merge_failed", label: "merge failed", afterIdx: 6 }, // branches off merging
+  { id: "superseded", label: "superseded", afterIdx: 1 },
 ];
 
-// Order for determining "past" states
 const STATE_ORDER: ChangeStatus[] = [
   "pushed",
   "scoring",
   "scored",
   "summarizing",
   "ready_for_review",
-  "approved",
-  "merging",
-  "merged",
 ];
 
 function getStateIndex(status: ChangeStatus): number {
@@ -80,7 +72,7 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
         })}
       </div>
 
-      {/* Branch states (rejected, merge_failed) */}
+      {/* Branch states */}
       {BRANCHES.map((branch) => (
         <div key={branch.id} className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground/40 sm:inline hidden">↳</span>

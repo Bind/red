@@ -79,4 +79,15 @@ describe("LocalGitProvider", () => {
     expect(branches?.some((branch) => branch.name === "main")).toBe(true);
     expect(branches?.some((branch) => branch.name === "feature/test")).toBe(true);
   });
+
+  test("merges a feature branch into the base branch", async () => {
+    const result = await provider.mergeChange?.("owner", "repo", "main", "feature/test");
+    expect(result?.strategy).toBe("merge_commit");
+
+    await git(["fetch", "origin"], workDir);
+    await git(["checkout", "main"], workDir);
+    await git(["reset", "--hard", "origin/main"], workDir);
+    const content = await Bun.file(join(workDir, "README.md")).text();
+    expect(content).toContain("feature");
+  });
 });

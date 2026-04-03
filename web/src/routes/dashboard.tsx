@@ -2,17 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -27,7 +16,6 @@ import {
   fetchReviewQueue,
   fetchRepos,
   fetchBranches,
-  createPR,
   type Change,
   type Velocity,
   type Branch,
@@ -48,16 +36,12 @@ function timeAgo(dateStr: string): string {
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
-    case "merged":
-    case "approved":
-      return "default";
-    case "rejected":
-    case "closed":
-      return "destructive";
     case "ready_for_review":
     case "scoring":
     case "summarizing":
       return "secondary";
+    case "superseded":
+      return "outline";
     default:
       return "outline";
   }
@@ -84,15 +68,6 @@ export function Dashboard() {
   const [branches, setBranches] = useState<Record<string, Branch[]>>({});
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [branchesError, setBranchesError] = useState(false);
-
-  // PR creation dialog state
-  const [prDialogOpen, setPrDialogOpen] = useState(false);
-  const [prRepo, setPrRepo] = useState("");
-  const [prBranch, setPrBranch] = useState("");
-  const [prTitle, setPrTitle] = useState("");
-  const [prBody, setPrBody] = useState("");
-  const [prSubmitting, setPrSubmitting] = useState(false);
-  const [prError, setPrError] = useState<string | null>(null);
 
   const loadQueue = useCallback(() => {
     fetchReviewQueue()
@@ -143,44 +118,21 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [loadQueue, loadVelocity, loadBranches]);
 
-  function openPrDialog(repo: string, branch: string) {
-    setPrRepo(repo);
-    setPrBranch(branch);
-    setPrTitle(branch);
-    setPrBody("");
-    setPrError(null);
-    setPrDialogOpen(true);
-  }
-
-  async function handleCreatePR() {
-    setPrSubmitting(true);
-    setPrError(null);
-    try {
-      await createPR(prRepo, prBranch, prTitle, prBody || undefined);
-      setPrDialogOpen(false);
-      loadBranches();
-    } catch (err) {
-      setPrError(err instanceof Error ? err.message : "Failed to create PR");
-    } finally {
-      setPrSubmitting(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
-      {/* Velocity cards */}
+      {/* Queue cards */}
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Merged (24h)
+              Summarized (24h)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {velocityError ? (
               <p className="text-3xl font-bold text-muted-foreground">&mdash;</p>
             ) : velocity ? (
-              <p className="text-3xl font-bold text-primary">{velocity.merged}</p>
+              <p className="text-3xl font-bold text-primary">{velocity.summarized}</p>
             ) : (
               <Skeleton className="h-9 w-16" />
             )}
@@ -320,7 +272,6 @@ export function Dashboard() {
                       <TableHead>Branch</TableHead>
                       <TableHead>Last Commit</TableHead>
                       <TableHead>Pipeline Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -342,25 +293,12 @@ export function Dashboard() {
                           {timeAgo(branch.commit.timestamp)}
                         </TableCell>
                         <TableCell>
-                          {branch.has_open_pr ? (
-                            <Badge variant="default">PR #{branch.change?.pr_number}</Badge>
-                          ) : branch.change ? (
+                          {branch.change ? (
                             <Badge variant={statusVariant(branch.change.status)}>
                               {branch.change.status}
                             </Badge>
                           ) : (
                             <span className="text-sm text-muted-foreground">No activity</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {!branch.has_open_pr && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openPrDialog(repo, branch.name)}
-                            >
-                              Open PR
-                            </Button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -372,49 +310,6 @@ export function Dashboard() {
           </Card>
         ))
       )}
-
-      {/* Create PR Dialog */}
-      <Dialog open={prDialogOpen} onOpenChange={setPrDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Open Pull Request</DialogTitle>
-            <DialogDescription>
-              Create a PR for <span className="font-mono">{prBranch}</span> on{" "}
-              <span className="font-mono">{prRepo}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
-              <Input
-                value={prTitle}
-                onChange={(e) => setPrTitle(e.target.value)}
-                placeholder="PR title"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
-              <Textarea
-                value={prBody}
-                onChange={(e) => setPrBody(e.target.value)}
-                placeholder="Optional description"
-                rows={4}
-              />
-            </div>
-            {prError && (
-              <p className="text-sm text-destructive">{prError}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPrDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreatePR} disabled={prSubmitting || !prTitle.trim()}>
-              {prSubmitting ? "Creating..." : "Create PR"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

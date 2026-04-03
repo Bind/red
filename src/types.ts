@@ -4,12 +4,6 @@
  * Change lifecycle state machine:
  *
  *   pushed → scoring → scored → summarizing → ready_for_review
- *                                                 ↓           ↓
- *                                             approved    rejected
- *                                                 ↓
- *                                             merging → merged
- *                                                 ↓
- *                                              closed
  *
  *   Any state → superseded (new push to same branch)
  */

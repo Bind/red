@@ -4,12 +4,6 @@ export type ChangeStatus =
   | "scored"
   | "summarizing"
   | "ready_for_review"
-  | "approved"
-  | "rejected"
-  | "merging"
-  | "merge_failed"
-  | "merged"
-  | "closed"
   | "superseded";
 
 export type ConfidenceLevel = "safe" | "needs_review" | "critical";
@@ -28,7 +22,6 @@ export interface Change {
   branch: string;
   base_branch: string;
   head_sha: string;
-  pr_number: number | null;
   status: ChangeStatus;
   confidence: ConfidenceLevel | null;
   created_by: CreatedBy;
@@ -53,7 +46,7 @@ export interface ChangeDetail extends Change {
 }
 
 export interface Velocity {
-  merged: number;
+  summarized: number;
   pending_review: number;
 }
 
@@ -86,14 +79,6 @@ export async function fetchDiff(id: number): Promise<string> {
   return res.text();
 }
 
-export async function approveChange(id: number): Promise<void> {
-  const res = await fetch(`/api/changes/${id}/approve`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(body.error ?? `API error: ${res.status}`);
-  }
-}
-
 export async function regenerateSummary(id: number): Promise<void> {
   const res = await fetch(`/api/changes/${id}/regenerate-summary`, { method: "POST" });
   if (!res.ok) {
@@ -110,14 +95,6 @@ export async function requeueSummary(id: number): Promise<void> {
   }
 }
 
-export async function retryMerge(id: number): Promise<void> {
-  const res = await fetch(`/api/changes/${id}/retry-merge`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(body.error ?? `API error: ${res.status}`);
-  }
-}
-
 export function fetchRepos(): Promise<string[]> {
   return apiFetch("/api/repos");
 }
@@ -125,25 +102,11 @@ export function fetchRepos(): Promise<string[]> {
 export interface Branch {
   name: string;
   commit: { id: string; message: string; timestamp: string };
-  change: { id: number; status: ChangeStatus; pr_number: number | null } | null;
-  has_open_pr: boolean;
+  change: { id: number; status: ChangeStatus } | null;
 }
 
 export function fetchBranches(repo: string): Promise<Branch[]> {
   return apiFetch(`/api/branches?repo=${encodeURIComponent(repo)}`);
-}
-
-export async function createPR(repo: string, branch: string, title: string, body?: string): Promise<{ number: number }> {
-  const res = await fetch("/api/branches/create-pr", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo, branch, title, body }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(data.error ?? `API error: ${res.status}`);
-  }
-  return res.json();
 }
 
 export type AgentSessionStatus = "running" | "completed" | "failed";

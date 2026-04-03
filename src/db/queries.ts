@@ -175,11 +175,11 @@ export class ChangeQueries {
     ).get(repo, branch) as Change | null;
   }
 
-  /** Merge velocity: count of changes merged in the last N hours. */
-  mergeVelocity(hours: number = 24, org_id?: string): { merged: number; pending_review: number } {
+  /** Queue stats for the last N hours. */
+  mergeVelocity(hours: number = 24, org_id?: string): { summarized: number; pending_review: number } {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-    let mergedQuery = "SELECT COUNT(*) as count FROM changes WHERE status = 'merged' AND updated_at >= ?";
+    let mergedQuery = "SELECT COUNT(*) as count FROM changes WHERE status = 'ready_for_review' AND updated_at >= ?";
     let pendingQuery = "SELECT COUNT(*) as count FROM changes WHERE status IN ('ready_for_review', 'scored') ";
     const mergedParams: SQLQueryBindings[] = [since];
     const pendingParams: SQLQueryBindings[] = [];
@@ -191,10 +191,10 @@ export class ChangeQueries {
       pendingParams.push(org_id);
     }
 
-    const merged = this.db.prepare(mergedQuery).get(...mergedParams) as { count: number };
+    const summarized = this.db.prepare(mergedQuery).get(...mergedParams) as { count: number };
     const pending = this.db.prepare(pendingQuery).get(...pendingParams) as { count: number };
 
-    return { merged: merged.count, pending_review: pending.count };
+    return { summarized: summarized.count, pending_review: pending.count };
   }
 }
 

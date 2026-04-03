@@ -1,7 +1,7 @@
 import type { Change, NotificationConfig, ConfidenceLevel } from "../types";
 
 export interface NotificationPayload {
-  event: "change_ready" | "change_critical" | "change_merged";
+  event: "change_ready" | "change_critical";
   change: {
     id: number;
     repo: string;
