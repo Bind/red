@@ -64,22 +64,31 @@ export interface CommitDiffRange {
   baseRef: string;
   headRef: string;
   pathPrefix?: string;
+  includePatch?: boolean;
 }
 
 export interface CommitDiffFile {
   path: string;
   status: "added" | "modified" | "deleted" | "renamed";
+  additions: number;
+  deletions: number;
+  patch?: string;
 }
 
 export interface CommitDiffResult {
   baseRef: string;
   headRef: string;
   files: CommitDiffFile[];
+  totalAdditions: number;
+  totalDeletions: number;
+  patch?: string;
 }
 
 export interface RefInfo {
   name: string;
   sha: string;
+  message?: string;
+  timestamp?: string;
 }
 
 export interface ListFilesResult {
@@ -97,7 +106,9 @@ export interface Repo {
   getRemoteUrl(options: RemoteUrlOptions): Promise<RemoteUrlResult>;
   createCommit(options: CreateCommitOptions): CommitBuilder;
   getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult>;
+  readTextFile(options: { ref: string; path: string }): Promise<string | null>;
   listRefs(): Promise<RefInfo[]>;
+  listBranches(): Promise<Array<RefInfo & { protected?: boolean }>>;
   resolveRef(name: string): Promise<RefInfo | null>;
   createBranch(name: string, fromSha: string): Promise<RefInfo>;
   updateBranch(name: string, toSha: string, expectedOldSha?: string): Promise<RefInfo>;
@@ -107,6 +118,7 @@ export interface Repo {
 export interface GitStorage {
   createRepo(options: CreateRepoOptions): Promise<Repo>;
   getRepo(id: string): Promise<Repo | null>;
+  getRepoByName(owner: string, name: string): Promise<Repo | null>;
   listRepos(): Promise<RepoInfo[]>;
 }
 
@@ -145,10 +157,13 @@ export function describeExperimentArchitecture() {
       coreMethods: [
         "createRepo",
         "getRepo",
+        "getRepoByName",
         "getRemoteUrl",
         "createCommit",
         "getCommitDiff",
+        "readTextFile",
         "listRefs",
+        "listBranches",
         "resolveRef",
       ],
     },

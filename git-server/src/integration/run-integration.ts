@@ -34,6 +34,8 @@ export async function runIntegration() {
       defaultBranch: "main",
       visibility: "private",
     });
+    const repoInfo = await repo.info();
+    const lookedUpRepo = await store.getRepoByName(repoInfo.owner, repoInfo.name);
 
     const remote = await repo.getRemoteUrl({
       actorId: "integration-test",
@@ -81,7 +83,10 @@ export async function runIntegration() {
     const clientDiff = await repo.getCommitDiff({
       baseRef: "refs/heads/main",
       headRef: "refs/heads/feature/client-push",
+      includePatch: true,
     });
+    const mainReadme = await repo.readTextFile({ ref: "refs/heads/main", path: "README.md" });
+    const missingFile = await repo.readTextFile({ ref: "refs/heads/main", path: "missing.txt" });
 
     const directCommit = await repo
       .createCommit({
@@ -100,8 +105,12 @@ export async function runIntegration() {
     const directDiff = await repo.getCommitDiff({
       baseRef: "refs/heads/main",
       headRef: directCommit.branch,
+      includePatch: true,
     });
     const directFiles = await repo.listFiles(directCommit.branch);
+    const directNestedFile = await repo.readTextFile({ ref: directCommit.branch, path: "nested/demo.ts" });
+    const refs = await repo.listRefs();
+    const branches = await repo.listBranches();
     const secondMain = await secondRepo.resolveRef("refs/heads/main");
     const secondFiles = await secondRepo.listFiles("refs/heads/main");
 
@@ -125,21 +134,27 @@ export async function runIntegration() {
       server: {
         publicUrl: server.publicUrl,
       },
-      repo: await repo.info(),
+      repo: repoInfo,
       secondRepo: await secondRepo.info(),
+      lookedUpRepo: lookedUpRepo ? await lookedUpRepo.info() : null,
       remote,
       secondRemote,
       readRemote,
+      refs,
+      branches,
       clientPush: {
         localHeadSha: clientHeadSha,
         resolvedRef: clientRef,
         diff: clientDiff,
+        readme: mainReadme,
+        missingFile,
       },
       directCommit: {
         result: directCommit,
         resolvedRef: directRef,
         diff: directDiff,
         files: directFiles,
+        nestedFile: directNestedFile,
       },
       clone: {
         headSha: clonedHead,
@@ -147,11 +162,22 @@ export async function runIntegration() {
       },
       checks: {
         mainResolved: mainRef !== null,
+        repoLookupMatches: lookedUpRepo !== null && (await lookedUpRepo.info()).id === repoInfo.id,
         clientPushResolved: clientRef?.sha === clientHeadSha,
         clientDiffHasFile: clientDiff.files.some((file) => file.path === "client.txt"),
+        clientDiffHasPatch: typeof clientDiff.patch === "string" && clientDiff.patch.includes("client.txt"),
+        clientDiffHasStats:
+          clientDiff.totalAdditions > 0 &&
+          clientDiff.files.some((file) => file.path === "client.txt" && file.additions > 0),
+        readTextFileWorks: mainReadme === "# integration repo",
+        missingFileReturnsNull: missingFile === null,
         directCommitResolved: directRef?.sha === directCommit.commitSha,
         directDiffHasFile: directDiff.files.some((file) => file.path === "sdk.txt"),
+        directDiffHasPatch: typeof directDiff.patch === "string" && directDiff.patch.includes("sdk.txt"),
         directListFilesIncludesNested: directFiles.paths.includes("nested/demo.ts"),
+        directReadTextFileWorks: directNestedFile === 'export const mode = "sdk";',
+        refsIncludeMetadata: refs.some((ref) => ref.name === "refs/heads/main" && !!ref.message && !!ref.timestamp),
+        branchesIncludeShortNames: branches.some((branch) => branch.name === "main" && !!branch.message && !!branch.timestamp),
         cloneMatchesMain: clonedHead === mainRef?.sha,
         secondRepoResolved: secondMain !== null,
         secondRepoIsolated: secondFiles.paths.includes("SECOND.md") && !secondFiles.paths.includes("README.md"),

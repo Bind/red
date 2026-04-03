@@ -1,8 +1,6 @@
-# Git SDK Lab
+# Git Server
 
-Isolated experiment for a git-backed SDK in the shape of managed Git storage systems such as `code.storage`.
-
-This lab is intentionally separate from the main `redc` app. It gives us a place to work out the SDK surface and local execution model before we decide whether any of it should move into production code.
+Git-backed storage service and SDK in the shape of managed Git storage systems such as `code.storage`.
 
 ## Goals
 
@@ -127,17 +125,41 @@ Main interfaces:
 - `GitStorage`
   - `createRepo(options)`
   - `getRepo(id)`
+  - `getRepoByName(owner, name)`
   - `listRepos()`
 - `Repo`
   - `info()`
   - `getRemoteUrl(options)`
   - `createCommit(options)`
   - `getCommitDiff(range)`
+  - `readTextFile({ ref, path })`
   - `listRefs()`
+  - `listBranches()`
   - `resolveRef(name)`
   - `createBranch(name, fromSha)`
   - `updateBranch(name, toSha, expectedOldSha?)`
   - `listFiles(ref?)`
+
+Repo identity is stable and canonical:
+
+- `repo.id === ${owner}/${name}`
+
+Behavior notes:
+
+- `readTextFile(...)`
+  - returns UTF-8 text
+  - returns `null` when the file does not exist at that ref
+  - throws for real ref or process failures
+- `getCommitDiff(...)`
+  - supports `includePatch?: boolean`
+  - returns per-file `additions` and `deletions`
+  - returns top-level `totalAdditions` and `totalDeletions`
+  - can return both per-file and top-level unified patch text
+- `listBranches()`
+  - returns short branch names like `main`
+  - currently sets `protected: false`
+- `RefInfo.timestamp`
+  - commit timestamp in ISO-8601
 
 Current implementation notes:
 
@@ -152,13 +174,16 @@ The current experiment is organized around:
 - `GitStorage`
   - `createRepo(...)`
   - `getRepo(...)`
+  - `getRepoByName(...)`
   - `listRepos()`
 - `Repo`
   - `info()`
   - `getRemoteUrl(...)`
   - `createCommit(...)`
   - `getCommitDiff(...)`
+  - `readTextFile(...)`
   - `listRefs()`
+  - `listBranches()`
   - `resolveRef(...)`
   - `createBranch(...)`
   - `updateBranch(...)`

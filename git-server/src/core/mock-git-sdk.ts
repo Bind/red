@@ -57,6 +57,10 @@ export class MockGitSdk implements GitStorageAdapter {
     });
   }
 
+  async getRepoByName(owner: string, name: string): Promise<Repo | null> {
+    return this.getRepo(`${owner}/${name}`);
+  }
+
   async listRepos(): Promise<RepoInfo[]> {
     return [];
   }
@@ -113,29 +117,79 @@ class MockGitSdkRepo implements Repo {
   }
 
   async getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult> {
+    const filePath = range.pathPrefix ? `${range.pathPrefix}/placeholder.ts` : "README.md";
     return {
       baseRef: range.baseRef,
       headRef: range.headRef,
-      files: range.pathPrefix
-        ? [{ path: `${range.pathPrefix}/placeholder.ts`, status: "modified" }]
-        : [{ path: "README.md", status: "modified" }],
+      files: [
+        {
+          path: filePath,
+          status: "modified",
+          additions: 4,
+          deletions: 1,
+          patch: range.includePatch ? `diff --git a/${filePath} b/${filePath}\n@@ -1 +1,4 @@\n-old\n+new\n` : undefined,
+        },
+      ],
+      totalAdditions: 4,
+      totalDeletions: 1,
+      patch: range.includePatch ? `diff --git a/${filePath} b/${filePath}\n@@ -1 +1,4 @@\n-old\n+new\n` : undefined,
     };
   }
 
+  async readTextFile(options: { ref: string; path: string }): Promise<string | null> {
+    void options.ref;
+    if (options.path === "missing.txt") return null;
+    return `mock contents for ${options.path}\n`;
+  }
+
   async listRefs(): Promise<RefInfo[]> {
-    return [{ name: `refs/heads/${this.repoInfo.defaultBranch}`, sha: "git-sdk-main-sha" }];
+    return [
+      {
+        name: `refs/heads/${this.repoInfo.defaultBranch}`,
+        sha: "git-sdk-main-sha",
+        message: "mock main commit",
+        timestamp: "2026-01-01T00:00:00Z",
+      },
+    ];
+  }
+
+  async listBranches(): Promise<Array<RefInfo & { protected?: boolean }>> {
+    return [
+      {
+        name: this.repoInfo.defaultBranch,
+        sha: "git-sdk-main-sha",
+        message: "mock main commit",
+        timestamp: "2026-01-01T00:00:00Z",
+        protected: false,
+      },
+    ];
   }
 
   async resolveRef(name: string): Promise<RefInfo | null> {
-    return { name, sha: "git-sdk-resolved-sha" };
+    return {
+      name: name.startsWith("refs/") ? name : `refs/heads/${name}`,
+      sha: "git-sdk-resolved-sha",
+      message: "mock resolved commit",
+      timestamp: "2026-01-01T00:00:00Z",
+    };
   }
 
   async createBranch(name: string, fromSha: string): Promise<RefInfo> {
-    return { name: `refs/heads/${name}`, sha: fromSha };
+    return {
+      name: `refs/heads/${name}`,
+      sha: fromSha,
+      message: "mock branch commit",
+      timestamp: "2026-01-01T00:00:00Z",
+    };
   }
 
   async updateBranch(name: string, toSha: string, _expectedOldSha?: string): Promise<RefInfo> {
-    return { name: `refs/heads/${name}`, sha: toSha };
+    return {
+      name: `refs/heads/${name}`,
+      sha: toSha,
+      message: "mock branch commit",
+      timestamp: "2026-01-01T00:00:00Z",
+    };
   }
 
   async listFiles(_ref?: string): Promise<ListFilesResult> {
