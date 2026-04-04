@@ -147,65 +147,76 @@ jwks-auth-lab-serve:
 jwks-auth-lab-test:
     cd experiments/jwks-auth-lab && bun test
 
-# Install dependencies for the Better Auth auth experiment
-auth-lab-install:
-    cd experiments/auth-lab && bun install
+# Install dependencies for the auth service
+auth-install:
+    cd auth && bun install
 
-# Start the Better Auth auth experiment server
-auth-lab-serve:
-    cd experiments/auth-lab && bun run src/index.ts
+# Start the auth service
+auth-serve:
+    cd auth && bun run src/index.ts
 
-# Run tests for the Better Auth auth experiment
-auth-lab-test:
-    cd experiments/auth-lab && bun test
+# Run tests for the auth service
+auth-test:
+    cd auth && bun test
 
-# Lint the Better Auth auth experiment with Biome
-auth-lab-lint:
-    cd experiments/auth-lab && bun run lint
+# Lint the auth service with Biome
+auth-lint:
+    cd auth && bun run lint
 
-# Format the Better Auth auth experiment with Biome
-auth-lab-format:
-    cd experiments/auth-lab && bun run format
+# Format the auth service with Biome
+auth-format:
+    cd auth && bun run format
 
-# Generate the local-only auth-lab compose signing key if needed
-auth-lab-compose-keygen:
+# Generate the local-only auth compose signing key if needed
+auth-compose-keygen:
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p experiments/auth-lab/compose
-    if [[ -f experiments/auth-lab/compose/signing-key.private.jwk ]]; then
+    mkdir -p auth/compose
+    if [[ -f auth/compose/signing-key.private.jwk ]]; then
         exit 0
     fi
-    cd experiments/auth-lab && bun --eval 'import { writeFileSync } from "node:fs"; import { generateKeyPairSync } from "node:crypto"; import { exportJWK } from "jose"; const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 }); const jwk = await exportJWK(privateKey); writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);'
+    cd auth && bun --eval 'import { writeFileSync } from "node:fs"; import { generateKeyPairSync } from "node:crypto"; import { exportJWK } from "jose"; const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 }); const jwk = await exportJWK(privateKey); writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);'
 
-# Bring up the auth-lab compose stack
-auth-lab-compose-up:
-    just auth-lab-compose-keygen
-    docker compose -f experiments/auth-lab/docker-compose.yml up --build -d auth-db auth
+# Bring up the auth compose stack
+auth-compose-up:
+    just auth-compose-keygen
+    docker compose -f auth/docker-compose.yml up --build -d auth-db auth
     until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
 
-# Tear down the auth-lab compose stack
-auth-lab-compose-down:
-    docker compose -f experiments/auth-lab/docker-compose.yml down -v --remove-orphans
+# Tear down the auth compose stack
+auth-compose-down:
+    docker compose -f auth/docker-compose.yml down -v --remove-orphans
 
-# Run auth-lab E2E tests against the compose stack
-auth-lab-compose-e2e:
+# Run auth E2E tests against the compose stack
+auth-compose-e2e:
     #!/usr/bin/env bash
     set -euo pipefail
     repo_root="$(pwd)"
-    compose_file="$repo_root/experiments/auth-lab/docker-compose.yml"
-    just auth-lab-compose-keygen
+    compose_file="$repo_root/auth/docker-compose.yml"
+    just auth-compose-keygen
     docker compose -f "$compose_file" up --build -d auth-db auth
     cleanup() {
         docker compose -f "$compose_file" down -v --remove-orphans
     }
     trap cleanup EXIT
     until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
-    cd experiments/auth-lab && \
+    cd auth && \
         AUTH_LAB_E2E_BASE_URL=http://127.0.0.1:4020 \
         AUTH_LAB_E2E_DB_URL=postgres://auth_lab:auth_lab_password@127.0.0.1:5433/auth_lab \
         AUTH_LAB_E2E_COMPOSE_FILE=./docker-compose.yml \
         AUTH_LAB_BETTER_AUTH_SECRET=auth-lab-compose-secret \
         bun test src/test/compose-e2e.test.ts
+
+# Backwards-compatible aliases for the old experiment name
+auth-lab-install: auth-install
+auth-lab-serve: auth-serve
+auth-lab-test: auth-test
+auth-lab-lint: auth-lint
+auth-lab-format: auth-format
+auth-lab-compose-keygen: auth-compose-keygen
+auth-lab-compose-up: auth-compose-up
+auth-lab-compose-down: auth-compose-down
+auth-lab-compose-e2e: auth-compose-e2e
 
 # Start an opencode server rooted at a given repo path
 opencode-lab-serve repo_path *args:
