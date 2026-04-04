@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { SharedSecretGitAuth } from "./auth";
 
 interface GittyWasm {
   advertiseRefs(service: string): Uint8Array;
@@ -22,6 +22,7 @@ const accessKeyId = requireEnv("GIT_SERVER_S3_ACCESS_KEY_ID");
 const secretAccessKey = requireEnv("GIT_SERVER_S3_SECRET_ACCESS_KEY");
 const sigv4 = `aws:amz:${region}:s3`;
 const authConfig = loadAuthConfig();
+const authProvider = new SharedSecretGitAuth(authConfig);
 
 const wasmModule = await loadWasmModule();
 
@@ -112,48 +113,11 @@ function loadAuthConfig(): AuthConfig {
 function authorizeRequest(request: Request, repoId: string) {
   if (!authConfig.adminUsername && !authConfig.tokenSecret) return null;
 
-  const requiredAccess = getRequiredAccess(request);
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Basic ")) {
-    return unauthorized("Missing basic auth credentials");
-  }
-
-  let username = "";
-  let password = "";
-  try {
-    const decoded = atob(authorization.slice("Basic ".length));
-    const separator = decoded.indexOf(":");
-    if (separator === -1) return unauthorized("Malformed basic auth credentials");
-    username = decoded.slice(0, separator);
-    password = decoded.slice(separator + 1);
-  } catch {
-    return unauthorized("Malformed basic auth credentials");
-  }
-
-  if (
-    authConfig.adminUsername &&
-    authConfig.adminPassword &&
-    username === authConfig.adminUsername &&
-    password === authConfig.adminPassword
-  ) {
-    return null;
-  }
-
-  const token = verifyAccessToken(password, authConfig.tokenSecret);
-  if (!token) {
-    return unauthorized("Invalid access token");
-  }
-  if (token.sub !== username) {
-    return unauthorized("Credential subject mismatch");
-  }
-  if (token.repoId !== repoId) {
-    return unauthorized(`Credentials do not allow access to ${repoId}`);
-  }
-  if (!accessAllows(token.access, requiredAccess)) {
-    return unauthorized(`Credentials do not allow ${requiredAccess} access to ${repoId}`);
-  }
-
-  return null;
+  const decision = authProvider.authorizeBasicAuth(request.headers.get("authorization"), {
+    repoId,
+    requiredAccess: getRequiredAccess(request),
+  });
+  return decision.ok ? null : unauthorized(decision.reason);
 }
 
 function getRequiredAccess(request: Request): "read" | "write" {
@@ -166,59 +130,6 @@ function getRequiredAccess(request: Request): "read" | "write" {
     if (service === "git-receive-pack") return "write";
   }
   return "read";
-}
-
-function accessAllows(granted: "read" | "write", required: "read" | "write") {
-  return granted === "write" || granted === required;
-}
-
-interface AccessTokenPayload {
-  v: 1;
-  sub: string;
-  repoId: string;
-  access: "read" | "write";
-  exp: number;
-}
-
-function verifyAccessToken(token: string, secret?: string): AccessTokenPayload | null {
-  if (!secret) return null;
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [encodedPayload, encodedSignature] = parts;
-
-  let payload: AccessTokenPayload;
-  try {
-    payload = JSON.parse(decodeBase64Url(encodedPayload)) as AccessTokenPayload;
-  } catch {
-    return null;
-  }
-
-  if (payload.v !== 1) return null;
-  if (Date.now() >= payload.exp * 1000) return null;
-
-  const expectedSignature = signTokenPayload(encodedPayload, secret);
-  try {
-    if (
-      !timingSafeEqual(
-        Buffer.from(encodedSignature, "base64url"),
-        Buffer.from(expectedSignature, "base64url")
-      )
-    ) {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-
-  return payload;
-}
-
-function signTokenPayload(encodedPayload: string, secret: string) {
-  return createHmac("sha256", secret).update(encodedPayload).digest("base64url");
-}
-
-function decodeBase64Url(value: string) {
-  return Buffer.from(value, "base64url").toString("utf8");
 }
 
 function requireEnv(name: string) {

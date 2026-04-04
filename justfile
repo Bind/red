@@ -159,8 +159,27 @@ auth-lab-serve:
 auth-lab-test:
     cd experiments/auth-lab && bun test
 
+# Lint the Better Auth auth experiment with Biome
+auth-lab-lint:
+    cd experiments/auth-lab && bun run lint
+
+# Format the Better Auth auth experiment with Biome
+auth-lab-format:
+    cd experiments/auth-lab && bun run format
+
+# Generate the local-only auth-lab compose signing key if needed
+auth-lab-compose-keygen:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p experiments/auth-lab/compose
+    if [[ -f experiments/auth-lab/compose/signing-key.private.jwk ]]; then
+        exit 0
+    fi
+    cd experiments/auth-lab && bun --eval 'import { writeFileSync } from "node:fs"; import { generateKeyPairSync } from "node:crypto"; import { exportJWK } from "jose"; const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 }); const jwk = await exportJWK(privateKey); writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);'
+
 # Bring up the auth-lab compose stack
 auth-lab-compose-up:
+    just auth-lab-compose-keygen
     docker compose -f experiments/auth-lab/docker-compose.yml up --build -d auth-db auth
     until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
 
@@ -174,6 +193,7 @@ auth-lab-compose-e2e:
     set -euo pipefail
     repo_root="$(pwd)"
     compose_file="$repo_root/experiments/auth-lab/docker-compose.yml"
+    just auth-lab-compose-keygen
     docker compose -f "$compose_file" up --build -d auth-db auth
     cleanup() {
         docker compose -f "$compose_file" down -v --remove-orphans
@@ -185,7 +205,7 @@ auth-lab-compose-e2e:
         AUTH_LAB_E2E_DB_URL=postgres://auth_lab:auth_lab_password@127.0.0.1:5433/auth_lab \
         AUTH_LAB_E2E_COMPOSE_FILE=./docker-compose.yml \
         AUTH_LAB_BETTER_AUTH_SECRET=auth-lab-compose-secret \
-        bun test src/compose-e2e.test.ts
+        bun test src/test/compose-e2e.test.ts
 
 # Start an opencode server rooted at a given repo path
 opencode-lab-serve repo_path *args:

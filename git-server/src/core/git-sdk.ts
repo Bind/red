@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -18,12 +17,15 @@ import type {
   Repo,
   RepoInfo,
 } from "./api";
+import type { GitCredentialIssuer } from "./auth";
+import { SharedSecretGitAuth } from "./auth";
 import { runCommand } from "./dev-stack";
 
 export interface GitSdkOptions {
   publicUrl: string;
   defaultOwner: string;
   authTokenSecret?: string;
+  credentialIssuer?: GitCredentialIssuer;
 }
 
 export class GitSdk implements GitStorageAdapter {
@@ -74,17 +76,17 @@ class GitSdkRepo implements Repo {
     const repoPath = `${this.repoInfo.owner}/${this.repoInfo.name}.git`;
     const url = `${this.adapterOptions.publicUrl}/${repoPath}`;
     const access = options.access ?? "write";
-    const credentials = this.adapterOptions.authTokenSecret
-      ? {
-          username: options.actorId,
-          password: mintAccessToken({
-            secret: this.adapterOptions.authTokenSecret,
-            actorId: options.actorId,
-            repoId: this.repoInfo.id,
-            access,
-            ttlSeconds: options.ttlSeconds ?? 3600,
-          }),
-        }
+    const issuer = this.adapterOptions.credentialIssuer
+      ?? (this.adapterOptions.authTokenSecret
+        ? new SharedSecretGitAuth({ tokenSecret: this.adapterOptions.authTokenSecret })
+        : null);
+    const credentials = issuer
+      ? issuer.issueRepoCredentials({
+          actorId: options.actorId,
+          repoId: this.repoInfo.id,
+          access,
+          ttlSeconds: options.ttlSeconds ?? 3600,
+        })
       : undefined;
     const authenticatedUrl = credentials ? addBasicAuth(url, credentials.username, credentials.password) : url;
     return {
@@ -370,25 +372,6 @@ function addBasicAuth(url: string, username: string, password: string) {
   target.username = username;
   target.password = password;
   return target.toString();
-}
-
-function mintAccessToken(options: {
-  secret: string;
-  actorId: string;
-  repoId: string;
-  access: "read" | "write";
-  ttlSeconds: number;
-}) {
-  const payload = {
-    v: 1,
-    sub: options.actorId,
-    repoId: options.repoId,
-    access: options.access,
-    exp: Math.floor(Date.now() / 1000) + options.ttlSeconds,
-  };
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", options.secret).update(encodedPayload).digest("base64url");
-  return `${encodedPayload}.${signature}`;
 }
 
 function parseNameStatusLine(line: string): CommitDiffFile | null {
