@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { generateClientSecret } from "../services/m2m/secret";
-import type { AuthLabServerConfig } from "../server";
+import { join } from "node:path";
+import type { AuthServerConfig } from "../server";
+import { generateClientSecret } from "../service/m2m/secret";
 
 function requiredPort(value: string | undefined, label: string): number {
   const port = Number.parseInt(value ?? "", 10);
@@ -61,7 +61,7 @@ function requiredBoolean(value: string | undefined, label: string): boolean {
   throw new Error(`${label} must be true or false`);
 }
 
-function loadDevConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
+function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   const port = Number.parseInt(env.AUTH_LAB_PORT ?? "4020", 10);
   if (!Number.isFinite(port) || port <= 0) {
     throw new Error(`AUTH_LAB_PORT must be a positive integer`);
@@ -81,7 +81,6 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
     .filter(Boolean);
 
   return {
-    mode: "dev",
     issuer,
     audience,
     hostname,
@@ -108,7 +107,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
   };
 }
 
-function loadComposeConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
+function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   const port = requiredPort(env.AUTH_LAB_PORT, "AUTH_LAB_PORT");
   const hostname = requiredString(env.AUTH_LAB_HOST, "AUTH_LAB_HOST");
   const issuer = requiredString(env.AUTH_LAB_ISSUER, "AUTH_LAB_ISSUER");
@@ -135,7 +134,6 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
   );
 
   return {
-    mode: "compose",
     issuer,
     audience,
     hostname,
@@ -165,14 +163,12 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
   };
 }
 
-export interface AuthLabRuntimeConfig extends AuthLabServerConfig {
-  mode: "dev" | "compose";
+export interface AuthRuntimeConfig extends AuthServerConfig {
   bootstrapClientSecret: string;
 }
 
-export function loadAuthLabConfig(env: NodeJS.ProcessEnv = process.env): AuthLabRuntimeConfig {
-  const mode = env.AUTH_LAB_CONFIG_MODE ?? "dev";
-  if (mode === "compose") {
+export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthRuntimeConfig {
+  if (env.AUTH_LAB_DB_URL) {
     return loadComposeConfig(env);
   }
   return loadDevConfig(env);

@@ -5,13 +5,13 @@
  * runtime implementation.
  */
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { AuthLabError } from "../../../utils/errors";
+import { AuthError } from "../../util/errors";
 import type {
   UserAccountState,
   UserMagicLinkPurpose,
   UserRecoveryFactorKind,
   UserSessionKind,
-} from "../../../utils/types";
+} from "../../util/types";
 
 export interface MagicLinkChallenge {
   token: string;
@@ -125,7 +125,7 @@ function touch(user: UserUser): UserUser {
 function requireSession(state: UserAuthPolicyState, sessionId: string): StoredSession {
   const session = state.sessionsById.get(sessionId);
   if (!session) {
-    throw new AuthLabError("invalid_session", "Unknown session", 401);
+    throw new AuthError("invalid_session", "Unknown session", 401);
   }
   return session;
 }
@@ -133,11 +133,11 @@ function requireSession(state: UserAuthPolicyState, sessionId: string): StoredSe
 function requireUser(state: UserAuthPolicyState, email: string): UserUser {
   const userId = state.usersByEmail.get(email);
   if (!userId) {
-    throw new AuthLabError("unknown_user", "User does not exist", 404);
+    throw new AuthError("unknown_user", "User does not exist", 404);
   }
   const user = state.usersById.get(userId);
   if (!user) {
-    throw new AuthLabError("unknown_user", "User does not exist", 404);
+    throw new AuthError("unknown_user", "User does not exist", 404);
   }
   return user;
 }
@@ -183,13 +183,13 @@ export function createUserAuthPolicy(): UserAuthPolicy {
   const ensureChallenge = (token: string): StoredMagicLinkChallenge => {
     const challenge = state.challengesByToken.get(token);
     if (!challenge) {
-      throw new AuthLabError("invalid_magic_link", "Unknown magic link", 401);
+      throw new AuthError("invalid_magic_link", "Unknown magic link", 401);
     }
     if (challenge.used) {
-      throw new AuthLabError("invalid_magic_link", "Magic link already used", 401);
+      throw new AuthError("invalid_magic_link", "Magic link already used", 401);
     }
     if (challenge.expiresAt < Date.now()) {
-      throw new AuthLabError("invalid_magic_link", "Magic link expired", 401);
+      throw new AuthError("invalid_magic_link", "Magic link expired", 401);
     }
     return challenge;
   };
@@ -198,7 +198,7 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     requestMagicLink(email: string) {
       const normalizedEmail = email.trim().toLowerCase();
       if (!normalizedEmail) {
-        throw new AuthLabError("invalid_request", "Email is required", 400);
+        throw new AuthError("invalid_request", "Email is required", 400);
       }
 
       const userId = state.usersByEmail.get(normalizedEmail);
@@ -248,10 +248,10 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     authenticateWithPasskey(email: string, passkeyId: string) {
       const user = requireUser(state, email.trim().toLowerCase());
       if (user.state !== "active") {
-        throw new AuthLabError("account_not_active", "Passkey login is not available yet", 403);
+        throw new AuthError("account_not_active", "Passkey login is not available yet", 403);
       }
       if (!user.passkeys.includes(passkeyId)) {
-        throw new AuthLabError("invalid_passkey", "Unknown passkey", 401);
+        throw new AuthError("invalid_passkey", "Unknown passkey", 401);
       }
 
       const session: StoredSession = {
@@ -270,15 +270,15 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     registerPrimaryPasskey(sessionId: string, passkeyId: string) {
       const session = requireSession(state, sessionId);
       if (session.kind !== "bootstrap" || !session.magicLinkVerified) {
-        throw new AuthLabError("forbidden", "Magic-link bootstrap session required", 403);
+        throw new AuthError("forbidden", "Magic-link bootstrap session required", 403);
       }
 
       const user = state.usersById.get(session.userId);
       if (!user || user.state !== "pending_passkey") {
-        throw new AuthLabError("forbidden", "Account is not waiting for first passkey", 403);
+        throw new AuthError("forbidden", "Account is not waiting for first passkey", 403);
       }
       if (user.passkeys.includes(passkeyId)) {
-        throw new AuthLabError("conflict", "Passkey already exists", 409);
+        throw new AuthError("conflict", "Passkey already exists", 409);
       }
 
       user.passkeys.push(passkeyId);
@@ -290,20 +290,20 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     enrollRecoveryBundle(sessionId: string, input: TotpEnrollment) {
       const session = requireSession(state, sessionId);
       if (session.kind !== "bootstrap" || !session.magicLinkVerified) {
-        throw new AuthLabError("forbidden", "Bootstrap session required", 403);
+        throw new AuthError("forbidden", "Bootstrap session required", 403);
       }
       const user = state.usersById.get(session.userId);
       if (!user || user.state !== "pending_recovery_factor") {
-        throw new AuthLabError("forbidden", "Account is not waiting for recovery enrollment", 403);
+        throw new AuthError("forbidden", "Account is not waiting for recovery enrollment", 403);
       }
       if (!user.passkeys.length) {
-        throw new AuthLabError("forbidden", "Primary passkey required first", 403);
+        throw new AuthError("forbidden", "Primary passkey required first", 403);
       }
       if (!input.totpSecret.trim()) {
-        throw new AuthLabError("invalid_request", "TOTP secret is required", 400);
+        throw new AuthError("invalid_request", "TOTP secret is required", 400);
       }
       if (!input.backupCodes.length) {
-        throw new AuthLabError("invalid_request", "At least one backup code is required", 400);
+        throw new AuthError("invalid_request", "At least one backup code is required", 400);
       }
 
       user.totpSecret = input.totpSecret;
@@ -316,15 +316,15 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     verifyRecoveryFactor(sessionId: string, assertion: RecoveryAssertion) {
       const session = requireSession(state, sessionId);
       if (session.kind !== "recovery_challenge" || !session.magicLinkVerified) {
-        throw new AuthLabError("forbidden", "Recovery challenge session required", 403);
+        throw new AuthError("forbidden", "Recovery challenge session required", 403);
       }
 
       const user = state.usersById.get(session.userId);
       if (!user || user.state !== "active") {
-        throw new AuthLabError("forbidden", "Account is not active", 403);
+        throw new AuthError("forbidden", "Account is not active", 403);
       }
       if (!user.totpSecret && user.backupCodes.length === 0) {
-        throw new AuthLabError("forbidden", "Recovery factors are not enrolled", 403);
+        throw new AuthError("forbidden", "Recovery factors are not enrolled", 403);
       }
 
       const success =
@@ -340,11 +340,7 @@ export function createUserAuthPolicy(): UserAuthPolicy {
             })();
 
       if (!success) {
-        throw new AuthLabError(
-          "invalid_recovery_factor",
-          "Recovery factor verification failed",
-          401,
-        );
+        throw new AuthError("invalid_recovery_factor", "Recovery factor verification failed", 401);
       }
 
       session.secondFactorVerified = true;
@@ -356,12 +352,12 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     resetPrimaryPasskeys(sessionId: string) {
       const session = requireSession(state, sessionId);
       if (!canPerformAccountRecoveryAction(session)) {
-        throw new AuthLabError("forbidden", "Second-factor recovery is required", 403);
+        throw new AuthError("forbidden", "Second-factor recovery is required", 403);
       }
 
       const user = state.usersById.get(session.userId);
       if (!user) {
-        throw new AuthLabError("unknown_user", "User does not exist", 404);
+        throw new AuthError("unknown_user", "User does not exist", 404);
       }
 
       user.passkeys = [];
@@ -372,18 +368,18 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     disableRecoveryFactor(sessionId: string, factorKind: UserRecoveryFactorKind) {
       const session = requireSession(state, sessionId);
       if (!canPerformAccountRecoveryAction(session)) {
-        throw new AuthLabError("forbidden", "Second-factor recovery is required", 403);
+        throw new AuthError("forbidden", "Second-factor recovery is required", 403);
       }
 
       const user = state.usersById.get(session.userId);
       if (!user) {
-        throw new AuthLabError("unknown_user", "User does not exist", 404);
+        throw new AuthError("unknown_user", "User does not exist", 404);
       }
 
       const nextTotpSecret = factorKind === "totp" ? undefined : user.totpSecret;
       const nextBackupCodes = factorKind === "backup_code" ? [] : [...user.backupCodes];
       if (!nextTotpSecret && nextBackupCodes.length === 0) {
-        throw new AuthLabError("forbidden", "At least one recovery factor must remain", 403);
+        throw new AuthError("forbidden", "At least one recovery factor must remain", 403);
       }
 
       if (factorKind === "totp") {
@@ -398,20 +394,20 @@ export function createUserAuthPolicy(): UserAuthPolicy {
     changeEmail(sessionId: string, newEmail: string) {
       const session = requireSession(state, sessionId);
       if (!canPerformAccountRecoveryAction(session)) {
-        throw new AuthLabError("forbidden", "Second-factor recovery is required", 403);
+        throw new AuthError("forbidden", "Second-factor recovery is required", 403);
       }
 
       const normalizedEmail = newEmail.trim().toLowerCase();
       if (!normalizedEmail) {
-        throw new AuthLabError("invalid_request", "Email is required", 400);
+        throw new AuthError("invalid_request", "Email is required", 400);
       }
       if (state.usersByEmail.has(normalizedEmail)) {
-        throw new AuthLabError("conflict", "Email is already in use", 409);
+        throw new AuthError("conflict", "Email is already in use", 409);
       }
 
       const user = state.usersById.get(session.userId);
       if (!user) {
-        throw new AuthLabError("unknown_user", "User does not exist", 404);
+        throw new AuthError("unknown_user", "User does not exist", 404);
       }
 
       state.usersByEmail.delete(user.email);

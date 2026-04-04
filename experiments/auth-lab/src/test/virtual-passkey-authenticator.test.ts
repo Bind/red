@@ -6,8 +6,8 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { parseSetCookieHeader } from "better-auth/cookies";
-import { createAuthLabServer } from "../server";
-import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
+import { createAuthServer } from "../server";
+import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passkey-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",
@@ -45,7 +45,7 @@ function cookieHeaderFromSetCookie(
 }
 
 async function bootstrapMagicLinkSession(
-  server: Awaited<ReturnType<typeof createAuthLabServer>>,
+  server: Awaited<ReturnType<typeof createAuthServer>>,
   issuer: string,
   email: string,
 ): Promise<{ cookie: string; sessionId: string }> {
@@ -87,15 +87,16 @@ async function bootstrapMagicLinkSession(
 
   const session = await server.userRuntime.auth.api.getSession({
     headers: new Headers({ cookie: `better-auth.session_token=${sessionCookie}` }),
+    returnHeaders: true,
   });
-  expect(session?.session.id).toBeTruthy();
-  if (!session) {
+  expect(session.response?.session.id).toBeTruthy();
+  if (!session.response) {
     throw new Error("Expected session to be present");
   }
 
   return {
     cookie: `better-auth.session_token=${sessionCookie}`,
-    sessionId: session.session.id,
+    sessionId: session.response.session.id,
   };
 }
 
@@ -176,7 +177,7 @@ describe("virtual passkey authenticator", () => {
   });
 
   test("completes the mounted Better Auth passkey flow end to end", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const issuer = baseConfig.issuer;
     const authenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(issuer).hostname,

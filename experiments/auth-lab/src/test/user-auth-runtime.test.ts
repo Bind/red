@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createTokenVerifier } from "../sdk/verifier";
-import { createAuthLabServer } from "../server";
+import { createAuthServer } from "../server";
 import {
   bootstrapMagicLinkSession,
   completeOnboarding,
   completePasskeyFlow,
   completeTotpFlow,
-} from "../testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
+} from "../test/helpers/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4025",
@@ -35,7 +35,7 @@ const baseConfig = {
 
 describe("user auth runtime", () => {
   test("mounts Better Auth magic-link bootstrap, passkey flow, TOTP flow, and session exchange", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const issuer = baseConfig.issuer;
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(issuer).hostname,
@@ -62,11 +62,21 @@ describe("user auth runtime", () => {
 
       const resolved = await server.userRuntime.auth.api.getSession({
         headers: new Headers({ cookie: totp.cookie }),
+        returnHeaders: true,
       });
-      expect(resolved).toBeTruthy();
-      expect(resolved.user.email).toBe("new-user@example.com");
-      expect(resolved.user.onboardingState).toBe("pending_recovery_factor");
-      expect(resolved.user.twoFactorEnabled).toBe(true);
+      expect(resolved.response).toBeTruthy();
+      if (!resolved.response) throw new Error("Expected session");
+      const resolvedSession = resolved.response as unknown as {
+        session: { id: string };
+        user: {
+          email: string;
+          onboardingState?: string;
+          twoFactorEnabled?: boolean;
+        };
+      };
+      expect(resolvedSession.user.email).toBe("new-user@example.com");
+      expect(resolvedSession.user.onboardingState).toBe("pending_recovery_factor");
+      expect(resolvedSession.user.twoFactorEnabled).toBe(true);
 
       await completeOnboarding(server, issuer, totp.cookie);
 

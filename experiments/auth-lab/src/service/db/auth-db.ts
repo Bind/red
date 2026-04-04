@@ -3,17 +3,48 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { BunSqliteDialect } from "./bun-sqlite-dialect";
 
-export type AuthLabDatabaseKind = "sqlite" | "postgres";
+export type AuthDatabaseKind = "sqlite" | "postgres";
 
-export interface AuthLabDatabaseConfig {
-  kind: AuthLabDatabaseKind;
+export interface AuthDatabaseConfig {
+  kind: AuthDatabaseKind;
   sqlitePath?: string;
   postgresUrl?: string;
 }
 
-export interface AuthLabDatabase {
-  kysely: Kysely<any>;
-  kind: AuthLabDatabaseKind;
+export interface AuthUserRow {
+  id: string;
+  email: string;
+  onboardingState?: string | null;
+  recoveryReady?: boolean | null;
+  recoveryChallengePending?: boolean | null;
+  authAssurance?: string | null;
+  twoFactorEnabled?: boolean | null;
+  recoveryTotpSecretEncrypted?: string | null;
+  recoveryBackupCodesEncrypted?: string | null;
+}
+
+export interface AuthSessionRow {
+  id: string;
+  userId: string;
+  sessionKind?: string | null;
+  authPurpose?: string | null;
+  secondFactorVerified?: boolean | null;
+}
+
+export interface AuthPasskeyRow {
+  id: string;
+  userId: string;
+}
+
+export interface AuthDatabaseSchema {
+  user: AuthUserRow;
+  session: AuthSessionRow;
+  passkey: AuthPasskeyRow;
+}
+
+export interface AuthDatabase {
+  kysely: Kysely<AuthDatabaseSchema>;
+  kind: AuthDatabaseKind;
   close(): Promise<void>;
 }
 
@@ -28,7 +59,7 @@ type TableMetadata = {
   columns: TableColumn[];
 };
 
-async function getSqliteTables(db: Kysely<any>): Promise<TableMetadata[]> {
+async function getSqliteTables(db: Kysely<AuthDatabaseSchema>): Promise<TableMetadata[]> {
   const tables = await sql<{ name: string }>`
     SELECT name
     FROM sqlite_master
@@ -55,7 +86,7 @@ async function getSqliteTables(db: Kysely<any>): Promise<TableMetadata[]> {
   return metadata;
 }
 
-async function getPostgresTables(db: Kysely<any>): Promise<TableMetadata[]> {
+async function getPostgresTables(db: Kysely<AuthDatabaseSchema>): Promise<TableMetadata[]> {
   const tables = await sql<{ table_name: string; table_schema: string }>`
     SELECT table_name, table_schema
     FROM information_schema.tables
@@ -86,16 +117,18 @@ async function getPostgresTables(db: Kysely<any>): Promise<TableMetadata[]> {
   return metadata;
 }
 
-export async function createAuthLabDatabase(
-  config: AuthLabDatabaseConfig,
-): Promise<AuthLabDatabase> {
+export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<AuthDatabase> {
   if (config.kind === "sqlite") {
     const database = new Database(config.sqlitePath ?? ":memory:");
-    const kysely = new Kysely({
-      dialect: new BunSqliteDialect({ database: database as any }) as any,
-    });
+    const kysely = new Kysely<AuthDatabaseSchema>({
+      dialect: new BunSqliteDialect({ database }) as never,
+    }) as Kysely<AuthDatabaseSchema> & {
+      introspection: {
+        getTables(): Promise<TableMetadata[]>;
+      };
+    };
 
-    Object.defineProperty(kysely as any, "introspection", {
+    Object.defineProperty(kysely, "introspection", {
       value: {
         async getTables() {
           return getSqliteTables(kysely);
@@ -116,11 +149,15 @@ export async function createAuthLabDatabase(
   const pool = new Pool({
     connectionString: config.postgresUrl,
   });
-  const kysely = new Kysely({
+  const kysely = new Kysely<AuthDatabaseSchema>({
     dialect: new PostgresDialect({ pool }),
-  });
+  }) as Kysely<AuthDatabaseSchema> & {
+    introspection: {
+      getTables(): Promise<TableMetadata[]>;
+    };
+  };
 
-  Object.defineProperty(kysely as any, "introspection", {
+  Object.defineProperty(kysely, "introspection", {
     value: {
       async getTables() {
         return getPostgresTables(kysely);
@@ -139,8 +176,8 @@ export async function createAuthLabDatabase(
 }
 
 export async function patchDatabaseRow(
-  db: Kysely<any>,
-  table: string,
+  db: Kysely<AuthDatabaseSchema>,
+  table: keyof AuthDatabaseSchema,
   keyColumn: string,
   keyValue: string,
   patch: Record<string, unknown>,

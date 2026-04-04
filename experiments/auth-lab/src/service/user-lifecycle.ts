@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createOTP } from "@better-auth/utils/otp";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
-import type { SessionStore } from "../stores/session-store";
-import type { UserStore } from "../stores/user-store";
+import type { SessionStore } from "../store/session-store";
+import type { UserStore } from "../store/user-store";
 
 export interface UserLifecycleService {
   completeOnboarding(sessionId: string, email: string): Promise<void>;

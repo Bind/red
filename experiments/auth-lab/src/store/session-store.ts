@@ -1,6 +1,6 @@
 import type { Kysely } from "kysely";
-import { patchDatabaseRow } from "../auth-db";
-import type { UserSessionKind } from "../utils/types";
+import { type AuthDatabaseSchema, patchDatabaseRow } from "../service/db/auth-db";
+import type { UserSessionKind } from "../util/types";
 
 export interface SessionStoreRecord {
   id: string;
@@ -15,7 +15,22 @@ export interface SessionStore {
   updateById(sessionId: string, patch: Partial<SessionStoreRecord>): Promise<void>;
 }
 
-export function createSessionStore(db: Kysely<any>): SessionStore {
+function normalizeSessionKind(value: unknown): UserSessionKind | undefined {
+  if (value === "bootstrap" || value === "recovery_challenge" || value === "active") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function createSessionStore(db: Kysely<AuthDatabaseSchema>): SessionStore {
   return {
     async findById(sessionId: string): Promise<SessionStoreRecord | undefined> {
       const session = await db
@@ -28,6 +43,8 @@ export function createSessionStore(db: Kysely<any>): SessionStore {
       }
       return {
         ...session,
+        sessionKind: normalizeSessionKind(session.sessionKind),
+        authPurpose: normalizeOptionalString(session.authPurpose),
         secondFactorVerified: Boolean(session.secondFactorVerified),
       };
     },

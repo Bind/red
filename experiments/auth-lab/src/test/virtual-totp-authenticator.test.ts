@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createAuthLabServer } from "../server";
+import { createAuthServer } from "../server";
 import {
   bootstrapMagicLinkSession,
   completePasskeyFlow,
   completeTotpFlow,
-} from "../testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
+} from "../test/helpers/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4026",
@@ -41,7 +41,7 @@ describe("virtual TOTP authenticator", () => {
   });
 
   test("completes the mounted Better Auth TOTP flow end to end", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const issuer = baseConfig.issuer;
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(issuer).hostname,
@@ -68,10 +68,16 @@ describe("virtual TOTP authenticator", () => {
 
       const session = await server.userRuntime.auth.api.getSession({
         headers: new Headers({ cookie: totp.cookie }),
+        returnHeaders: true,
       });
-      expect(session).toBeTruthy();
-      expect(session?.user.twoFactorEnabled).toBe(true);
-      expect(session?.session.id).toBe(totp.sessionId);
+      expect(session.response).toBeTruthy();
+      if (!session.response) throw new Error("Expected session");
+      const resolvedSession = session.response as unknown as {
+        session: { id: string };
+        user: { twoFactorEnabled?: boolean };
+      };
+      expect(resolvedSession.user.twoFactorEnabled).toBe(true);
+      expect(resolvedSession.session.id).toBe(totp.sessionId);
       expect(
         totpAuthenticator.verifyCode(totp.secret, totpAuthenticator.createCode(totp.secret)),
       ).toBe(true);

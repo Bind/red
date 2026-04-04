@@ -91,7 +91,8 @@ Endpoints:
 The Compose stack uses an explicit auth DB container plus the auth service container.
 All required auth env vars are set in `docker-compose.yml`. The Compose path is
 fail-fast: missing issuer, base URL, Better Auth secret, DB URL, or signing key
-configuration stops boot instead of silently falling back.
+configuration stops boot instead of silently falling back. The signing key file
+is generated locally by `just auth-lab-compose-keygen` and is ignored by git.
 
 The Compose-only helper is a test utility, not a product route:
 
@@ -115,7 +116,7 @@ than Better Auth's password-oriented 2FA plugin.
 
 Compose E2E then follows the real Better Auth magic-link verification route and
 captures the session cookie from the real response. The passkey ceremony is
-browserless but real: tests use `src/testing/virtual-passkey-authenticator.ts`
+browserless but real: tests use `src/test/helpers/virtual-passkey-authenticator.ts`
 to drive Better Auth's passkey registration and authentication routes.
 
 ## Run
@@ -144,7 +145,6 @@ Dev/in-process mode:
 
 Compose mode:
 
-- `AUTH_LAB_CONFIG_MODE=compose`
 - `AUTH_LAB_HOST`
 - `AUTH_LAB_PORT`
 - `AUTH_LAB_ISSUER`
@@ -168,7 +168,7 @@ Compose mode:
 - Startup does not print secrets by default.
 - Compose E2E is intentionally strict and fails fast on config problems.
 - The onboarding and recovery policy is still partially scaffolded around the Better Auth runtime, not fully wired to every end-user ceremony yet.
-- `src/testing/virtual-passkey-authenticator.ts` is test-only, ES256-only, uses `attestation: "none"`, and keeps credential state in memory for browserless passkey verification tests.
+- `src/test/helpers/virtual-passkey-authenticator.ts` is test-only, ES256-only, uses `attestation: "none"`, and keeps credential state in memory for browserless passkey verification tests.
 - The magic-link mailbox is the only fake delivery layer; passkey registration and authentication routes are exercised through Better Auth in tests.
 - Better Auth's password-oriented 2FA plugin is not used here; auth-lab owns TOTP enrollment and verification so the passwordless flow stays explicit and honest.
 - The account activation and recovery challenge transitions now happen through service routes rather than test-side state patching.

@@ -1,4 +1,4 @@
-import { AuthLabError } from "../../utils/errors";
+import { AuthError } from "../../util/errors";
 import { hashClientSecret, verifyClientSecret } from "./secret";
 
 export type MachineClientStatus = "active" | "disabled" | "revoked";
@@ -82,13 +82,13 @@ export function createMachineClientRegistry(
     authenticate(clientId: string, clientSecret: string) {
       const record = records.get(clientId);
       if (!record) {
-        throw new AuthLabError("invalid_client", "Unknown client", 401);
+        throw new AuthError("invalid_client", "Unknown client", 401);
       }
       if (record.status !== "active") {
-        throw new AuthLabError("invalid_client", "Client is not active", 401);
+        throw new AuthError("invalid_client", "Client is not active", 401);
       }
       if (!verifyClientSecret(clientSecret, record.secretHash)) {
-        throw new AuthLabError("invalid_client", "Invalid client secret", 401);
+        throw new AuthError("invalid_client", "Invalid client secret", 401);
       }
       return record;
     },
@@ -110,7 +110,7 @@ export function normalizeRequestedScopes(
   const allowed = new Set(allowedScopes);
   for (const scope of requested) {
     if (!allowed.has(scope)) {
-      throw new AuthLabError("invalid_scope", `Scope not allowed: ${scope}`, 400);
+      throw new AuthError("invalid_scope", `Scope not allowed: ${scope}`, 400);
     }
   }
   return requested;
@@ -121,13 +121,13 @@ export function resolveRequestedAudience(
   allowedAudiences: string[],
 ): string {
   if (allowedAudiences.length === 0) {
-    throw new AuthLabError("invalid_target", "Client has no allowed audiences", 400);
+    throw new AuthError("invalid_target", "Client has no allowed audiences", 400);
   }
   if (!requestedAudience) {
     return allowedAudiences[0];
   }
   if (!allowedAudiences.includes(requestedAudience)) {
-    throw new AuthLabError("invalid_target", `Audience not allowed: ${requestedAudience}`, 400);
+    throw new AuthError("invalid_target", `Audience not allowed: ${requestedAudience}`, 400);
   }
   return requestedAudience;
 }

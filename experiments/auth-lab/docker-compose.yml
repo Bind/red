@@ -23,7 +23,6 @@ services:
     ports:
       - "4020:4020"
     environment:
-      AUTH_LAB_CONFIG_MODE: compose
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
       AUTH_LAB_ISSUER: http://127.0.0.1:4020

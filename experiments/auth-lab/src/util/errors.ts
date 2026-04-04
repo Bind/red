@@ -1,4 +1,4 @@
-export class AuthLabError extends Error {
+export class AuthError extends Error {
   readonly code: string;
   readonly status: number;
 

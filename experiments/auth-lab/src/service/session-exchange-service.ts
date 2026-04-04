@@ -1,4 +1,4 @@
-import { AuthLabError } from "../utils/errors";
+import { AuthError } from "../util/errors";
 import type {
   BetterAuthAdapter,
   BetterAuthSessionRecord,
@@ -75,7 +75,7 @@ export function createSessionExchangeService(
     async exchange(request: Request): Promise<SessionExchangeResult> {
       const sessionResult = await auth.getSession(request);
       if (!sessionResult.response) {
-        throw new AuthLabError("invalid_session", "A valid authenticated session is required", 401);
+        throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
       }
 
       const { session, user } = sessionResult.response;
@@ -86,20 +86,20 @@ export function createSessionExchangeService(
       const secondFactorVerified = normalizeBoolean(session.secondFactorVerified);
 
       if (onboardingState !== "active" || !recoveryReady) {
-        throw new AuthLabError("forbidden", "Active account state is required", 403);
+        throw new AuthError("forbidden", "Active account state is required", 403);
       }
       if (recoveryChallengePending && !secondFactorVerified) {
-        throw new AuthLabError(
+        throw new AuthError(
           "forbidden",
           "Recovery challenge sessions require a second factor before exchange",
           403,
         );
       }
       if (sessionKind === "bootstrap") {
-        throw new AuthLabError("forbidden", "Bootstrap sessions cannot receive service JWTs", 403);
+        throw new AuthError("forbidden", "Bootstrap sessions cannot receive service JWTs", 403);
       }
       if (sessionKind === "recovery_challenge" && !secondFactorVerified) {
-        throw new AuthLabError(
+        throw new AuthError(
           "forbidden",
           "Recovery challenge sessions require a second factor before exchange",
           403,

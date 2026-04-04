@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
-import { createAuthLabServer } from "./server";
-import { loadAuthLabConfig } from "./utils/config";
+import { createAuthServer } from "./server";
+import { loadAuthConfig } from "./util/config";
 
-const config = loadAuthLabConfig();
-const server = await createAuthLabServer(config);
+const config = loadAuthConfig();
+const server = await createAuthServer(config);
 
 console.log(`Auth lab listening on http://${config.hostname}:${config.port}`);
-console.log(`Mode: ${config.mode}`);
 console.log(`Issuer: ${config.issuer}`);
 console.log(
   `User auth DB: ${config.database.kind === "postgres" ? config.database.postgresUrl : config.database.sqlitePath}`,

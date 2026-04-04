@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
-import { createBetterAuthAdapter } from "./services/better-auth-adapter";
-import { createMachineClientRegistry, type MachineClientSeed } from "./services/m2m/registry";
-import { createTokenAuthority } from "./services/m2m/service";
-import { createSessionExchangeService } from "./services/session-exchange-service";
-import { createUserLifecycleService } from "./services/user-lifecycle";
-import { createUserAuthRuntime } from "./services/user-auth-runtime";
-import { AuthLabError } from "./utils/errors";
+import { createBetterAuthAdapter } from "./service/better-auth-adapter";
+import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
+import { createTokenAuthority } from "./service/m2m/service";
+import { createSessionExchangeService } from "./service/session-exchange-service";
+import { createUserAuthRuntime } from "./service/user-auth-runtime";
+import { createUserLifecycleService } from "./service/user-lifecycle";
+import { AuthError } from "./util/errors";
 
-export interface AuthLabServerConfig {
+export interface AuthServerConfig {
   issuer: string;
   audience: string;
   hostname: string;
@@ -24,7 +24,7 @@ export interface AuthLabServerConfig {
   };
 }
 
-export interface AuthLabServer {
+export interface AuthServer {
   fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response>;
   authority: Awaited<ReturnType<typeof createTokenAuthority>>;
   registry: ReturnType<typeof createMachineClientRegistry>;
@@ -89,7 +89,7 @@ function extractTokenClientId(token: string): string | null {
 }
 
 function oauthError(error: unknown): { status: number; body: Record<string, unknown> } {
-  if (error instanceof AuthLabError) {
+  if (error instanceof AuthError) {
     return {
       status: error.status,
       body: { error: error.code, error_description: error.message },
@@ -102,7 +102,7 @@ function oauthError(error: unknown): { status: number; body: Record<string, unkn
   };
 }
 
-export async function createAuthLabServer(config: AuthLabServerConfig): Promise<AuthLabServer> {
+export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
   const registry = createMachineClientRegistry(config.seedClients);
   const authority = await createTokenAuthority({
     issuer: config.issuer,
@@ -130,14 +130,14 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     const fields = await readBodyFields(request);
     const grantType = fields.grant_type ?? fields.grantType;
     if (grantType !== "client_credentials") {
-      throw new AuthLabError("unsupported_grant_type", "Only client_credentials is supported", 400);
+      throw new AuthError("unsupported_grant_type", "Only client_credentials is supported", 400);
     }
 
     const basic = parseBasicAuth(request.headers);
     const clientId = basic?.clientId ?? fields.client_id ?? fields.clientId;
     const clientSecret = basic?.clientSecret ?? fields.client_secret ?? fields.clientSecret;
     if (!clientId || !clientSecret) {
-      throw new AuthLabError("invalid_client", "Missing client credentials", 401);
+      throw new AuthError("invalid_client", "Missing client credentials", 401);
     }
 
     return authority.issueClientCredentialsToken({
@@ -153,7 +153,7 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     const clientId = basic?.clientId ?? fields.client_id ?? fields.clientId;
     const clientSecret = basic?.clientSecret ?? fields.client_secret ?? fields.clientSecret;
     if (!clientId || !clientSecret) {
-      throw new AuthLabError("invalid_client", "Missing client credentials", 401);
+      throw new AuthError("invalid_client", "Missing client credentials", 401);
     }
 
     return registry.authenticate(clientId, clientSecret);
@@ -163,19 +163,15 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     const fields = await readBodyFields(request);
     const token = fields.token;
     if (!token) {
-      throw new AuthLabError("invalid_request", "Missing token", 400);
+      throw new AuthError("invalid_request", "Missing token", 400);
     }
     const requestClient = authenticateRequestClient(request, fields);
     const tokenClientId = extractTokenClientId(token);
     if (!tokenClientId) {
-      throw new AuthLabError("invalid_token", "Token is missing client_id", 401);
+      throw new AuthError("invalid_token", "Token is missing client_id", 401);
     }
     if (tokenClientId !== requestClient.clientId) {
-      throw new AuthLabError(
-        "access_denied",
-        "Client cannot introspect another client's token",
-        403,
-      );
+      throw new AuthError("access_denied", "Client cannot introspect another client's token", 403);
     }
     return authority.introspectToken(token);
   };
@@ -184,15 +180,15 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     const fields = await readBodyFields(request);
     const token = fields.token;
     if (!token) {
-      throw new AuthLabError("invalid_request", "Missing token", 400);
+      throw new AuthError("invalid_request", "Missing token", 400);
     }
     const requestClient = authenticateRequestClient(request, fields);
     const tokenClientId = extractTokenClientId(token);
     if (!tokenClientId) {
-      throw new AuthLabError("invalid_token", "Token is missing client_id", 401);
+      throw new AuthError("invalid_token", "Token is missing client_id", 401);
     }
     if (tokenClientId !== requestClient.clientId) {
-      throw new AuthLabError("access_denied", "Client cannot revoke another client's token", 403);
+      throw new AuthError("access_denied", "Client cannot revoke another client's token", 403);
     }
     await authority.revokeToken(token);
     return { revoked: true };
@@ -242,7 +238,7 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
   app.post("/user/two-factor/enroll", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
-      throw new AuthLabError("invalid_session", "A valid authenticated session is required", 401);
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
     const { session, user } = sessionResult.response;
     return c.json(await userLifecycle.enrollRecoveryFactor(session.id, user.email));
@@ -251,13 +247,13 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
   app.post("/user/two-factor/verify", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
-      throw new AuthLabError("invalid_session", "A valid authenticated session is required", 401);
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
     const fields = await readBodyFields(c.req.raw);
     const code = fields.code?.trim();
     const kind = fields.kind?.trim();
     if (!code) {
-      throw new AuthLabError("invalid_request", "code is required", 400);
+      throw new AuthError("invalid_request", "code is required", 400);
     }
     const { session, user } = sessionResult.response;
     return c.json(
@@ -271,7 +267,7 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
   app.post("/user/onboarding/complete", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
-      throw new AuthLabError("invalid_session", "A valid authenticated session is required", 401);
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
     const { session, user } = sessionResult.response;
     await userLifecycle.completeOnboarding(session.id, user.email);
@@ -282,7 +278,7 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
     if (!email) {
-      throw new AuthLabError("invalid_request", "email is required", 400);
+      throw new AuthError("invalid_request", "email is required", 400);
     }
     await userLifecycle.startRecoveryChallenge(email);
     const mailRequest = new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {

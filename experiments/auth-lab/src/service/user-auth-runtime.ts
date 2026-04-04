@@ -1,11 +1,19 @@
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { jwt, magicLink } from "better-auth/plugins";
-import { passkey } from "@better-auth/passkey";
-import type { UserMagicLinkPurpose } from "../utils/types";
-import { createAuthLabDatabase, type AuthLabDatabaseKind } from "./auth-db";
-import { createSessionStore, type SessionStore } from "./stores/session-store";
-import { createUserStore, type UserStore } from "./stores/user-store";
+import { createSessionStore, type SessionStore } from "../store/session-store";
+import { createUserStore, type UserStore } from "../store/user-store";
+import type { UserMagicLinkPurpose } from "../util/types";
+import type { BetterAuthSessionResult } from "./better-auth-adapter";
+import { type AuthDatabaseKind, createAuthDatabase } from "./db/auth-db";
+
+export interface UserAuthRuntimeAuth {
+  handler(request: Request): Promise<Response>;
+  api: {
+    getSession(input: { headers: Headers; returnHeaders: true }): Promise<BetterAuthSessionResult>;
+  };
+}
 
 export interface MagicLinkMail {
   email: string;
@@ -15,7 +23,7 @@ export interface MagicLinkMail {
 }
 
 export interface UserAuthRuntimeDatabaseConfig {
-  kind: AuthLabDatabaseKind;
+  kind: AuthDatabaseKind;
   sqlitePath?: string;
   postgresUrl?: string;
 }
@@ -30,7 +38,7 @@ export interface UserAuthRuntimeConfig {
 }
 
 export interface UserAuthRuntime {
-  auth: ReturnType<typeof betterAuth>;
+  auth: UserAuthRuntimeAuth;
   mailbox: MagicLinkMail[];
   stores: {
     user: UserStore;
@@ -45,7 +53,7 @@ export async function createUserAuthRuntime(
 ): Promise<UserAuthRuntime> {
   const mailbox: MagicLinkMail[] = [];
   const rpId = new URL(config.issuer).hostname;
-  const database = await createAuthLabDatabase(config.database);
+  const database = await createAuthDatabase(config.database);
   const { kysely } = database;
   const userStore = createUserStore(kysely);
   const sessionStore = createSessionStore(kysely);
@@ -161,7 +169,7 @@ export async function createUserAuthRuntime(
   await runMigrations();
 
   return {
-    auth,
+    auth: auth as unknown as UserAuthRuntimeAuth,
     mailbox,
     stores: {
       user: userStore,

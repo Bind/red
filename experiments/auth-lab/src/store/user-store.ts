@@ -1,6 +1,6 @@
 import type { Kysely } from "kysely";
-import { patchDatabaseRow } from "../auth-db";
-import type { UserAccountState } from "../utils/types";
+import { type AuthDatabaseSchema, patchDatabaseRow } from "../service/db/auth-db";
+import type { UserAccountState } from "../util/types";
 
 export interface UserStoreRecord {
   id: string;
@@ -28,7 +28,22 @@ function normalizeBoolean(value: unknown): boolean {
   return Boolean(value);
 }
 
-export function createUserStore(db: Kysely<any>): UserStore {
+function normalizeAccountState(value: unknown): UserAccountState | undefined {
+  if (value === "pending_passkey" || value === "pending_recovery_factor" || value === "active") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function createUserStore(db: Kysely<AuthDatabaseSchema>): UserStore {
   return {
     async findByEmail(email: string): Promise<UserStoreRecord | undefined> {
       const user = await db
@@ -51,9 +66,13 @@ export function createUserStore(db: Kysely<any>): UserStore {
       }
       return {
         ...user,
+        onboardingState: normalizeAccountState(user.onboardingState),
         recoveryReady: normalizeBoolean(user.recoveryReady),
         recoveryChallengePending: normalizeBoolean(user.recoveryChallengePending),
+        authAssurance: normalizeOptionalString(user.authAssurance),
         twoFactorEnabled: normalizeBoolean(user.twoFactorEnabled),
+        recoveryTotpSecretEncrypted: normalizeOptionalString(user.recoveryTotpSecretEncrypted),
+        recoveryBackupCodesEncrypted: normalizeOptionalString(user.recoveryBackupCodesEncrypted),
       };
     },
 

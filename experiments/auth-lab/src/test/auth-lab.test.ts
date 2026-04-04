@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { parseSetCookieHeader } from "better-auth/cookies";
 import { createTokenVerifier } from "../sdk/verifier";
-import { createAuthLabServer } from "../server";
+import { createAuthServer } from "../server";
 import {
   bootstrapMagicLinkSession as bootstrapUserMagicLinkSession,
   completeOnboarding,
   completePasskeyFlow,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "../testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
+} from "../test/helpers/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",
@@ -56,7 +56,7 @@ function basicAuthHeader(clientId: string, clientSecret: string): string {
 }
 
 async function mintToken(
-  server: Awaited<ReturnType<typeof createAuthLabServer>>,
+  server: Awaited<ReturnType<typeof createAuthServer>>,
   clientId: string,
   clientSecret: string,
   audience: string,
@@ -81,7 +81,7 @@ async function mintToken(
 }
 
 async function bootstrapMagicLinkSession(
-  server: Awaited<ReturnType<typeof createAuthLabServer>>,
+  server: Awaited<ReturnType<typeof createAuthServer>>,
   issuer: string,
   email: string,
   purpose: "bootstrap" | "recovery" = "bootstrap",
@@ -126,20 +126,26 @@ async function bootstrapMagicLinkSession(
     headers: new Headers({
       cookie: `better-auth.session_token=${sessionCookie}`,
     }),
+    returnHeaders: true,
   });
-  expect(resolved).toBeTruthy();
-  expect(resolved.user.email).toBe(email);
-  expect(resolved.user.onboardingState).toBe("pending_passkey");
-  expect(resolved.user.recoveryReady).toBe(false);
+  expect(resolved.response).toBeTruthy();
+  if (!resolved.response) throw new Error("Expected session");
+  const resolvedSession = resolved.response as unknown as {
+    session: { id: string };
+    user: { email: string; onboardingState?: string; recoveryReady?: boolean };
+  };
+  expect(resolvedSession.user.email).toBe(email);
+  expect(resolvedSession.user.onboardingState).toBe("pending_passkey");
+  expect(resolvedSession.user.recoveryReady).toBe(false);
 
   return {
     cookie: `better-auth.session_token=${sessionCookie}`,
-    sessionId: resolved.session.id,
+    sessionId: resolvedSession.session.id,
   };
 }
 
 async function exchangeSession(
-  server: Awaited<ReturnType<typeof createAuthLabServer>>,
+  server: Awaited<ReturnType<typeof createAuthServer>>,
   issuer: string,
   cookie?: string,
 ) {
@@ -155,7 +161,7 @@ async function exchangeSession(
 
 describe("auth lab", () => {
   test("issues client_credentials tokens", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/token", {
         method: "POST",
@@ -178,7 +184,7 @@ describe("auth lab", () => {
   });
 
   test("rejects invalid client auth", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/token", {
         method: "POST",
@@ -200,7 +206,7 @@ describe("auth lab", () => {
   });
 
   test("rejects overbroad scope requests", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/token", {
         method: "POST",
@@ -222,7 +228,7 @@ describe("auth lab", () => {
   });
 
   test("blocks client A from introspecting client B tokens", async () => {
-    const server = await createAuthLabServer(dualClientConfig);
+    const server = await createAuthServer(dualClientConfig);
     const token = await mintToken(server, "claw-runner-alt", "alt-secret", "redc-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/introspect", {
@@ -241,7 +247,7 @@ describe("auth lab", () => {
   });
 
   test("blocks client A from revoking client B tokens", async () => {
-    const server = await createAuthLabServer(dualClientConfig);
+    const server = await createAuthServer(dualClientConfig);
     const token = await mintToken(server, "claw-runner-alt", "alt-secret", "redc-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/revoke", {
@@ -260,7 +266,7 @@ describe("auth lab", () => {
   });
 
   test("rejects wrong-audience tokens in internal verification paths", async () => {
-    const server = await createAuthLabServer(dualClientConfig);
+    const server = await createAuthServer(dualClientConfig);
     const token = await mintToken(server, "claw-runner-alt", "alt-secret", "other-api");
     const introspectResponse = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/introspect", {
@@ -281,7 +287,7 @@ describe("auth lab", () => {
   });
 
   test("denies session exchange without a session cookie", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const response = await exchangeSession(server, baseConfig.issuer);
     expect(response.status).toBe(401);
     const body = await response.json();
@@ -289,7 +295,7 @@ describe("auth lab", () => {
   });
 
   test("denies bootstrap-only sessions from receiving privileged JWTs", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const bootstrap = await bootstrapMagicLinkSession(
       server,
       baseConfig.issuer,
@@ -303,7 +309,7 @@ describe("auth lab", () => {
   });
 
   test("denies recovery-challenge sessions without second factor", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const transport = {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
@@ -345,7 +351,7 @@ describe("auth lab", () => {
   });
 
   test("exchanges an active session for a service JWT with expected claims", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const transport = {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
@@ -411,7 +417,7 @@ describe("auth lab", () => {
   });
 
   test("valid session can exchange for JWT", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const transport = {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
@@ -446,7 +452,7 @@ describe("auth lab", () => {
   });
 
   test("downstream verifier validates exchanged JWT by JWKS", async () => {
-    const server = await createAuthLabServer(baseConfig);
+    const server = await createAuthServer(baseConfig);
     const transport = {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };

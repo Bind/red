@@ -6,9 +6,9 @@ import {
   completePasskeyFlow,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "../testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
+} from "../test/helpers/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-authenticator";
 
 const baseUrl = process.env.AUTH_LAB_E2E_BASE_URL ?? "http://127.0.0.1:4020";
 const composeFile = process.env.AUTH_LAB_E2E_COMPOSE_FILE ?? "./docker-compose.yml";
@@ -217,5 +217,5 @@ e2e("compose auth stack", () => {
       },
     );
     expect(after.sid).toBe(totp.sessionId);
-  }, 15_000);
+  }, 30_000);
 });

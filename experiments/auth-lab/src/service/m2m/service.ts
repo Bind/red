@@ -10,12 +10,13 @@ import {
   jwtVerify,
   SignJWT,
 } from "jose";
-import { AuthLabError } from "../../utils/errors";
+import { AuthError } from "../../util/errors";
 import {
   type MachineClientRegistry,
   normalizeRequestedScopes,
   resolveRequestedAudience,
 } from "./registry";
+import { createInMemoryRevokedJtiStore, type RevokedJtiStore } from "./revoked-jti-store";
 
 export interface OAuthTokenResponse {
   access_token: string;
@@ -85,6 +86,7 @@ export async function createTokenAuthority(input: {
   defaultAudience: string;
   registry: MachineClientRegistry;
   signingPrivateJwk?: string;
+  revokedJtiStore?: RevokedJtiStore;
 }): Promise<TokenAuthority> {
   let effectivePrivateKey: Awaited<ReturnType<typeof importJWK>>;
   let publicJwk: JWK;
@@ -102,9 +104,7 @@ export async function createTokenAuthority(input: {
   const jwk: JWK = { ...publicJwk, alg: "RS256", use: "sig", kid };
   const jwks = { keys: [jwk] };
   const jwkSet = createLocalJWKSet(jwks);
-  // TODO: Persist revoked JTIs in shared storage before treating revocation as durable.
-  // The current in-memory set is reset on process restart and is not shared across instances.
-  const revokedJtis = new Set<string>();
+  const revokedJtis = input.revokedJtiStore ?? createInMemoryRevokedJtiStore();
 
   const signAccessToken = async (payload: {
     subject: string;
@@ -134,7 +134,7 @@ export async function createTokenAuthority(input: {
   }): Promise<OAuthTokenResponse> => {
     const client = input.registry.authenticate(tokenRequest.clientId, tokenRequest.clientSecret);
     if (!client.allowedGrantTypes.includes("client_credentials")) {
-      throw new AuthLabError("unauthorized_client", "client_credentials not allowed", 400);
+      throw new AuthError("unauthorized_client", "client_credentials not allowed", 400);
     }
 
     const scopeList = normalizeRequestedScopes(tokenRequest.scope, client.allowedScopes);
@@ -213,8 +213,8 @@ export async function createTokenAuthority(input: {
       audience: input.defaultAudience,
     });
 
-    if (typeof result.payload.jti === "string" && revokedJtis.has(result.payload.jti)) {
-      throw new AuthLabError("invalid_token", "Token has been revoked", 401);
+    if (typeof result.payload.jti === "string" && (await revokedJtis.has(result.payload.jti))) {
+      throw new AuthError("invalid_token", "Token has been revoked", 401);
     }
 
     return {
@@ -248,15 +248,15 @@ export async function createTokenAuthority(input: {
       });
       const jti = result.payload.jti;
       if (typeof jti === "string") {
-        revokedJtis.add(jti);
+        await revokedJtis.add(jti);
         return;
       }
-      throw new AuthLabError("invalid_token", "Token is missing jti", 401);
+      throw new AuthError("invalid_token", "Token is missing jti", 401);
     } catch (error) {
-      if (error instanceof AuthLabError) {
+      if (error instanceof AuthError) {
         throw error;
       }
-      throw new AuthLabError("invalid_token", "Token cannot be revoked", 401);
+      throw new AuthError("invalid_token", "Token cannot be revoked", 401);
     }
   };
 
