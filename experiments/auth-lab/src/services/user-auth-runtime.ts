@@ -2,10 +2,10 @@ import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { jwt, magicLink } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
+import type { UserMagicLinkPurpose } from "../utils/types";
 import { createAuthLabDatabase, type AuthLabDatabaseKind } from "./auth-db";
 import { createSessionStore, type SessionStore } from "./stores/session-store";
 import { createUserStore, type UserStore } from "./stores/user-store";
-import type { UserMagicLinkPurpose } from "../utils/types";
 
 export interface MagicLinkMail {
   email: string;

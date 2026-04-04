@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
-import { AuthLabError } from "./utils/errors";
 import { createBetterAuthAdapter } from "./services/better-auth-adapter";
 import { createMachineClientRegistry, type MachineClientSeed } from "./services/m2m/registry";
 import { createTokenAuthority } from "./services/m2m/service";
 import { createSessionExchangeService } from "./services/session-exchange-service";
 import { createUserLifecycleService } from "./services/user-lifecycle";
 import { createUserAuthRuntime } from "./services/user-auth-runtime";
+import { AuthLabError } from "./utils/errors";
 
 export interface AuthLabServerConfig {
   issuer: string;
