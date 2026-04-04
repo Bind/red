@@ -1,0 +1,46 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: auth_lab
+      POSTGRES_USER: auth_lab
+      POSTGRES_PASSWORD: auth_lab_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_lab -d auth_lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    ports:
+      - "4020:4020"
+    environment:
+      AUTH_LAB_CONFIG_MODE: compose
+      AUTH_LAB_HOST: 0.0.0.0
+      AUTH_LAB_PORT: 4020
+      AUTH_LAB_ISSUER: http://127.0.0.1:4020
+      AUTH_LAB_AUDIENCE: redc-api
+      AUTH_LAB_DB_URL: postgres://auth_lab:auth_lab_password@auth-db:5432/auth_lab
+      AUTH_LAB_BETTER_AUTH_SECRET: auth-lab-compose-secret
+      AUTH_LAB_SIGNING_PRIVATE_JWK_FILE: /run/config/signing-key.private.jwk
+      AUTH_LAB_BOOTSTRAP_CLIENT_ID: claw-runner-compose
+      AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: auth-lab-compose-client-secret
+      AUTH_LAB_BOOTSTRAP_SCOPES: prs:create changes:read
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: redc-api
+      AUTH_LAB_BOOTSTRAP_TTL_SECONDS: 300
+      AUTH_LAB_EXPOSE_TEST_MAILBOX: "true"
+    volumes:
+      - ./compose/signing-key.private.jwk:/run/config/signing-key.private.jwk:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4020/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

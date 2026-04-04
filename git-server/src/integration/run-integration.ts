@@ -87,6 +87,12 @@ export async function runIntegration() {
     });
     const mainReadme = await repo.readTextFile({ ref: "refs/heads/main", path: "README.md" });
     const missingFile = await repo.readTextFile({ ref: "refs/heads/main", path: "missing.txt" });
+    let badRefRejected = false;
+    try {
+      await repo.readTextFile({ ref: "refs/heads/does-not-exist", path: "README.md" });
+    } catch {
+      badRefRejected = true;
+    }
 
     const directCommit = await repo
       .createCommit({
@@ -172,6 +178,7 @@ export async function runIntegration() {
           clientDiff.files.some((file) => file.path === "client.txt" && file.additions > 0),
         readTextFileWorks: mainReadme === "# integration repo",
         missingFileReturnsNull: missingFile === null,
+        badRefReadRejected: badRefRejected,
         directCommitResolved: directRef?.sha === directCommit.commitSha,
         directDiffHasFile: directDiff.files.some((file) => file.path === "sdk.txt"),
         directDiffHasPatch: typeof directDiff.patch === "string" && directDiff.patch.includes("sdk.txt"),

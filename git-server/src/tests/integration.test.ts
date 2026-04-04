@@ -16,6 +16,7 @@ describe("git-sdk live integration", () => {
     expect(result.checks.clientDiffHasStats).toBe(true);
     expect(result.checks.readTextFileWorks).toBe(true);
     expect(result.checks.missingFileReturnsNull).toBe(true);
+    expect(result.checks.badRefReadRejected).toBe(true);
     expect(result.checks.directCommitResolved).toBe(true);
     expect(result.checks.directDiffHasFile).toBe(true);
     expect(result.checks.directDiffHasPatch).toBe(true);
