@@ -245,10 +245,10 @@ function instantiateGitty(repoId: string): GittyWasm {
     advertiseRefs(service: string): Uint8Array {
       const sBytes = encoder.encode(service);
       const sPtr = writeBytes(memory, wasmAlloc, sBytes);
-      const outLenPtr = wasmAlloc(4);
-      const resultPtr = advertise_refs(sPtr, sBytes.length, outLenPtr);
+      const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
+      const resultPtr = normalizeWasmPtr(advertise_refs(sPtr, sBytes.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = new Uint8Array(memory.buffer, resultPtr, outLen).slice();
+      const result = readWasmBytes(memory, resultPtr, outLen);
       wasmFree(sPtr, sBytes.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -256,10 +256,10 @@ function instantiateGitty(repoId: string): GittyWasm {
     },
     handleReceivePack(body: Uint8Array): Uint8Array {
       const bPtr = writeBytes(memory, wasmAlloc, body);
-      const outLenPtr = wasmAlloc(4);
-      const resultPtr = handle_receive_pack(bPtr, body.length, outLenPtr);
+      const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
+      const resultPtr = normalizeWasmPtr(handle_receive_pack(bPtr, body.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = new Uint8Array(memory.buffer, resultPtr, outLen).slice();
+      const result = readWasmBytes(memory, resultPtr, outLen);
       wasmFree(bPtr, body.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -267,10 +267,10 @@ function instantiateGitty(repoId: string): GittyWasm {
     },
     handleUploadPack(body: Uint8Array): Uint8Array {
       const bPtr = writeBytes(memory, wasmAlloc, body);
-      const outLenPtr = wasmAlloc(4);
-      const resultPtr = handle_upload_pack(bPtr, body.length, outLenPtr);
+      const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
+      const resultPtr = normalizeWasmPtr(handle_upload_pack(bPtr, body.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = new Uint8Array(memory.buffer, resultPtr, outLen).slice();
+      const result = readWasmBytes(memory, resultPtr, outLen);
       wasmFree(bPtr, body.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -300,9 +300,21 @@ function readString(memory: WebAssembly.Memory, ptr: number, len: number): strin
 }
 
 function writeBytes(memory: WebAssembly.Memory, alloc: (len: number) => number, data: Uint8Array): number {
-  const ptr = alloc(data.length);
+  const ptr = normalizeWasmPtr(alloc(data.length));
   new Uint8Array(memory.buffer, ptr, data.length).set(data);
   return ptr;
+}
+
+function normalizeWasmPtr(value: number): number {
+  return value >>> 0;
+}
+
+function readWasmBytes(memory: WebAssembly.Memory, ptr: number, len: number): Uint8Array {
+  if (len === 0) return new Uint8Array();
+  if (ptr === 0) {
+    throw new Error(`WASM returned a null pointer for ${len} bytes`);
+  }
+  return new Uint8Array(memory.buffer, ptr, len).slice();
 }
 
 function readU32(memory: WebAssembly.Memory, ptr: number): number {
