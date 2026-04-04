@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
-import { createBetterAuthAdapter } from "./adapters/better-auth-adapter";
-import { AuthLabError } from "./errors";
-import { createMachineClientRegistry, type MachineClientSeed } from "./m2m/registry";
-import { createTokenAuthority } from "./m2m/token-service";
+import { AuthLabError } from "./utils/errors";
+import { createBetterAuthAdapter } from "./services/better-auth-adapter";
+import { createMachineClientRegistry, type MachineClientSeed } from "./services/m2m/registry";
+import { createTokenAuthority } from "./services/m2m/service";
 import { createSessionExchangeService } from "./services/session-exchange-service";
 import { createUserLifecycleService } from "./services/user-lifecycle";
-import { createUserAuthRuntime } from "./user-auth-runtime";
+import { createUserAuthRuntime } from "./services/user-auth-runtime";
 
 export interface AuthLabServerConfig {
   issuer: string;
@@ -119,7 +119,10 @@ export async function createAuthLabServer(config: AuthLabServerConfig): Promise<
     database: config.database,
   });
   const authAdapter = createBetterAuthAdapter(userRuntime.auth);
-  const userLifecycle = createUserLifecycleService(userRuntime);
+  const userLifecycle = createUserLifecycleService(
+    userRuntime.stores,
+    config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+  );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
   const app = new Hono();
 

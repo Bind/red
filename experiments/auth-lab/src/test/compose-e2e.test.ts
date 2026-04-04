@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { createTokenVerifier } from "./sdk/verifier";
+import { createTokenVerifier } from "../sdk/verifier";
 import {
   bootstrapMagicLinkSession,
-  completePasskeyFlow,
   completeOnboarding,
+  completePasskeyFlow,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "./testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
+} from "../testing/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
 
 const baseUrl = process.env.AUTH_LAB_E2E_BASE_URL ?? "http://127.0.0.1:4020";
 const composeFile = process.env.AUTH_LAB_E2E_COMPOSE_FILE ?? "./docker-compose.yml";

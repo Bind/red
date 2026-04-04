@@ -1,4 +1,4 @@
-import { AuthLabError } from "../errors";
+import { AuthLabError } from "../../utils/errors";
 import { hashClientSecret, verifyClientSecret } from "./secret";
 
 export type MachineClientStatus = "active" | "disabled" | "revoked";

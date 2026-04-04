@@ -7,7 +7,7 @@ import {
 } from "@simplewebauthn/server";
 import { parseSetCookieHeader } from "better-auth/cookies";
 import { createAuthLabServer } from "../server";
-import { createVirtualPasskeyAuthenticator } from "./virtual-passkey-authenticator";
+import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",

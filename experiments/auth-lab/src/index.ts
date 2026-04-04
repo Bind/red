@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { loadAuthLabConfig } from "./config";
+import { loadAuthLabConfig } from "./utils/config";
 import { createAuthLabServer } from "./server";
 
 const config = loadAuthLabConfig();

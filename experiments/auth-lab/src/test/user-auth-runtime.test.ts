@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { createAuthLabServer } from "./server";
-import { createTokenVerifier } from "./sdk/verifier";
+import { createTokenVerifier } from "../sdk/verifier";
+import { createAuthLabServer } from "../server";
 import {
   bootstrapMagicLinkSession,
-  completePasskeyFlow,
   completeOnboarding,
+  completePasskeyFlow,
   completeTotpFlow,
-} from "./testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
+} from "../testing/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4025",
@@ -64,9 +64,9 @@ describe("user auth runtime", () => {
         headers: new Headers({ cookie: totp.cookie }),
       });
       expect(resolved).toBeTruthy();
-      expect(resolved!.user.email).toBe("new-user@example.com");
-      expect(resolved!.user.onboardingState).toBe("pending_recovery_factor");
-      expect(resolved!.user.twoFactorEnabled).toBe(true);
+      expect(resolved.user.email).toBe("new-user@example.com");
+      expect(resolved.user.onboardingState).toBe("pending_recovery_factor");
+      expect(resolved.user.twoFactorEnabled).toBe(true);
 
       await completeOnboarding(server, issuer, totp.cookie);
 

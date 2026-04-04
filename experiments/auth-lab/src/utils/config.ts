@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { generateClientSecret } from "./m2m/secret";
-import type { AuthLabServerConfig } from "./server";
+import { generateClientSecret } from "../services/m2m/secret";
+import type { AuthLabServerConfig } from "../server";
 
 function requiredPort(value: string | undefined, label: string): number {
   const port = Number.parseInt(value ?? "", 10);

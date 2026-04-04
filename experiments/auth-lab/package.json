@@ -6,8 +6,8 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun run src/index.ts",
     "test": "bun test",
-    "lint": "biome check src/index.ts src/server.ts src/adapters src/services src/testing",
-    "format": "biome format --write src/index.ts src/server.ts src/adapters src/services src/testing"
+    "lint": "biome check src/index.ts src/server.ts src/services src/testing src/test",
+    "format": "biome format --write src/index.ts src/server.ts src/services src/testing src/test"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.3.0",

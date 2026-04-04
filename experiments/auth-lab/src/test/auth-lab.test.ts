@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { parseSetCookieHeader } from "better-auth/cookies";
-import { createAuthLabServer } from "./server";
-import { createMachineAuthClient } from "./sdk/client";
-import { createTokenVerifier } from "./sdk/verifier";
+import { createTokenVerifier } from "../sdk/verifier";
+import { createAuthLabServer } from "../server";
 import {
   bootstrapMagicLinkSession as bootstrapUserMagicLinkSession,
-  completePasskeyFlow,
   completeOnboarding,
+  completePasskeyFlow,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "./testing/user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
+} from "../testing/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",
@@ -107,11 +106,12 @@ async function bootstrapMagicLinkSession(
   expect(server.userRuntime.mailbox).toHaveLength(1);
 
   const mail = server.userRuntime.mailbox[0];
-  expect(mail?.token).toBeTruthy();
-  expect(mail?.url).toBeTruthy();
+  expect(mail).toBeTruthy();
+  expect(mail.token).toBeTruthy();
+  expect(mail.url).toBeTruthy();
 
   const verifyResponse = await server.fetch(
-    new Request(mail!.url, {
+    new Request(mail.url, {
       method: "GET",
       headers: { origin: issuer },
     }),
@@ -128,13 +128,13 @@ async function bootstrapMagicLinkSession(
     }),
   });
   expect(resolved).toBeTruthy();
-  expect(resolved!.user.email).toBe(email);
-  expect(resolved!.user.onboardingState).toBe("pending_passkey");
-  expect(resolved!.user.recoveryReady).toBe(false);
+  expect(resolved.user.email).toBe(email);
+  expect(resolved.user.onboardingState).toBe("pending_passkey");
+  expect(resolved.user.recoveryReady).toBe(false);
 
   return {
     cookie: `better-auth.session_token=${sessionCookie}`,
-    sessionId: resolved!.session.id,
+    sessionId: resolved.session.id,
   };
 }
 

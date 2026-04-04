@@ -1,20 +1,20 @@
+import { randomUUID } from "node:crypto";
 import {
   calculateJwkThumbprint,
   createLocalJWKSet,
   exportJWK,
-  importJWK,
   generateKeyPair,
-  jwtVerify,
-  SignJWT,
+  importJWK,
   type JWK,
   type JWTPayload,
+  jwtVerify,
+  SignJWT,
 } from "jose";
-import { randomUUID } from "node:crypto";
-import { AuthLabError } from "../errors";
+import { AuthLabError } from "../../utils/errors";
 import {
+  type MachineClientRegistry,
   normalizeRequestedScopes,
   resolveRequestedAudience,
-  type MachineClientRegistry,
 } from "./registry";
 
 export interface OAuthTokenResponse {

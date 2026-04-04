@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthLabServer } from "../server";
-import { bootstrapMagicLinkSession, completePasskeyFlow, completeTotpFlow } from "./user-auth-e2e";
-import { createVirtualPasskeyAuthenticator } from "./virtual-passkey-authenticator";
-import { createVirtualTotpAuthenticator } from "./virtual-totp-authenticator";
+import {
+  bootstrapMagicLinkSession,
+  completePasskeyFlow,
+  completeTotpFlow,
+} from "../testing/user-auth-e2e";
+import { createVirtualPasskeyAuthenticator } from "../testing/virtual-passkey-authenticator";
+import { createVirtualTotpAuthenticator } from "../testing/virtual-totp-authenticator";
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4026",

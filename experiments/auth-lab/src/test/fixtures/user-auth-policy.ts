@@ -1,13 +1,22 @@
-import { randomBytes, randomUUID, createHmac } from "node:crypto";
-import { AuthLabError } from "./errors";
-
-export type UserAccountState = "pending_passkey" | "pending_recovery_factor" | "active";
-export type UserSessionKind = "bootstrap" | "recovery_challenge" | "active";
+/**
+ * Test fixture for the user auth lifecycle policy.
+ *
+ * This file is intentionally test-only and models the policy spec, not the
+ * runtime implementation.
+ */
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { AuthLabError } from "../../../utils/errors";
+import type {
+  UserAccountState,
+  UserMagicLinkPurpose,
+  UserRecoveryFactorKind,
+  UserSessionKind,
+} from "../../../utils/types";
 
 export interface MagicLinkChallenge {
   token: string;
   email: string;
-  purpose: "bootstrap" | "recovery";
+  purpose: UserMagicLinkPurpose;
   expiresAt: number;
 }
 
@@ -155,7 +164,7 @@ export interface UserAuthPolicy {
   enrollRecoveryBundle(sessionId: string, input: TotpEnrollment): UserUser;
   verifyRecoveryFactor(sessionId: string, assertion: RecoveryAssertion): UserSession;
   resetPrimaryPasskeys(sessionId: string): UserUser;
-  disableRecoveryFactor(sessionId: string, factorKind: "totp" | "backup_code"): UserUser;
+  disableRecoveryFactor(sessionId: string, factorKind: UserRecoveryFactorKind): UserUser;
   changeEmail(sessionId: string, newEmail: string): UserUser;
   getUserByEmail(email: string): UserUser | undefined;
   getSession(sessionId: string): UserSession | undefined;
@@ -360,7 +369,7 @@ export function createUserAuthPolicy(): UserAuthPolicy {
       return persistUser(state, user);
     },
 
-    disableRecoveryFactor(sessionId: string, factorKind: "totp" | "backup_code") {
+    disableRecoveryFactor(sessionId: string, factorKind: UserRecoveryFactorKind) {
       const session = requireSession(state, sessionId);
       if (!canPerformAccountRecoveryAction(session)) {
         throw new AuthLabError("forbidden", "Second-factor recovery is required", 403);

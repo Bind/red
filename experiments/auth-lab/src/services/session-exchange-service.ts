@@ -1,10 +1,10 @@
+import { AuthLabError } from "../utils/errors";
 import type {
   BetterAuthAdapter,
   BetterAuthSessionRecord,
   BetterAuthSessionUser,
-} from "../adapters/better-auth-adapter";
-import { AuthLabError } from "../errors";
-import type { SessionExchangeTokenResponse } from "../m2m/token-service";
+} from "./better-auth-adapter";
+import type { SessionExchangeTokenResponse } from "./m2m/service";
 
 export interface SessionExchangeAuthority {
   issueSessionExchangeToken(input: {
