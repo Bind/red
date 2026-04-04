@@ -34,4 +34,3 @@ export function verifyClientSecret(secret: string, encodedHash: string): boolean
   const actual = pbkdf2Sync(secret, salt, iterations, expected.length, "sha256");
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
-

@@ -6,7 +6,7 @@ import {
   completeOnboarding,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "./testing/human-auth-e2e";
+} from "./testing/user-auth-e2e";
 import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
 import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
 
@@ -57,20 +57,24 @@ e2e("compose auth stack", () => {
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
-    const bootstrap = await bootstrapMagicLinkSession(transport, baseUrl, "compose-user@example.com");
+    const bootstrap = await bootstrapMagicLinkSession(
+      transport,
+      baseUrl,
+      "compose-user@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseUrl,
       bootstrap.cookie,
       "compose-user@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseUrl,
       passkey.cookie,
       "compose-user@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
 
     await completeOnboarding(transport, baseUrl, totp.cookie);
@@ -84,7 +88,12 @@ e2e("compose auth stack", () => {
     expect(sessionResponse.status).toBe(200);
     const sessionBody = (await sessionResponse.json()) as {
       session: { id: string };
-      user: { email: string; onboardingState?: string; recoveryReady?: boolean; twoFactorEnabled?: boolean };
+      user: {
+        email: string;
+        onboardingState?: string;
+        recoveryReady?: boolean;
+        twoFactorEnabled?: boolean;
+      };
     };
     expect(sessionBody.session.id).toBe(totp.sessionId);
     expect(sessionBody.user.email).toBe("compose-user@example.com");
@@ -122,24 +131,32 @@ e2e("compose auth stack", () => {
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
-    const bootstrap = await bootstrapMagicLinkSession(transport, baseUrl, "compose-recovery@example.com");
+    const bootstrap = await bootstrapMagicLinkSession(
+      transport,
+      baseUrl,
+      "compose-recovery@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseUrl,
       bootstrap.cookie,
       "compose-recovery@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseUrl,
       passkey.cookie,
       "compose-recovery@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
     await completeOnboarding(transport, baseUrl, totp.cookie);
 
-    const recovery = await startRecoveryChallenge(transport, baseUrl, "compose-recovery@example.com");
+    const recovery = await startRecoveryChallenge(
+      transport,
+      baseUrl,
+      "compose-recovery@example.com",
+    );
 
     const response = await fetch(`${baseUrl}/session/exchange`, {
       method: "POST",
@@ -148,51 +165,57 @@ e2e("compose auth stack", () => {
     expect(response.status).toBe(403);
   });
 
-  test(
-    "restart persistence survives auth container restart",
-    async () => {
-      await waitForHealth(baseUrl);
-      const transport = createTransport();
-      const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-        rpId: new URL(baseUrl).hostname,
-        origin: baseUrl,
-      });
-      const totpAuthenticator = createVirtualTotpAuthenticator();
+  test("restart persistence survives auth container restart", async () => {
+    await waitForHealth(baseUrl);
+    const transport = createTransport();
+    const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
+      rpId: new URL(baseUrl).hostname,
+      origin: baseUrl,
+    });
+    const totpAuthenticator = createVirtualTotpAuthenticator();
 
-      const bootstrap = await bootstrapMagicLinkSession(transport, baseUrl, "compose-restart@example.com");
-      const passkey = await completePasskeyFlow(
-        transport,
-        baseUrl,
-        bootstrap.cookie,
-        "compose-restart@example.com",
-        passkeyAuthenticator
-      );
-      const totp = await completeTotpFlow(
-        transport,
-        baseUrl,
-        passkey.cookie,
-        "compose-restart@example.com",
-        totpAuthenticator
-      );
-      await completeOnboarding(transport, baseUrl, totp.cookie);
+    const bootstrap = await bootstrapMagicLinkSession(
+      transport,
+      baseUrl,
+      "compose-restart@example.com",
+    );
+    const passkey = await completePasskeyFlow(
+      transport,
+      baseUrl,
+      bootstrap.cookie,
+      "compose-restart@example.com",
+      passkeyAuthenticator,
+    );
+    const totp = await completeTotpFlow(
+      transport,
+      baseUrl,
+      passkey.cookie,
+      "compose-restart@example.com",
+      totpAuthenticator,
+    );
+    await completeOnboarding(transport, baseUrl, totp.cookie);
 
-      const before = await requestJson<{ access_token: string; sid: string }>(`${baseUrl}/session/exchange`, {
+    const before = await requestJson<{ access_token: string; sid: string }>(
+      `${baseUrl}/session/exchange`,
+      {
         method: "POST",
         headers: { cookie: totp.cookie },
-      });
-      expect(before.sid).toBe(totp.sessionId);
+      },
+    );
+    expect(before.sid).toBe(totp.sessionId);
 
-      const restart = Bun.spawnSync(["docker", "compose", "-f", composeFile, "restart", "auth"]);
-      expect(restart.exitCode).toBe(0);
+    const restart = Bun.spawnSync(["docker", "compose", "-f", composeFile, "restart", "auth"]);
+    expect(restart.exitCode).toBe(0);
 
-      await waitForHealth(baseUrl);
+    await waitForHealth(baseUrl);
 
-      const after = await requestJson<{ access_token: string; sid: string }>(`${baseUrl}/session/exchange`, {
+    const after = await requestJson<{ access_token: string; sid: string }>(
+      `${baseUrl}/session/exchange`,
+      {
         method: "POST",
         headers: { cookie: totp.cookie },
-      });
-      expect(after.sid).toBe(totp.sessionId);
-    },
-    15_000
-  );
+      },
+    );
+    expect(after.sid).toBe(totp.sessionId);
+  }, 15_000);
 });

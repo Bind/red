@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { createAuthLabServer } from "./server";
 import { loadAuthLabConfig } from "./config";
+import { createAuthLabServer } from "./server";
 
 const config = loadAuthLabConfig();
 const server = await createAuthLabServer(config);
@@ -9,7 +9,7 @@ console.log(`Auth lab listening on http://${config.hostname}:${config.port}`);
 console.log(`Mode: ${config.mode}`);
 console.log(`Issuer: ${config.issuer}`);
 console.log(
-  `Human auth DB: ${config.database.kind === "postgres" ? config.database.postgresUrl : config.database.sqlitePath}`
+  `User auth DB: ${config.database.kind === "postgres" ? config.database.postgresUrl : config.database.sqlitePath}`,
 );
 console.log(`JWKS: ${config.issuer}/.well-known/jwks.json`);
 console.log(`Session exchange: ${config.issuer}/session/exchange`);

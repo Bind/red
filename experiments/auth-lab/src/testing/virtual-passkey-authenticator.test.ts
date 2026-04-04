@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseSetCookieHeader } from "better-auth/cookies";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
+import { parseSetCookieHeader } from "better-auth/cookies";
 import { createAuthLabServer } from "../server";
 import { createVirtualPasskeyAuthenticator } from "./virtual-passkey-authenticator";
 
@@ -32,7 +32,10 @@ const baseConfig = {
   ],
 };
 
-function cookieHeaderFromSetCookie(setCookieHeader: string | null, existingCookieHeader = ""): string {
+function cookieHeaderFromSetCookie(
+  setCookieHeader: string | null,
+  existingCookieHeader = "",
+): string {
   const cookies = parseSetCookieHeader(setCookieHeader ?? "");
   const parts = existingCookieHeader ? [existingCookieHeader] : [];
   for (const [name, cookie] of cookies) {
@@ -44,7 +47,7 @@ function cookieHeaderFromSetCookie(setCookieHeader: string | null, existingCooki
 async function bootstrapMagicLinkSession(
   server: Awaited<ReturnType<typeof createAuthLabServer>>,
   issuer: string,
-  email: string
+  email: string,
 ): Promise<{ cookie: string; sessionId: string }> {
   const signInResponse = await server.fetch(
     new Request(`${issuer}/api/auth/sign-in/magic-link`, {
@@ -59,19 +62,22 @@ async function bootstrapMagicLinkSession(
           purpose: "bootstrap",
         },
       }),
-    })
+    }),
   );
 
   expect(signInResponse.status).toBe(200);
 
-  const mail = server.humanRuntime.mailbox.filter((entry) => entry.email === email).at(-1);
+  const mail = server.userRuntime.mailbox.filter((entry) => entry.email === email).at(-1);
   expect(mail?.url).toBeTruthy();
+  if (!mail) {
+    throw new Error("Expected magic-link mail to be present");
+  }
 
   const verifyResponse = await server.fetch(
-    new Request(mail!.url, {
+    new Request(mail.url, {
       method: "GET",
       headers: { origin: issuer },
-    })
+    }),
   );
   expect([200, 302]).toContain(verifyResponse.status);
 
@@ -79,14 +85,17 @@ async function bootstrapMagicLinkSession(
   const sessionCookie = parseSetCookieHeader(cookie ?? "").get("better-auth.session_token")?.value;
   expect(sessionCookie).toBeTruthy();
 
-  const session = await server.humanRuntime.auth.api.getSession({
+  const session = await server.userRuntime.auth.api.getSession({
     headers: new Headers({ cookie: `better-auth.session_token=${sessionCookie}` }),
   });
   expect(session?.session.id).toBeTruthy();
+  if (!session) {
+    throw new Error("Expected session to be present");
+  }
 
   return {
     cookie: `better-auth.session_token=${sessionCookie}`,
-    sessionId: session!.session.id,
+    sessionId: session.session.id,
   };
 }
 
@@ -131,12 +140,16 @@ describe("virtual passkey authenticator", () => {
 
     expect(registrationVerification.verified).toBe(true);
     expect(registrationVerification.registrationInfo?.credential.id).toBe(registration.id);
+    const registrationInfo = registrationVerification.registrationInfo;
+    if (!registrationInfo) {
+      throw new Error("Expected registration info to be present");
+    }
 
     const authenticationOptions = await generateAuthenticationOptions({
       rpID: "example.com",
       allowCredentials: [
         {
-          id: registrationVerification.registrationInfo!.credential.id,
+          id: registrationInfo.credential.id,
         },
       ],
       userVerification: "preferred",
@@ -151,9 +164,9 @@ describe("virtual passkey authenticator", () => {
       expectedOrigin: "https://example.com",
       expectedRPID: "example.com",
       credential: {
-        id: registrationVerification.registrationInfo!.credential.id,
-        publicKey: registrationVerification.registrationInfo!.credential.publicKey,
-        counter: registrationVerification.registrationInfo!.credential.counter,
+        id: registrationInfo.credential.id,
+        publicKey: registrationInfo.credential.publicKey,
+        counter: registrationInfo.credential.counter,
       },
       requireUserVerification: false,
     });
@@ -180,13 +193,13 @@ describe("virtual passkey authenticator", () => {
             origin: issuer,
             cookie: bootstrap.cookie,
           },
-        })
+        }),
       );
       expect(registerOptionsResponse.status).toBe(200);
       const registerOptions = await registerOptionsResponse.json();
       const registerChallengeCookie = cookieHeaderFromSetCookie(
         registerOptionsResponse.headers.get("set-cookie"),
-        bootstrap.cookie
+        bootstrap.cookie,
       );
 
       const registration = authenticator.createRegistrationResponse({
@@ -206,7 +219,7 @@ describe("virtual passkey authenticator", () => {
             response: registration,
             name: "Virtual Passkey",
           }),
-        })
+        }),
       );
       expect(verifyRegistrationResponseResult.status).toBe(200);
       const registeredPasskey = await verifyRegistrationResponseResult.json();
@@ -219,13 +232,13 @@ describe("virtual passkey authenticator", () => {
             origin: issuer,
             cookie: bootstrap.cookie,
           },
-        })
+        }),
       );
       expect(authenticateOptionsResponse.status).toBe(200);
       const authenticateOptions = await authenticateOptionsResponse.json();
       const authenticateChallengeCookie = cookieHeaderFromSetCookie(
         authenticateOptionsResponse.headers.get("set-cookie"),
-        bootstrap.cookie
+        bootstrap.cookie,
       );
 
       const assertion = authenticator.createAuthenticationResponse({
@@ -243,14 +256,16 @@ describe("virtual passkey authenticator", () => {
           body: JSON.stringify({
             response: assertion,
           }),
-        })
+        }),
       );
       expect(verifyAuthenticationResponseResult.status).toBe(200);
-      const authBody = await requestJson<{ session: { id: string } }>(verifyAuthenticationResponseResult);
+      const authBody = await requestJson<{ session: { id: string } }>(
+        verifyAuthenticationResponseResult,
+      );
       expect(authBody.session.id).toBeTruthy();
 
       const finalSessionCookie = parseSetCookieHeader(
-        verifyAuthenticationResponseResult.headers.get("set-cookie") ?? ""
+        verifyAuthenticationResponseResult.headers.get("set-cookie") ?? "",
       ).get("better-auth.session_token")?.value;
       expect(finalSessionCookie).toBeTruthy();
 
@@ -261,13 +276,13 @@ describe("virtual passkey authenticator", () => {
             origin: issuer,
             cookie: `better-auth.session_token=${finalSessionCookie}`,
           },
-        })
+        }),
       );
       expect(resolvedSession.status).toBe(200);
       const sessionBody = await resolvedSession.json();
       expect(sessionBody.user.email).toBe("passkey-test@example.com");
     } finally {
-      await server.humanRuntime.close();
+      await server.userRuntime.close();
     }
   });
 });

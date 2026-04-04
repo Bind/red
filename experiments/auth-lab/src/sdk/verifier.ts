@@ -25,7 +25,10 @@ function parseScopes(scope: unknown): string[] {
     return scope.flatMap((item) => (typeof item === "string" ? item.split(/\s+/) : []));
   }
   if (typeof scope === "string") {
-    return scope.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+    return scope
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   return [];
 }
@@ -65,7 +68,10 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
         subject: typeof payload.sub === "string" ? payload.sub : "",
         clientId: typeof payload.client_id === "string" ? payload.client_id : "",
         scope: parseScopes(payload.scope),
-        audience: typeof payload.aud === "string" || Array.isArray(payload.aud) ? payload.aud : config.audience,
+        audience:
+          typeof payload.aud === "string" || Array.isArray(payload.aud)
+            ? payload.aud
+            : config.audience,
         expiresAt: typeof payload.exp === "number" ? payload.exp * 1000 : 0,
         claims: toPlainObject(payload),
       };

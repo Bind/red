@@ -39,7 +39,12 @@ function base64BasicAuth(clientId: string, clientSecret: string): string {
 }
 
 function splitScopes(scope: string | undefined, fallback: string[]): string[] {
-  return scope?.split(/\s+/).map((item) => item.trim()).filter(Boolean) ?? [...fallback];
+  return (
+    scope
+      ?.split(/\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean) ?? [...fallback]
+  );
 }
 
 export function createMachineAuthClient(config: MachineAuthConfig): MachineAuthClient {
@@ -71,7 +76,9 @@ export function createMachineAuthClient(config: MachineAuthConfig): MachineAuthC
 
     const data = (await response.json()) as TokenResponse;
     if (!response.ok) {
-      throw new Error(data.error_description ?? data.error ?? `Token request failed: ${response.status}`);
+      throw new Error(
+        data.error_description ?? data.error ?? `Token request failed: ${response.status}`,
+      );
     }
     if (!data.access_token) {
       throw new Error("Token response missing access_token");

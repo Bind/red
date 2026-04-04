@@ -6,7 +6,7 @@ import {
   completePasskeyFlow,
   completeOnboarding,
   completeTotpFlow,
-} from "./testing/human-auth-e2e";
+} from "./testing/user-auth-e2e";
 import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
 import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
 
@@ -33,7 +33,7 @@ const baseConfig = {
   ],
 };
 
-describe("human auth runtime", () => {
+describe("user auth runtime", () => {
   test("mounts Better Auth magic-link bootstrap, passkey flow, TOTP flow, and session exchange", async () => {
     const server = await createAuthLabServer(baseConfig);
     const issuer = baseConfig.issuer;
@@ -50,17 +50,17 @@ describe("human auth runtime", () => {
         issuer,
         bootstrap.cookie,
         "new-user@example.com",
-        passkeyAuthenticator
+        passkeyAuthenticator,
       );
       const totp = await completeTotpFlow(
         server,
         issuer,
         passkey.cookie,
         "new-user@example.com",
-        totpAuthenticator
+        totpAuthenticator,
       );
 
-      const resolved = await server.humanRuntime.auth.api.getSession({
+      const resolved = await server.userRuntime.auth.api.getSession({
         headers: new Headers({ cookie: totp.cookie }),
       });
       expect(resolved).toBeTruthy();
@@ -76,7 +76,7 @@ describe("human auth runtime", () => {
           headers: {
             cookie: totp.cookie,
           },
-        })
+        }),
       );
       expect(exchangeResponse.status).toBe(200);
       const tokenBody = (await exchangeResponse.json()) as {
@@ -98,7 +98,7 @@ describe("human auth runtime", () => {
       expect(verified.claims.amr).toContain("passkey");
       expect(verified.claims.amr).toContain("mfa");
     } finally {
-      await server.humanRuntime.close();
+      await server.userRuntime.close();
     }
   });
 });

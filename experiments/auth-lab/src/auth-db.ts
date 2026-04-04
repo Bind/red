@@ -86,7 +86,9 @@ async function getPostgresTables(db: Kysely<any>): Promise<TableMetadata[]> {
   return metadata;
 }
 
-export async function createAuthLabDatabase(config: AuthLabDatabaseConfig): Promise<AuthLabDatabase> {
+export async function createAuthLabDatabase(
+  config: AuthLabDatabaseConfig,
+): Promise<AuthLabDatabase> {
   if (config.kind === "sqlite") {
     const database = new Database(config.sqlitePath ?? ":memory:");
     const kysely = new Kysely({
@@ -141,7 +143,7 @@ export async function patchDatabaseRow(
   table: string,
   keyColumn: string,
   keyValue: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
 ): Promise<void> {
   const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
   if (entries.length === 0) {

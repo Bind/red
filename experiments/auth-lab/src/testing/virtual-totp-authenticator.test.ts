@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthLabServer } from "../server";
-import { bootstrapMagicLinkSession, completePasskeyFlow, completeTotpFlow } from "./human-auth-e2e";
+import { bootstrapMagicLinkSession, completePasskeyFlow, completeTotpFlow } from "./user-auth-e2e";
 import { createVirtualPasskeyAuthenticator } from "./virtual-passkey-authenticator";
 import { createVirtualTotpAuthenticator } from "./virtual-totp-authenticator";
 
@@ -52,25 +52,27 @@ describe("virtual TOTP authenticator", () => {
         issuer,
         bootstrap.cookie,
         "totp-test@example.com",
-        passkeyAuthenticator
+        passkeyAuthenticator,
       );
       const totp = await completeTotpFlow(
         server,
         issuer,
         passkey.cookie,
         "totp-test@example.com",
-        totpAuthenticator
+        totpAuthenticator,
       );
 
-      const session = await server.humanRuntime.auth.api.getSession({
+      const session = await server.userRuntime.auth.api.getSession({
         headers: new Headers({ cookie: totp.cookie }),
       });
       expect(session).toBeTruthy();
-      expect(session!.user.twoFactorEnabled).toBe(true);
-      expect(session!.session.id).toBe(totp.sessionId);
-      expect(totpAuthenticator.verifyCode(totp.secret, totpAuthenticator.createCode(totp.secret))).toBe(true);
+      expect(session?.user.twoFactorEnabled).toBe(true);
+      expect(session?.session.id).toBe(totp.sessionId);
+      expect(
+        totpAuthenticator.verifyCode(totp.secret, totpAuthenticator.createCode(totp.secret)),
+      ).toBe(true);
     } finally {
-      await server.humanRuntime.close();
+      await server.userRuntime.close();
     }
   });
 });

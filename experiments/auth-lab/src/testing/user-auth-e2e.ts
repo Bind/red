@@ -1,15 +1,15 @@
 import { expect } from "bun:test";
-import { parseSetCookieHeader } from "better-auth/cookies";
 import { base32 } from "@better-auth/utils/base32";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/server";
+import { parseSetCookieHeader } from "better-auth/cookies";
 import type { VirtualPasskeyAuthenticator } from "./virtual-passkey-authenticator";
 import type { VirtualTotpAuthenticator } from "./virtual-totp-authenticator";
 
-export interface HumanAuthTransport {
+export interface UserAuthTransport {
   fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response>;
 }
 
@@ -29,7 +29,10 @@ export interface RecoveryFlowResult {
   sessionId: string;
 }
 
-export function cookieHeaderFromSetCookie(setCookieHeader: string | null, existingCookieHeader = ""): string {
+export function cookieHeaderFromSetCookie(
+  setCookieHeader: string | null,
+  existingCookieHeader = "",
+): string {
   const mergedCookies = new Map<string, string>();
   if (existingCookieHeader) {
     for (const part of existingCookieHeader.split(";")) {
@@ -49,10 +52,10 @@ export function cookieHeaderFromSetCookie(setCookieHeader: string | null, existi
 }
 
 export async function bootstrapMagicLinkSession(
-  transport: HumanAuthTransport,
+  transport: UserAuthTransport,
   issuer: string,
   email: string,
-  purpose: "bootstrap" | "recovery" = "bootstrap"
+  purpose: "bootstrap" | "recovery" = "bootstrap",
 ): Promise<BootstrapMagicLinkSessionResult> {
   const signInResponse = await transport.fetch(
     new Request(`${issuer}/api/auth/sign-in/magic-link`, {
@@ -67,11 +70,13 @@ export async function bootstrapMagicLinkSession(
           purpose,
         },
       }),
-    })
+    }),
   );
   expect(signInResponse.status).toBe(200);
 
-  const mailboxResponse = await transport.fetch(`${issuer}/__test__/mailbox/latest?email=${encodeURIComponent(email)}`);
+  const mailboxResponse = await transport.fetch(
+    `${issuer}/__test__/mailbox/latest?email=${encodeURIComponent(email)}`,
+  );
   expect(mailboxResponse.status).toBe(200);
   const mail = (await mailboxResponse.json()) as { url: string; token: string; email: string };
   expect(mail.email).toBe(email);
@@ -82,12 +87,12 @@ export async function bootstrapMagicLinkSession(
       method: "GET",
       headers: { origin: issuer },
       redirect: "manual",
-    })
+    }),
   );
   expect([200, 302]).toContain(verifyResponse.status);
 
   const sessionCookie = parseSetCookieHeader(verifyResponse.headers.get("set-cookie") ?? "").get(
-    "better-auth.session_token"
+    "better-auth.session_token",
   )?.value;
   expect(sessionCookie).toBeTruthy();
 
@@ -112,11 +117,11 @@ export async function bootstrapMagicLinkSession(
 }
 
 export async function completePasskeyFlow(
-  transport: HumanAuthTransport,
+  transport: UserAuthTransport,
   issuer: string,
   bootstrapCookie: string,
   email: string,
-  authenticator: VirtualPasskeyAuthenticator
+  authenticator: VirtualPasskeyAuthenticator,
 ): Promise<PasskeyFlowResult> {
   const registerOptionsResponse = await transport.fetch(
     new Request(`${issuer}/api/auth/passkey/generate-register-options`, {
@@ -125,11 +130,15 @@ export async function completePasskeyFlow(
         origin: issuer,
         cookie: bootstrapCookie,
       },
-    })
+    }),
   );
   expect(registerOptionsResponse.status).toBe(200);
-  const registerOptions = (await registerOptionsResponse.json()) as PublicKeyCredentialCreationOptionsJSON;
-  const registerCookie = cookieHeaderFromSetCookie(registerOptionsResponse.headers.get("set-cookie"), bootstrapCookie);
+  const registerOptions =
+    (await registerOptionsResponse.json()) as PublicKeyCredentialCreationOptionsJSON;
+  const registerCookie = cookieHeaderFromSetCookie(
+    registerOptionsResponse.headers.get("set-cookie"),
+    bootstrapCookie,
+  );
 
   const registration = authenticator.createRegistrationResponse({
     options: registerOptions,
@@ -147,7 +156,7 @@ export async function completePasskeyFlow(
         response: registration,
         name: "Virtual Passkey",
       }),
-    })
+    }),
   );
   expect(verifyRegistrationResponse.status).toBe(200);
   const registrationBody = (await verifyRegistrationResponse.json()) as { credentialID?: string };
@@ -155,7 +164,7 @@ export async function completePasskeyFlow(
 
   const postRegistrationCookie = cookieHeaderFromSetCookie(
     verifyRegistrationResponse.headers.get("set-cookie"),
-    registerCookie
+    registerCookie,
   );
 
   const authenticateOptionsResponse = await transport.fetch(
@@ -165,13 +174,14 @@ export async function completePasskeyFlow(
         origin: issuer,
         cookie: postRegistrationCookie,
       },
-    })
+    }),
   );
   expect(authenticateOptionsResponse.status).toBe(200);
-  const authenticateOptions = (await authenticateOptionsResponse.json()) as PublicKeyCredentialRequestOptionsJSON;
+  const authenticateOptions =
+    (await authenticateOptionsResponse.json()) as PublicKeyCredentialRequestOptionsJSON;
   const authenticateCookie = cookieHeaderFromSetCookie(
     authenticateOptionsResponse.headers.get("set-cookie"),
-    postRegistrationCookie
+    postRegistrationCookie,
   );
 
   const assertion = authenticator.createAuthenticationResponse({
@@ -188,13 +198,13 @@ export async function completePasskeyFlow(
       body: JSON.stringify({
         response: assertion satisfies AuthenticationResponseJSON,
       }),
-    })
+    }),
   );
   expect(verifyAuthenticationResponse.status).toBe(200);
 
   const finalCookie = cookieHeaderFromSetCookie(
     verifyAuthenticationResponse.headers.get("set-cookie"),
-    authenticateCookie
+    authenticateCookie,
   );
 
   const sessionResponse = await transport.fetch(`${issuer}/api/auth/get-session`, {
@@ -215,20 +225,20 @@ export async function completePasskeyFlow(
 }
 
 export async function completeTotpFlow(
-  transport: HumanAuthTransport,
+  transport: UserAuthTransport,
   issuer: string,
   activeCookie: string,
-  email: string,
-  authenticator: VirtualTotpAuthenticator
+  _email: string,
+  authenticator: VirtualTotpAuthenticator,
 ): Promise<{ cookie: string; sessionId: string; secret: string }> {
   const enrollmentResponse = await transport.fetch(
-    new Request(`${issuer}/human/two-factor/enroll`, {
+    new Request(`${issuer}/user/two-factor/enroll`, {
       method: "POST",
       headers: {
         origin: issuer,
         cookie: activeCookie,
       },
-    })
+    }),
   );
   expect(enrollmentResponse.status).toBe(200);
   const enrollmentBody = (await enrollmentResponse.json()) as {
@@ -240,7 +250,7 @@ export async function completeTotpFlow(
   const secret = parseTotpSecretFromUri(enrollmentBody.totpURI);
 
   const verifyResponse = await transport.fetch(
-    new Request(`${issuer}/human/two-factor/verify`, {
+    new Request(`${issuer}/user/two-factor/verify`, {
       method: "POST",
       headers: {
         origin: issuer,
@@ -250,11 +260,14 @@ export async function completeTotpFlow(
       body: JSON.stringify({
         code: authenticator.createCode(secret),
       }),
-    })
+    }),
   );
   expect(verifyResponse.status).toBe(200);
 
-  const nextCookie = cookieHeaderFromSetCookie(verifyResponse.headers.get("set-cookie"), activeCookie);
+  const nextCookie = cookieHeaderFromSetCookie(
+    verifyResponse.headers.get("set-cookie"),
+    activeCookie,
+  );
   const sessionResponse = await transport.fetch(`${issuer}/api/auth/get-session`, {
     headers: {
       origin: issuer,
@@ -282,40 +295,42 @@ function parseTotpSecretFromUri(totpURI: string): string {
 }
 
 export async function completeOnboarding(
-  transport: HumanAuthTransport,
+  transport: UserAuthTransport,
   issuer: string,
-  cookie: string
+  cookie: string,
 ): Promise<void> {
   const response = await transport.fetch(
-    new Request(`${issuer}/human/onboarding/complete`, {
+    new Request(`${issuer}/user/onboarding/complete`, {
       method: "POST",
       headers: {
         origin: issuer,
         cookie,
       },
-    })
+    }),
   );
   expect(response.status).toBe(200);
 }
 
 export async function startRecoveryChallenge(
-  transport: HumanAuthTransport,
+  transport: UserAuthTransport,
   issuer: string,
-  email: string
+  email: string,
 ): Promise<RecoveryFlowResult> {
   const response = await transport.fetch(
-    new Request(`${issuer}/human/recovery/start`, {
+    new Request(`${issuer}/user/recovery/start`, {
       method: "POST",
       headers: {
         origin: issuer,
         "content-type": "application/json",
       },
       body: JSON.stringify({ email }),
-    })
+    }),
   );
   expect(response.status).toBe(200);
 
-  const mailboxResponse = await transport.fetch(`${issuer}/__test__/mailbox/latest?email=${encodeURIComponent(email)}`);
+  const mailboxResponse = await transport.fetch(
+    `${issuer}/__test__/mailbox/latest?email=${encodeURIComponent(email)}`,
+  );
   expect(mailboxResponse.status).toBe(200);
   const mail = (await mailboxResponse.json()) as { url: string; token: string; email: string };
   expect(mail.email).toBe(email);
@@ -326,12 +341,12 @@ export async function startRecoveryChallenge(
       method: "GET",
       headers: { origin: issuer },
       redirect: "manual",
-    })
+    }),
   );
   expect([200, 302]).toContain(verifyResponse.status);
 
   const sessionCookie = parseSetCookieHeader(verifyResponse.headers.get("set-cookie") ?? "").get(
-    "better-auth.session_token"
+    "better-auth.session_token",
   )?.value;
   expect(sessionCookie).toBeTruthy();
 

@@ -10,14 +10,8 @@
  *
  * This exists purely to drive auth-lab tests without a browser.
  */
-import {
-  createHash,
-  generateKeyPairSync,
-  randomBytes,
-  sign,
-  type KeyObject,
-} from "node:crypto";
-import { encodeCBOR, type CBORType } from "@levischuck/tiny-cbor";
+import { createHash, generateKeyPairSync, type KeyObject, randomBytes, sign } from "node:crypto";
+import { type CBORType, encodeCBOR } from "@levischuck/tiny-cbor";
 import type {
   AuthenticationResponseJSON,
   AuthenticatorTransportFuture,
@@ -56,7 +50,9 @@ export interface VirtualPasskeyAuthenticationInput {
 
 export interface VirtualPasskeyAuthenticator {
   createRegistrationResponse(input: VirtualPasskeyRegistrationInput): RegistrationResponseJSON;
-  createAuthenticationResponse(input: VirtualPasskeyAuthenticationInput): AuthenticationResponseJSON;
+  createAuthenticationResponse(
+    input: VirtualPasskeyAuthenticationInput,
+  ): AuthenticationResponseJSON;
   listCredentials(): VirtualPasskeyCredentialSummary[];
   getCredential(id: string): VirtualPasskeyCredentialSummary | undefined;
 }
@@ -121,7 +117,7 @@ function buildClientDataJSON(input: {
       challenge: input.challenge,
       origin: input.origin,
       crossOrigin: false,
-    })
+    }),
   );
 }
 
@@ -160,7 +156,7 @@ function buildRegistrationAuthenticatorData(input: {
     input.aaguid,
     writeUint16BE(credentialId.length),
     credentialId,
-    input.cosePublicKey
+    input.cosePublicKey,
   );
 }
 
@@ -188,12 +184,15 @@ function buildAttestationObject(authData: Uint8Array): Uint8Array {
 
 function matchesCredentialDescriptor(
   descriptor: PublicKeyCredentialDescriptorJSON,
-  credentialId: string
+  credentialId: string,
 ): boolean {
   return descriptor.type === "public-key" && descriptor.id === credentialId;
 }
 
-function assertSupportedRegistrationOptions(options: PublicKeyCredentialCreationOptionsJSON, rpId: string): void {
+function assertSupportedRegistrationOptions(
+  options: PublicKeyCredentialCreationOptionsJSON,
+  rpId: string,
+): void {
   if (!options.rp?.id) {
     throw new Error("Registration options were missing rp.id");
   }
@@ -203,7 +202,9 @@ function assertSupportedRegistrationOptions(options: PublicKeyCredentialCreation
   if (!options.challenge) {
     throw new Error("Registration options were missing a challenge");
   }
-  const supportsEs256 = options.pubKeyCredParams.some((param) => param.type === "public-key" && param.alg === -7);
+  const supportsEs256 = options.pubKeyCredParams.some(
+    (param) => param.type === "public-key" && param.alg === -7,
+  );
   if (!supportsEs256) {
     throw new Error("Registration options did not include ES256");
   }
@@ -211,7 +212,7 @@ function assertSupportedRegistrationOptions(options: PublicKeyCredentialCreation
 
 function assertSupportedAuthenticationOptions(
   options: PublicKeyCredentialRequestOptionsJSON,
-  rpId: string
+  rpId: string,
 ): void {
   if (options.rpId && options.rpId !== rpId) {
     throw new Error(`Authentication options RP ID ${options.rpId} did not match ${rpId}`);
@@ -224,7 +225,7 @@ function assertSupportedAuthenticationOptions(
 function chooseCredentialId(
   credentials: StoredCredential[],
   options: PublicKeyCredentialRequestOptionsJSON,
-  explicitId?: string
+  explicitId?: string,
 ): StoredCredential {
   if (explicitId) {
     const found = credentials.find((credential) => credential.id === explicitId);
@@ -264,7 +265,7 @@ function credentialSummary(credential: StoredCredential): VirtualPasskeyCredenti
 }
 
 export function createVirtualPasskeyAuthenticator(
-  config: VirtualPasskeyAuthenticatorConfig
+  config: VirtualPasskeyAuthenticatorConfig,
 ): VirtualPasskeyAuthenticator {
   const credentials = new Map<string, StoredCredential>();
   const userVerified = config.userVerified ?? true;
@@ -347,12 +348,16 @@ export function createVirtualPasskeyAuthenticator(
       };
     },
 
-    createAuthenticationResponse(input: VirtualPasskeyAuthenticationInput): AuthenticationResponseJSON {
+    createAuthenticationResponse(
+      input: VirtualPasskeyAuthenticationInput,
+    ): AuthenticationResponseJSON {
       assertSupportedAuthenticationOptions(input.options, config.rpId);
       const available = [...credentials.values()].filter((credential) =>
         input.options.allowCredentials?.length
-          ? input.options.allowCredentials.some((item) => matchesCredentialDescriptor(item, credential.id))
-          : true
+          ? input.options.allowCredentials.some((item) =>
+              matchesCredentialDescriptor(item, credential.id),
+            )
+          : true,
       );
       const selected = chooseCredentialId(available, input.options, input.credentialId);
       const nextCounter = selected.counter + 1;
@@ -387,7 +392,9 @@ export function createVirtualPasskeyAuthenticator(
     },
 
     listCredentials(): VirtualPasskeyCredentialSummary[] {
-      return [...credentials.values()].map(credentialSummary).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return [...credentials.values()]
+        .map(credentialSummary)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     },
 
     getCredential(id: string): VirtualPasskeyCredentialSummary | undefined {

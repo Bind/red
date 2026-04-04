@@ -8,4 +8,3 @@ export class AuthLabError extends Error {
     this.status = status;
   }
 }
-

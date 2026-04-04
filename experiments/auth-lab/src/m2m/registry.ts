@@ -49,7 +49,9 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-export function createMachineClientRegistry(initialSeeds: MachineClientSeed[] = []): MachineClientRegistry {
+export function createMachineClientRegistry(
+  initialSeeds: MachineClientSeed[] = [],
+): MachineClientRegistry {
   const records = new Map<string, MachineClientRecord>();
 
   const register = (seed: MachineClientSeed): MachineClientRecord => {
@@ -96,7 +98,10 @@ export function createMachineClientRegistry(initialSeeds: MachineClientSeed[] = 
   };
 }
 
-export function normalizeRequestedScopes(requestedScope: string | undefined, allowedScopes: string[]): string[] {
+export function normalizeRequestedScopes(
+  requestedScope: string | undefined,
+  allowedScopes: string[],
+): string[] {
   const requested = normalizeScopes((requestedScope ?? "").split(/\s+/));
   if (requested.length === 0) {
     return [...allowedScopes];
@@ -111,7 +116,10 @@ export function normalizeRequestedScopes(requestedScope: string | undefined, all
   return requested;
 }
 
-export function resolveRequestedAudience(requestedAudience: string | undefined, allowedAudiences: string[]): string {
+export function resolveRequestedAudience(
+  requestedAudience: string | undefined,
+  allowedAudiences: string[],
+): string {
   if (allowedAudiences.length === 0) {
     throw new AuthLabError("invalid_target", "Client has no allowed audiences", 400);
   }
@@ -123,4 +131,3 @@ export function resolveRequestedAudience(requestedAudience: string | undefined, 
   }
   return requestedAudience;
 }
-

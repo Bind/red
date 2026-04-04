@@ -2,10 +2,13 @@
 
 Self-contained auth service prototype with two lanes:
 
-- Better Auth-backed human auth runtime
+- Better Auth-backed user auth runtime
 - OAuth-style machine auth for M2M
 
-## Human Auth Runtime
+HTTP routing is handled by Hono. The routes stay thin and delegate lifecycle
+and session-exchange behavior to service-layer code.
+
+## User Auth Runtime
 
 The browser talks to Better Auth through `/api/auth/*` using session cookies.
 The auth service also exposes `/session/exchange`, which resolves the current
@@ -32,7 +35,7 @@ App-owned state fields:
 - `session.authPurpose`
 - `session.secondFactorVerified`
 
-The human policy bridge remains in `src/human-auth-policy.ts`.
+The user policy bridge remains in `src/user-auth-policy.ts`.
 That file still owns the onboarding and recovery state machine for the
 experiment. The mounted Better Auth runtime is real, but the full passkey and
 2FA ceremony is still intentionally narrow.
@@ -43,9 +46,9 @@ Current behavior:
 2. verify email with magic link
 3. create bootstrap session
 4. register first passkey with the virtual passkey authenticator in tests
-5. enroll a recovery factor through `/human/two-factor/enroll`
-6. verify it through the auth-lab-owned `/human/two-factor/verify` route
-7. complete onboarding through `/human/onboarding/complete`
+5. enroll a recovery factor through `/user/two-factor/enroll`
+6. verify it through the auth-lab-owned `/user/two-factor/verify` route
+7. complete onboarding through `/user/onboarding/complete`
 8. exchange an authenticated session for a short-lived service JWT
 
 Recovery:
@@ -98,12 +101,12 @@ That route is enabled only when `AUTH_LAB_EXPOSE_TEST_MAILBOX=true`.
 It exists so Compose E2E can retrieve the delivered magic-link payload without
 introducing a separate email service.
 
-Human lifecycle routes:
+User lifecycle routes:
 
-- `POST /human/two-factor/enroll`
-- `POST /human/two-factor/verify`
-- `POST /human/onboarding/complete`
-- `POST /human/recovery/start`
+- `POST /user/two-factor/enroll`
+- `POST /user/two-factor/verify`
+- `POST /user/onboarding/complete`
+- `POST /user/recovery/start`
 
 Those routes are service-owned, not test-only. They bridge the passwordless
 experiment into Better Auth's durable storage and factor verification flow.
@@ -120,6 +123,7 @@ to drive Better Auth's passkey registration and authentication routes.
 ```bash
 just auth-lab-install
 just auth-lab-serve
+just auth-lab-lint
 just auth-lab-compose-e2e
 ```
 
@@ -135,7 +139,7 @@ The server seeds a dev client by default:
 Dev/in-process mode:
 
 - `AUTH_LAB_DB_PATH`: SQLite file path for the auth DB
-- `AUTH_LAB_BETTER_AUTH_SECRET`: Better Auth secret for human auth
+- `AUTH_LAB_BETTER_AUTH_SECRET`: Better Auth secret for user auth
 - `AUTH_LAB_BOOTSTRAP_CLIENT_SECRET`: M2M bootstrap client secret
 
 Compose mode:
@@ -158,7 +162,7 @@ Compose mode:
 ## Notes
 
 - Redis is not used in this experiment.
-- Human auth is mounted now; the policy bridge is still the app-owned guardrail.
+- User auth is mounted now; the policy bridge is still the app-owned guardrail.
 - `jwt` is for service-facing tokens, not browser sessions.
 - Client secrets are hashed at rest in the in-memory registry model.
 - Startup does not print secrets by default.

@@ -41,7 +41,7 @@ function hotp(secret: string, counter: bigint, digits: number): string {
 }
 
 export function createVirtualTotpAuthenticator(
-  config: VirtualTotpAuthenticatorConfig = {}
+  config: VirtualTotpAuthenticatorConfig = {},
 ): VirtualTotpAuthenticator {
   const digits = config.digits ?? 6;
   const periodSeconds = config.periodSeconds ?? 30;

@@ -1,12 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createHumanAuthPolicy,
-  generateBackupCodes,
-  generateTotpCode,
-} from "./human-auth-policy";
+import { createUserAuthPolicy, generateBackupCodes, generateTotpCode } from "./user-auth-policy";
 
 function bootstrapActiveUser(email = "alice@example.com") {
-  const policy = createHumanAuthPolicy();
+  const policy = createUserAuthPolicy();
   const challenge = policy.requestMagicLink(email);
   const bootstrapSession = policy.verifyMagicLink(challenge.token);
   policy.registerPrimaryPasskey(bootstrapSession.id, "passkey-1");
@@ -24,17 +20,17 @@ function bootstrapActiveUser(email = "alice@example.com") {
   };
 }
 
-describe("human auth policy", () => {
+describe("user auth policy", () => {
   test("new user cannot register first passkey without successful magic link", () => {
-    const policy = createHumanAuthPolicy();
+    const policy = createUserAuthPolicy();
 
     expect(() => policy.registerPrimaryPasskey("missing-session", "passkey-1")).toThrow(
-      /Unknown session/
+      /Unknown session/,
     );
   });
 
   test("new user can register first passkey after successful magic link", () => {
-    const policy = createHumanAuthPolicy();
+    const policy = createUserAuthPolicy();
     const challenge = policy.requestMagicLink("new@example.com");
     const session = policy.verifyMagicLink(challenge.token);
 
@@ -45,7 +41,7 @@ describe("human auth policy", () => {
   });
 
   test("new user cannot reach full active state before recovery enrollment", () => {
-    const policy = createHumanAuthPolicy();
+    const policy = createUserAuthPolicy();
     const challenge = policy.requestMagicLink("new@example.com");
     const session = policy.verifyMagicLink(challenge.token);
     policy.registerPrimaryPasskey(session.id, "passkey-1");
@@ -60,10 +56,10 @@ describe("human auth policy", () => {
 
     expect(() => policy.resetPrimaryPasskeys(recoverySession.id)).toThrow(/Second-factor recovery/);
     expect(() => policy.disableRecoveryFactor(recoverySession.id, "totp")).toThrow(
-      /Second-factor recovery/
+      /Second-factor recovery/,
     );
     expect(() => policy.changeEmail(recoverySession.id, "attacker@example.com")).toThrow(
-      /Second-factor recovery/
+      /Second-factor recovery/,
     );
   });
 
@@ -96,7 +92,7 @@ describe("human auth policy", () => {
     const recoverySession = policy.verifyMagicLink(recoveryChallenge.token);
 
     expect(() => policy.changeEmail(recoverySession.id, "alice.new@example.com")).toThrow(
-      /Second-factor recovery/
+      /Second-factor recovery/,
     );
   });
 
@@ -114,7 +110,7 @@ describe("human auth policy", () => {
     const recoverySession = policy.verifyMagicLink(recoveryChallenge.token);
 
     expect(() => policy.disableRecoveryFactor(recoverySession.id, "backup_code")).toThrow(
-      /Second-factor recovery/
+      /Second-factor recovery/,
     );
   });
 
@@ -124,7 +120,7 @@ describe("human auth policy", () => {
     const recoverySession = policy.verifyMagicLink(recoveryChallenge.token);
 
     expect(() => policy.changeEmail(recoverySession.id, "attacker@example.com")).toThrow(
-      /Second-factor recovery/
+      /Second-factor recovery/,
     );
   });
 
@@ -143,8 +139,7 @@ describe("human auth policy", () => {
       policy.verifyRecoveryFactor(secondChallenge.id, {
         kind: "backup_code",
         code,
-      })
+      }),
     ).toThrow(/Recovery factor verification failed/);
   });
 });
-

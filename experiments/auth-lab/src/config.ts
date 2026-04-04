@@ -91,7 +91,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
       kind: "sqlite",
       sqlitePath: env.AUTH_LAB_DB_PATH ?? join(tmpdir(), "redc-auth-lab.sqlite"),
     },
-    humanAuthSecret: env.AUTH_LAB_BETTER_AUTH_SECRET ?? "redc-auth-lab-dev-secret",
+    userAuthSecret: env.AUTH_LAB_BETTER_AUTH_SECRET ?? "redc-auth-lab-dev-secret",
     signingPrivateJwk: optionalString(env.AUTH_LAB_SIGNING_PRIVATE_JWK),
     seedClients: [
       {
@@ -116,22 +116,22 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
   const clientId = requiredString(env.AUTH_LAB_BOOTSTRAP_CLIENT_ID, "AUTH_LAB_BOOTSTRAP_CLIENT_ID");
   const bootstrapClientSecret = requiredString(
     env.AUTH_LAB_BOOTSTRAP_CLIENT_SECRET,
-    "AUTH_LAB_BOOTSTRAP_CLIENT_SECRET"
+    "AUTH_LAB_BOOTSTRAP_CLIENT_SECRET",
   );
   const scopes = parseList(env.AUTH_LAB_BOOTSTRAP_SCOPES, "AUTH_LAB_BOOTSTRAP_SCOPES");
   const audiences = parseList(env.AUTH_LAB_BOOTSTRAP_AUDIENCES, "AUTH_LAB_BOOTSTRAP_AUDIENCES");
   const databaseUrl = requiredString(env.AUTH_LAB_DB_URL, "AUTH_LAB_DB_URL");
-  const humanAuthSecret = requiredString(
+  const userAuthSecret = requiredString(
     env.AUTH_LAB_BETTER_AUTH_SECRET,
-    "AUTH_LAB_BETTER_AUTH_SECRET"
+    "AUTH_LAB_BETTER_AUTH_SECRET",
   );
   const signingPrivateJwk = readRequiredFile(
     env.AUTH_LAB_SIGNING_PRIVATE_JWK_FILE,
-    "AUTH_LAB_SIGNING_PRIVATE_JWK_FILE"
+    "AUTH_LAB_SIGNING_PRIVATE_JWK_FILE",
   );
   const bootstrapTtlSeconds = requiredPositiveInt(
     env.AUTH_LAB_BOOTSTRAP_TTL_SECONDS,
-    "AUTH_LAB_BOOTSTRAP_TTL_SECONDS"
+    "AUTH_LAB_BOOTSTRAP_TTL_SECONDS",
   );
 
   return {
@@ -142,13 +142,13 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthLabRuntimeConfig {
     port,
     exposeTestMailbox: requiredBoolean(
       env.AUTH_LAB_EXPOSE_TEST_MAILBOX,
-      "AUTH_LAB_EXPOSE_TEST_MAILBOX"
+      "AUTH_LAB_EXPOSE_TEST_MAILBOX",
     ),
     database: {
       kind: "postgres",
       postgresUrl: databaseUrl,
     },
-    humanAuthSecret,
+    userAuthSecret,
     signingPrivateJwk,
     seedClients: [
       {

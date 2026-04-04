@@ -1,8 +1,8 @@
-export interface HumanAuthScaffoldConfig {
+export interface UserAuthScaffoldConfig {
   issuer: string;
 }
 
-export interface HumanAuthScaffold {
+export interface UserAuthScaffold {
   kind: "scaffold";
   issuer: string;
   provider: "better-auth";
@@ -10,7 +10,7 @@ export interface HumanAuthScaffold {
   notes: readonly string[];
 }
 
-export function createHumanAuthScaffold(config: HumanAuthScaffoldConfig): HumanAuthScaffold {
+export function createUserAuthScaffold(config: UserAuthScaffoldConfig): UserAuthScaffold {
   return {
     kind: "scaffold",
     issuer: config.issuer,
@@ -18,7 +18,7 @@ export function createHumanAuthScaffold(config: HumanAuthScaffoldConfig): HumanA
     plannedPlugins: ["magic-link", "passkey", "2fa", "jwt"],
     notes: [
       "This file only describes the policy scaffold.",
-      "The mounted Better Auth runtime lives in human-auth-runtime.ts.",
+      "The mounted Better Auth runtime lives in user-auth-runtime.ts.",
     ],
   };
 }

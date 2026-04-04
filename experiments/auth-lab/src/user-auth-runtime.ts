@@ -6,7 +6,7 @@ import { passkey } from "@better-auth/passkey";
 import { createOTP } from "@better-auth/utils/otp";
 import { randomUUID } from "node:crypto";
 import { createAuthLabDatabase, patchDatabaseRow, type AuthLabDatabaseKind } from "./auth-db";
-import type { HumanAccountState, HumanSessionKind } from "./human-auth-policy";
+import type { UserAccountState, UserSessionKind } from "./user-auth-policy";
 
 export interface MagicLinkMail {
   email: string;
@@ -15,23 +15,23 @@ export interface MagicLinkMail {
   purpose: "bootstrap" | "recovery" | "unknown";
 }
 
-export interface HumanAuthRuntimeDatabaseConfig {
+export interface UserAuthRuntimeDatabaseConfig {
   kind: AuthLabDatabaseKind;
   sqlitePath?: string;
   postgresUrl?: string;
 }
 
-export interface HumanAuthRuntimeConfig {
+export interface UserAuthRuntimeConfig {
   issuer: string;
   audience: string;
   hostname: string;
   port: number;
   secret: string;
-  database: HumanAuthRuntimeDatabaseConfig;
+  database: UserAuthRuntimeDatabaseConfig;
 }
 
 export interface AppUserStatePatch {
-  onboardingState?: HumanAccountState;
+  onboardingState?: UserAccountState;
   recoveryReady?: boolean;
   recoveryChallengePending?: boolean;
   authAssurance?: string;
@@ -41,18 +41,16 @@ export interface AppUserStatePatch {
 }
 
 export interface AppSessionStatePatch {
-  sessionKind?: HumanSessionKind;
+  sessionKind?: UserSessionKind;
   authPurpose?: string;
   secondFactorVerified?: boolean;
 }
 
-export interface HumanAuthRuntime {
+export interface UserAuthRuntime {
   auth: any;
   mailbox: MagicLinkMail[];
   runMigrations(): Promise<void>;
-  getUserByEmail(
-    email: string
-  ): Promise<
+  getUserByEmail(email: string): Promise<
     | {
         id: string;
         email: string;
@@ -64,17 +62,22 @@ export interface HumanAuthRuntime {
     | undefined
   >;
   promoteAccountToActiveBySession(sessionId: string, email: string): Promise<void>;
-  enrollRecoveryFactorBySession(sessionId: string, email: string): Promise<{ totpURI: string; backupCodes: string[] }>;
+  enrollRecoveryFactorBySession(
+    sessionId: string,
+    email: string,
+  ): Promise<{ totpURI: string; backupCodes: string[] }>;
   verifyRecoveryFactorBySession(
     sessionId: string,
     email: string,
-    input: { code: string; kind?: "totp" | "backup_code" }
+    input: { code: string; kind?: "totp" | "backup_code" },
   ): Promise<{ sessionKind: "active" | "recovery_challenge"; secondFactorVerified: boolean }>;
   startRecoveryChallengeByEmail(email: string): Promise<void>;
   close(): Promise<void>;
 }
 
-export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Promise<HumanAuthRuntime> {
+export async function createUserAuthRuntime(
+  config: UserAuthRuntimeConfig,
+): Promise<UserAuthRuntime> {
   const mailbox: MagicLinkMail[] = [];
   const rpId = new URL(config.issuer).hostname;
   const database = await createAuthLabDatabase(config.database);
@@ -149,7 +152,8 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
                 ...user,
                 onboardingState: (user.onboardingState as string | undefined) ?? "pending_passkey",
                 recoveryReady: (user.recoveryReady as boolean | undefined) ?? false,
-                recoveryChallengePending: (user.recoveryChallengePending as boolean | undefined) ?? false,
+                recoveryChallengePending:
+                  (user.recoveryChallengePending as boolean | undefined) ?? false,
                 authAssurance: (user.authAssurance as string | undefined) ?? "bootstrap",
               },
             };
@@ -245,13 +249,16 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
       if (!passkey) {
         throw new Error(`User ${email} does not have a primary passkey enrolled`);
       }
-      if (user.onboardingState !== "pending_passkey" && user.onboardingState !== "pending_recovery_factor") {
+      if (
+        user.onboardingState !== "pending_passkey" &&
+        user.onboardingState !== "pending_recovery_factor"
+      ) {
         throw new Error(`User ${email} is not ready for recovery-factor enrollment`);
       }
 
       const secret = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
       const backupCodes = Array.from({ length: 8 }, () =>
-        randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()
+        randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase(),
       );
       const encryptedSecret = await symmetricEncrypt({
         key: config.secret,
@@ -277,7 +284,7 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
     async verifyRecoveryFactorBySession(
       sessionId: string,
       email: string,
-      input: { code: string; kind?: "totp" | "backup_code" }
+      input: { code: string; kind?: "totp" | "backup_code" },
     ) {
       const session = await kysely
         .selectFrom("session")
@@ -305,7 +312,10 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
       if (user.id !== session.userId) {
         throw new Error(`Session ${sessionId} does not belong to ${email}`);
       }
-      if (user.onboardingState !== "pending_recovery_factor" && session.sessionKind !== "recovery_challenge") {
+      if (
+        user.onboardingState !== "pending_recovery_factor" &&
+        session.sessionKind !== "recovery_challenge"
+      ) {
         throw new Error(`User ${email} is not in a recovery or enrollment flow`);
       }
       if (!user.recoveryTotpSecretEncrypted || !user.recoveryBackupCodesEncrypted) {
@@ -320,7 +330,7 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
         await symmetricDecrypt({
           key: config.secret,
           data: user.recoveryBackupCodesEncrypted,
-        })
+        }),
       ) as string[];
 
       let verified = false;
@@ -340,7 +350,8 @@ export async function createHumanAuthRuntime(config: HumanAuthRuntimeConfig): Pr
         throw new Error(`Recovery factor verification failed`);
       }
 
-      const nextSessionKind = session.sessionKind === "recovery_challenge" ? "recovery_challenge" : "active";
+      const nextSessionKind =
+        session.sessionKind === "recovery_challenge" ? "recovery_challenge" : "active";
       await patchDatabaseRow(kysely, "user", "email", email.trim().toLowerCase(), {
         twoFactorEnabled: true,
         recoveryBackupCodesEncrypted: await symmetricEncrypt({

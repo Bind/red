@@ -4,12 +4,12 @@ import { createAuthLabServer } from "./server";
 import { createMachineAuthClient } from "./sdk/client";
 import { createTokenVerifier } from "./sdk/verifier";
 import {
-  bootstrapMagicLinkSession as bootstrapHumanMagicLinkSession,
+  bootstrapMagicLinkSession as bootstrapUserMagicLinkSession,
   completePasskeyFlow,
   completeOnboarding,
   completeTotpFlow,
   startRecoveryChallenge,
-} from "./testing/human-auth-e2e";
+} from "./testing/user-auth-e2e";
 import { createVirtualPasskeyAuthenticator } from "./testing/virtual-passkey-authenticator";
 import { createVirtualTotpAuthenticator } from "./testing/virtual-totp-authenticator";
 
@@ -61,7 +61,7 @@ async function mintToken(
   clientId: string,
   clientSecret: string,
   audience: string,
-  scope = "prs:create"
+  scope = "prs:create",
 ) {
   const response = await server.fetch(
     new Request("http://127.0.0.1:4020/oauth/token", {
@@ -75,7 +75,7 @@ async function mintToken(
         scope,
         audience,
       }),
-    })
+    }),
   );
 
   return response.json() as Promise<{ access_token: string } & Record<string, unknown>>;
@@ -85,9 +85,9 @@ async function bootstrapMagicLinkSession(
   server: Awaited<ReturnType<typeof createAuthLabServer>>,
   issuer: string,
   email: string,
-  purpose: "bootstrap" | "recovery" = "bootstrap"
+  purpose: "bootstrap" | "recovery" = "bootstrap",
 ): Promise<{ cookie: string; sessionId: string }> {
-  const signInResponse = await server.humanRuntime.auth.handler(
+  const signInResponse = await server.userRuntime.auth.handler(
     new Request(`${issuer}/api/auth/sign-in/magic-link`, {
       method: "POST",
       headers: {
@@ -100,13 +100,13 @@ async function bootstrapMagicLinkSession(
           purpose,
         },
       }),
-    })
+    }),
   );
 
   expect(signInResponse.status).toBe(200);
-  expect(server.humanRuntime.mailbox).toHaveLength(1);
+  expect(server.userRuntime.mailbox).toHaveLength(1);
 
-  const mail = server.humanRuntime.mailbox[0];
+  const mail = server.userRuntime.mailbox[0];
   expect(mail?.token).toBeTruthy();
   expect(mail?.url).toBeTruthy();
 
@@ -114,7 +114,7 @@ async function bootstrapMagicLinkSession(
     new Request(mail!.url, {
       method: "GET",
       headers: { origin: issuer },
-    })
+    }),
   );
   expect([200, 302]).toContain(verifyResponse.status);
 
@@ -122,7 +122,7 @@ async function bootstrapMagicLinkSession(
   const sessionCookie = cookies.get("better-auth.session_token")?.value;
   expect(sessionCookie).toBeTruthy();
 
-  const resolved = await server.humanRuntime.auth.api.getSession({
+  const resolved = await server.userRuntime.auth.api.getSession({
     headers: new Headers({
       cookie: `better-auth.session_token=${sessionCookie}`,
     }),
@@ -141,7 +141,7 @@ async function bootstrapMagicLinkSession(
 async function exchangeSession(
   server: Awaited<ReturnType<typeof createAuthLabServer>>,
   issuer: string,
-  cookie?: string
+  cookie?: string,
 ) {
   return server.fetch(
     new Request(`${issuer}/session/exchange`, {
@@ -149,7 +149,7 @@ async function exchangeSession(
       headers: {
         ...(cookie ? { cookie } : {}),
       },
-    })
+    }),
   );
 }
 
@@ -168,7 +168,7 @@ describe("auth lab", () => {
           scope: "prs:create",
           audience: "redc-api",
         }),
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -191,7 +191,7 @@ describe("auth lab", () => {
           scope: "prs:create",
           audience: "redc-api",
         }),
-      })
+      }),
     );
 
     expect(response.status).toBe(401);
@@ -213,7 +213,7 @@ describe("auth lab", () => {
           scope: "prs:create admin",
           audience: "redc-api",
         }),
-      })
+      }),
     );
 
     expect(response.status).toBe(400);
@@ -232,7 +232,7 @@ describe("auth lab", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({ token: token.access_token }),
-      })
+      }),
     );
 
     expect(response.status).toBe(403);
@@ -251,7 +251,7 @@ describe("auth lab", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({ token: token.access_token }),
-      })
+      }),
     );
 
     expect(response.status).toBe(403);
@@ -270,13 +270,13 @@ describe("auth lab", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({ token: token.access_token }),
-      })
+      }),
     );
     expect(introspectResponse.status).toBe(200);
     expect(await introspectResponse.json()).toEqual({ active: false });
 
     await expect(server.authority.verifyAccessToken(token.access_token)).rejects.toThrow(
-      /unexpected "aud" claim value/
+      /unexpected "aud" claim value/,
     );
   });
 
@@ -290,7 +290,11 @@ describe("auth lab", () => {
 
   test("denies bootstrap-only sessions from receiving privileged JWTs", async () => {
     const server = await createAuthLabServer(baseConfig);
-    const bootstrap = await bootstrapMagicLinkSession(server, baseConfig.issuer, "bootstrap@example.com");
+    const bootstrap = await bootstrapMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "bootstrap@example.com",
+    );
     const response = await exchangeSession(server, baseConfig.issuer, bootstrap.cookie);
 
     expect(response.status).toBe(403);
@@ -300,30 +304,40 @@ describe("auth lab", () => {
 
   test("denies recovery-challenge sessions without second factor", async () => {
     const server = await createAuthLabServer(baseConfig);
-    const transport = { fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init) };
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(baseConfig.issuer).hostname,
       origin: baseConfig.issuer,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
-    const bootstrap = await bootstrapHumanMagicLinkSession(server, baseConfig.issuer, "recovery@example.com");
+    const bootstrap = await bootstrapUserMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "recovery@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseConfig.issuer,
       bootstrap.cookie,
       "recovery@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseConfig.issuer,
       passkey.cookie,
       "recovery@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
     await completeOnboarding(server, baseConfig.issuer, totp.cookie);
 
-    const recovery = await startRecoveryChallenge(server, baseConfig.issuer, "recovery@example.com");
+    const recovery = await startRecoveryChallenge(
+      server,
+      baseConfig.issuer,
+      "recovery@example.com",
+    );
     const response = await exchangeSession(server, baseConfig.issuer, recovery.cookie);
     expect(response.status).toBe(403);
     const body = await response.json();
@@ -332,26 +346,32 @@ describe("auth lab", () => {
 
   test("exchanges an active session for a service JWT with expected claims", async () => {
     const server = await createAuthLabServer(baseConfig);
-    const transport = { fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init) };
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(baseConfig.issuer).hostname,
       origin: baseConfig.issuer,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
-    const bootstrap = await bootstrapHumanMagicLinkSession(server, baseConfig.issuer, "active@example.com");
+    const bootstrap = await bootstrapUserMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "active@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseConfig.issuer,
       bootstrap.cookie,
       "active@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseConfig.issuer,
       passkey.cookie,
       "active@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
     await completeOnboarding(server, baseConfig.issuer, totp.cookie);
 
@@ -392,26 +412,32 @@ describe("auth lab", () => {
 
   test("valid session can exchange for JWT", async () => {
     const server = await createAuthLabServer(baseConfig);
-    const transport = { fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init) };
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(baseConfig.issuer).hostname,
       origin: baseConfig.issuer,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
-    const bootstrap = await bootstrapHumanMagicLinkSession(server, baseConfig.issuer, "valid@example.com");
+    const bootstrap = await bootstrapUserMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "valid@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseConfig.issuer,
       bootstrap.cookie,
       "valid@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseConfig.issuer,
       passkey.cookie,
       "valid@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
     await completeOnboarding(server, baseConfig.issuer, totp.cookie);
 
@@ -421,26 +447,32 @@ describe("auth lab", () => {
 
   test("downstream verifier validates exchanged JWT by JWKS", async () => {
     const server = await createAuthLabServer(baseConfig);
-    const transport = { fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init) };
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
       rpId: new URL(baseConfig.issuer).hostname,
       origin: baseConfig.issuer,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
-    const bootstrap = await bootstrapHumanMagicLinkSession(server, baseConfig.issuer, "jwks@example.com");
+    const bootstrap = await bootstrapUserMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "jwks@example.com",
+    );
     const passkey = await completePasskeyFlow(
       transport,
       baseConfig.issuer,
       bootstrap.cookie,
       "jwks@example.com",
-      passkeyAuthenticator
+      passkeyAuthenticator,
     );
     const totp = await completeTotpFlow(
       transport,
       baseConfig.issuer,
       passkey.cookie,
       "jwks@example.com",
-      totpAuthenticator
+      totpAuthenticator,
     );
     await completeOnboarding(server, baseConfig.issuer, totp.cookie);
 

@@ -76,7 +76,7 @@ export interface TokenAuthority {
 
 function toPlainObject(payload: JWTPayload): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(payload).filter((entry): entry is [string, unknown] => entry[1] !== undefined)
+    Object.entries(payload).filter((entry): entry is [string, unknown] => entry[1] !== undefined),
   );
 }
 
@@ -138,7 +138,10 @@ export async function createTokenAuthority(input: {
     }
 
     const scopeList = normalizeRequestedScopes(tokenRequest.scope, client.allowedScopes);
-    const audience = resolveRequestedAudience(tokenRequest.audience ?? input.defaultAudience, client.allowedAudiences);
+    const audience = resolveRequestedAudience(
+      tokenRequest.audience ?? input.defaultAudience,
+      client.allowedAudiences,
+    );
     const expiresIn = client.tokenTtlSeconds;
     const scope = scopeList.join(" ");
     const { token } = await signAccessToken({
@@ -216,12 +219,14 @@ export async function createTokenAuthority(input: {
 
     return {
       active: true,
-      client_id: typeof result.payload.client_id === "string" ? result.payload.client_id : undefined,
+      client_id:
+        typeof result.payload.client_id === "string" ? result.payload.client_id : undefined,
       scope: typeof result.payload.scope === "string" ? result.payload.scope : undefined,
       audience: result.payload.aud,
       exp: typeof result.payload.exp === "number" ? result.payload.exp : undefined,
       sub: typeof result.payload.sub === "string" ? result.payload.sub : undefined,
-      grant_type: typeof result.payload.grant_type === "string" ? result.payload.grant_type : undefined,
+      grant_type:
+        typeof result.payload.grant_type === "string" ? result.payload.grant_type : undefined,
       jti: typeof result.payload.jti === "string" ? result.payload.jti : undefined,
       claims: toPlainObject(result.payload),
     };

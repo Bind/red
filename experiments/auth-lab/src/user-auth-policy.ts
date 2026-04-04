@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID, createHmac } from "node:crypto";
 import { AuthLabError } from "./errors";
 
-export type HumanAccountState = "pending_passkey" | "pending_recovery_factor" | "active";
-export type HumanSessionKind = "bootstrap" | "recovery_challenge" | "active";
+export type UserAccountState = "pending_passkey" | "pending_recovery_factor" | "active";
+export type UserSessionKind = "bootstrap" | "recovery_challenge" | "active";
 
 export interface MagicLinkChallenge {
   token: string;
@@ -11,11 +11,11 @@ export interface MagicLinkChallenge {
   expiresAt: number;
 }
 
-export interface HumanSession {
+export interface UserSession {
   id: string;
   userId: string;
   email: string;
-  kind: HumanSessionKind;
+  kind: UserSessionKind;
   magicLinkVerified: boolean;
   secondFactorVerified: boolean;
   createdAt: string;
@@ -30,10 +30,10 @@ export type RecoveryAssertion =
   | { kind: "totp"; code: string }
   | { kind: "backup_code"; code: string };
 
-export interface HumanUser {
+export interface UserUser {
   id: string;
   email: string;
-  state: HumanAccountState;
+  state: UserAccountState;
   passkeys: string[];
   totpSecret?: string;
   backupCodes: string[];
@@ -45,12 +45,12 @@ interface StoredMagicLinkChallenge extends MagicLinkChallenge {
   used: boolean;
 }
 
-interface StoredSession extends HumanSession {
+interface StoredSession extends UserSession {
   verifiedRecoveryAssertion?: boolean;
 }
 
-interface HumanAuthPolicyState {
-  usersById: Map<string, HumanUser>;
+interface UserAuthPolicyState {
+  usersById: Map<string, UserUser>;
   usersByEmail: Map<string, string>;
   challengesByToken: Map<string, StoredMagicLinkChallenge>;
   sessionsById: Map<string, StoredSession>;
@@ -93,7 +93,7 @@ function verifyTotpCode(secret: string, code: string): boolean {
   return false;
 }
 
-function createUser(email: string): HumanUser {
+function createUser(email: string): UserUser {
   const timestamp = nowIso();
   return {
     id: randomUUID(),
@@ -106,14 +106,14 @@ function createUser(email: string): HumanUser {
   };
 }
 
-function touch(user: HumanUser): HumanUser {
+function touch(user: UserUser): UserUser {
   return {
     ...user,
     updatedAt: nowIso(),
   };
 }
 
-function requireSession(state: HumanAuthPolicyState, sessionId: string): StoredSession {
+function requireSession(state: UserAuthPolicyState, sessionId: string): StoredSession {
   const session = state.sessionsById.get(sessionId);
   if (!session) {
     throw new AuthLabError("invalid_session", "Unknown session", 401);
@@ -121,7 +121,7 @@ function requireSession(state: HumanAuthPolicyState, sessionId: string): StoredS
   return session;
 }
 
-function requireUser(state: HumanAuthPolicyState, email: string): HumanUser {
+function requireUser(state: UserAuthPolicyState, email: string): UserUser {
   const userId = state.usersByEmail.get(email);
   if (!userId) {
     throw new AuthLabError("unknown_user", "User does not exist", 404);
@@ -133,7 +133,7 @@ function requireUser(state: HumanAuthPolicyState, email: string): HumanUser {
   return user;
 }
 
-function persistUser(state: HumanAuthPolicyState, user: HumanUser): HumanUser {
+function persistUser(state: UserAuthPolicyState, user: UserUser): UserUser {
   const next = touch(user);
   state.usersById.set(next.id, next);
   state.usersByEmail.set(next.email, next.id);
@@ -141,27 +141,30 @@ function persistUser(state: HumanAuthPolicyState, user: HumanUser): HumanUser {
 }
 
 function canPerformAccountRecoveryAction(session: StoredSession): boolean {
-  return session.kind === "active" || (session.kind === "recovery_challenge" && session.secondFactorVerified);
+  return (
+    session.kind === "active" ||
+    (session.kind === "recovery_challenge" && session.secondFactorVerified)
+  );
 }
 
-export interface HumanAuthPolicy {
+export interface UserAuthPolicy {
   requestMagicLink(email: string): MagicLinkChallenge;
-  verifyMagicLink(token: string): HumanSession;
-  authenticateWithPasskey(email: string, passkeyId: string): HumanSession;
-  registerPrimaryPasskey(sessionId: string, passkeyId: string): HumanUser;
-  enrollRecoveryBundle(sessionId: string, input: TotpEnrollment): HumanUser;
-  verifyRecoveryFactor(sessionId: string, assertion: RecoveryAssertion): HumanSession;
-  resetPrimaryPasskeys(sessionId: string): HumanUser;
-  disableRecoveryFactor(sessionId: string, factorKind: "totp" | "backup_code"): HumanUser;
-  changeEmail(sessionId: string, newEmail: string): HumanUser;
-  getUserByEmail(email: string): HumanUser | undefined;
-  getSession(sessionId: string): HumanSession | undefined;
+  verifyMagicLink(token: string): UserSession;
+  authenticateWithPasskey(email: string, passkeyId: string): UserSession;
+  registerPrimaryPasskey(sessionId: string, passkeyId: string): UserUser;
+  enrollRecoveryBundle(sessionId: string, input: TotpEnrollment): UserUser;
+  verifyRecoveryFactor(sessionId: string, assertion: RecoveryAssertion): UserSession;
+  resetPrimaryPasskeys(sessionId: string): UserUser;
+  disableRecoveryFactor(sessionId: string, factorKind: "totp" | "backup_code"): UserUser;
+  changeEmail(sessionId: string, newEmail: string): UserUser;
+  getUserByEmail(email: string): UserUser | undefined;
+  getSession(sessionId: string): UserSession | undefined;
 }
 
-export function createHumanAuthPolicy(): HumanAuthPolicy {
+export function createUserAuthPolicy(): UserAuthPolicy {
   // TODO: Replace this in-memory state with a real DB-backed store before production use.
   // Users, sessions, magic-link challenges, TOTP secrets, and backup-code consumption must persist across restarts.
-  const state: HumanAuthPolicyState = {
+  const state: UserAuthPolicyState = {
     usersById: new Map(),
     usersByEmail: new Map(),
     challengesByToken: new Map(),
@@ -328,7 +331,11 @@ export function createHumanAuthPolicy(): HumanAuthPolicy {
             })();
 
       if (!success) {
-        throw new AuthLabError("invalid_recovery_factor", "Recovery factor verification failed", 401);
+        throw new AuthLabError(
+          "invalid_recovery_factor",
+          "Recovery factor verification failed",
+          401,
+        );
       }
 
       session.secondFactorVerified = true;
