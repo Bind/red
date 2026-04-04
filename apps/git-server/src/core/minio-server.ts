@@ -9,6 +9,16 @@ interface GittyWasm {
   handleUploadPack(body: Uint8Array): Uint8Array;
 }
 
+class GittyWasmError extends Error {
+  constructor(
+    message: string,
+    readonly operation: "advertiseRefs" | "handleReceivePack" | "handleUploadPack"
+  ) {
+    super(message);
+    this.name = "GittyWasmError";
+  }
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -58,39 +68,51 @@ async function handleRequest(request: Request) {
   const gitty = instantiateGitty(route.repoId);
 
   if (route.repoPath.endsWith("/info/refs")) {
-    const service = url.searchParams.get("service");
-    if (service !== "git-receive-pack" && service !== "git-upload-pack") {
-      return new Response("Unsupported service", { status: 403 });
+    try {
+      const service = url.searchParams.get("service");
+      if (service !== "git-receive-pack" && service !== "git-upload-pack") {
+        return new Response("Unsupported service", { status: 403 });
+      }
+      const result = gitty.advertiseRefs(service);
+      return new Response(result, {
+        headers: {
+          "Content-Type": `application/x-${service}-advertisement`,
+          "Cache-Control": "no-cache",
+        },
+      });
+    } catch (error) {
+      return internalServerError(request, route.repoId, "advertiseRefs", error);
     }
-    const result = gitty.advertiseRefs(service);
-    return new Response(result, {
-      headers: {
-        "Content-Type": `application/x-${service}-advertisement`,
-        "Cache-Control": "no-cache",
-      },
-    });
   }
 
   if (route.repoPath.endsWith("/git-receive-pack") && request.method === "POST") {
-    const body = new Uint8Array(await request.arrayBuffer());
-    const result = gitty.handleReceivePack(body);
-    return new Response(result, {
-      headers: {
-        "Content-Type": "application/x-git-receive-pack-result",
-        "Cache-Control": "no-cache",
-      },
-    });
+    try {
+      const body = new Uint8Array(await request.arrayBuffer());
+      const result = gitty.handleReceivePack(body);
+      return new Response(result, {
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-result",
+          "Cache-Control": "no-cache",
+        },
+      });
+    } catch (error) {
+      return internalServerError(request, route.repoId, "handleReceivePack", error);
+    }
   }
 
   if (route.repoPath.endsWith("/git-upload-pack") && request.method === "POST") {
-    const body = new Uint8Array(await request.arrayBuffer());
-    const result = gitty.handleUploadPack(body);
-    return new Response(result, {
-      headers: {
-        "Content-Type": "application/x-git-upload-pack-result",
-        "Cache-Control": "no-cache",
-      },
-    });
+    try {
+      const body = new Uint8Array(await request.arrayBuffer());
+      const result = gitty.handleUploadPack(body);
+      return new Response(result, {
+        headers: {
+          "Content-Type": "application/x-git-upload-pack-result",
+          "Cache-Control": "no-cache",
+        },
+      });
+    } catch (error) {
+      return internalServerError(request, route.repoId, "handleUploadPack", error);
+    }
   }
 
   return new Response("Not found", { status: 404 });
@@ -147,6 +169,19 @@ function unauthorized(message: string) {
       "WWW-Authenticate": 'Basic realm="gitty"',
     },
   });
+}
+
+function internalServerError(
+  request: Request,
+  repoId: string,
+  operation: GittyWasmError["operation"],
+  error: unknown
+) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(
+    `[gitty] repo=${repoId} method=${request.method} path=${new URL(request.url).pathname} op=${operation} error=${message}`
+  );
+  return new Response(`gitty internal error (${operation})`, { status: 500 });
 }
 
 function parseRepoRoute(pathname: string) {
@@ -236,6 +271,8 @@ function instantiateGitty(repoId: string): GittyWasm {
   memory = instance.exports.memory as WebAssembly.Memory;
   wasmAlloc = instance.exports.wasm_alloc as (len: number) => number;
   wasmFree = instance.exports.wasm_free as (ptr: number, len: number) => void;
+  const last_error_ptr = instance.exports.last_error_ptr as () => number;
+  const last_error_len = instance.exports.last_error_len as () => number;
 
   const advertise_refs = instance.exports.advertise_refs as (sPtr: number, sLen: number, outLen: number) => number;
   const handle_receive_pack = instance.exports.handle_receive_pack as (bPtr: number, bLen: number, outLen: number) => number;
@@ -248,7 +285,14 @@ function instantiateGitty(repoId: string): GittyWasm {
       const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
       const resultPtr = normalizeWasmPtr(advertise_refs(sPtr, sBytes.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = readWasmBytes(memory, resultPtr, outLen);
+      const result = readWasmResultBytes(
+        memory,
+        resultPtr,
+        outLen,
+        "advertiseRefs",
+        last_error_ptr,
+        last_error_len
+      );
       wasmFree(sPtr, sBytes.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -259,7 +303,14 @@ function instantiateGitty(repoId: string): GittyWasm {
       const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
       const resultPtr = normalizeWasmPtr(handle_receive_pack(bPtr, body.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = readWasmBytes(memory, resultPtr, outLen);
+      const result = readWasmResultBytes(
+        memory,
+        resultPtr,
+        outLen,
+        "handleReceivePack",
+        last_error_ptr,
+        last_error_len
+      );
       wasmFree(bPtr, body.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -270,7 +321,14 @@ function instantiateGitty(repoId: string): GittyWasm {
       const outLenPtr = normalizeWasmPtr(wasmAlloc(4));
       const resultPtr = normalizeWasmPtr(handle_upload_pack(bPtr, body.length, outLenPtr));
       const outLen = readU32(memory, outLenPtr);
-      const result = readWasmBytes(memory, resultPtr, outLen);
+      const result = readWasmResultBytes(
+        memory,
+        resultPtr,
+        outLen,
+        "handleUploadPack",
+        last_error_ptr,
+        last_error_len
+      );
       wasmFree(bPtr, body.length);
       wasmFree(outLenPtr, 4);
       if (outLen > 0) wasmFree(resultPtr, outLen);
@@ -309,12 +367,34 @@ function normalizeWasmPtr(value: number): number {
   return value >>> 0;
 }
 
-function readWasmBytes(memory: WebAssembly.Memory, ptr: number, len: number): Uint8Array {
-  if (len === 0) return new Uint8Array();
+function readWasmResultBytes(
+  memory: WebAssembly.Memory,
+  ptr: number,
+  len: number,
+  operation: GittyWasmError["operation"],
+  lastErrorPtr: () => number,
+  lastErrorLen: () => number
+): Uint8Array {
   if (ptr === 0) {
-    throw new Error(`WASM returned a null pointer for ${len} bytes`);
+    const message = readWasmErrorMessage(memory, lastErrorPtr, lastErrorLen);
+    if (message === null && len === 0) return new Uint8Array();
+    const detail = message ?? `WASM returned a null pointer for ${len} bytes`;
+    throw new GittyWasmError(`gitty wasm error: ${detail}`, operation);
   }
+  if (len === 0) return new Uint8Array();
   return new Uint8Array(memory.buffer, ptr, len).slice();
+}
+
+function readWasmErrorMessage(
+  memory: WebAssembly.Memory,
+  lastErrorPtr: () => number,
+  lastErrorLen: () => number
+): string | null {
+  const len = normalizeWasmPtr(lastErrorLen());
+  if (len === 0) return null;
+  const ptr = normalizeWasmPtr(lastErrorPtr());
+  if (ptr === 0) return null;
+  return decoder.decode(new Uint8Array(memory.buffer, ptr, len));
 }
 
 function readU32(memory: WebAssembly.Memory, ptr: number): number {

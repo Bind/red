@@ -20,7 +20,7 @@ COPY vendor/gitty /src/gitty
 
 WORKDIR /src/gitty
 
-RUN test "$(git rev-parse HEAD)" = "${GITTY_REF}"
+RUN if [ -e .git ]; then test "$(git rev-parse HEAD)" = "${GITTY_REF}"; fi
 
 RUN python3 - <<'PY'
 from pathlib import Path
