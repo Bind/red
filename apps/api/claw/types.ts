@@ -81,7 +81,7 @@ export interface ClawRunRecord {
 
 export interface ClawRunnerConfig {
   image: string;
-  forgejoBaseUrl: string;
+  gitBaseUrl: string;
   openaiApiKey: string | null;
   defaultTimeoutMs?: number;
   tracker?: ClawRunTracker;

@@ -3,7 +3,6 @@
 set dotenv-load
 
 mod infra
-mod e2e
 
 DEV_COMPOSE := "infra/compose/dev.yml"
 
@@ -11,12 +10,7 @@ DEV_COMPOSE := "infra/compose/dev.yml"
 default:
     @just --list --unsorted
 
-# Local stack configuration
-FORGEJO_URL := env("FORGEJO_URL", "http://localhost:3001")
-REDC_PORT := env("REDC_PORT", "3002")
-WEB_PORT := "5173"
-
-# One-time local bootstrap: Forgejo admin, token, repo, webhook, and app env
+# One-time local bootstrap: env, runner image, and dev services
 setup:
     ./infra/scripts/setup-dev-env.sh
 
@@ -179,17 +173,13 @@ auth-compose-e2e:
 
 # ── CLI ─────────────────────────────────────────────────
 
-# Bootstrap Forgejo user, repo, and git remote from GitHub identity
-bootstrap:
-    docker compose -f {{ DEV_COMPOSE }} exec api bun run apps/api/cli/index.ts bootstrap
-
 # Show merge velocity and review queue
 status:
     docker compose -f {{ DEV_COMPOSE }} exec api bun run apps/api/cli/index.ts status
 
-# Browse all Forgejo repos with fzf
+# Browse known repos with fzf
 repos:
-    @curl -sf "{{ FORGEJO_URL }}/api/v1/admin/repos?limit=50&token=$FORGEJO_TOKEN" \
-        | bun -e 'const repos=await Bun.stdin.json();for(const r of repos)console.log(r.full_name+"\t"+r.html_url+"\t"+(r.description||""))' \
-        | fzf --delimiter='\t' --with-nth=1 --preview='echo "URL: {2}\nDesc: {3}"' \
-        | cut -f2
+    @docker compose -f {{ DEV_COMPOSE }} exec -T api bun run apps/api/cli/index.ts status --format json \
+        | bun -e 'const input=await Bun.stdin.json(); const rows=Object.entries(input.by_repo ?? {}); for (const [name, count] of rows) console.log(`${name}\t${count}`)' \
+        | fzf --delimiter='\t' --with-nth=1 --preview='echo "Queued changes: {2}"' \
+        | cut -f1

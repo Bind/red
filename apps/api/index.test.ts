@@ -8,13 +8,11 @@ const testConfig: AppConfig = {
   port: 0,
   dbPath: ":memory:",
   repoBackend: {
-    kind: "forgejo",
-    forgejo: {
-      baseUrl: "http://localhost:3000",
-      token: "test-token",
-    },
+    kind: "git_storage",
+    publicUrl: "http://git-server.test",
+    defaultOwner: "redc",
+    defaultBranch: "main",
   },
-  webhookSecret: "test-secret",
   repos: [],
   artifacts: {
     minio: {

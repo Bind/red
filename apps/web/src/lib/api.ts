@@ -1,3 +1,6 @@
+import { hc } from "hono/client";
+import type { AppType } from "../../../bff/src/app";
+
 export type ChangeStatus =
   | "pushed"
   | "scoring"
@@ -50,37 +53,41 @@ export interface Velocity {
   pending_review: number;
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+const client = hc<AppType>("/");
+
+async function rpcJson<T>(response: Response): Promise<T> {
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json() as Promise<T>;
 }
 
 export function fetchVelocity(hours?: number): Promise<Velocity> {
-  const params = hours ? `?hours=${hours}` : "";
-  return apiFetch(`/api/velocity${params}`);
+  return client.rpc.velocity.$get({
+      query: hours ? { hours: String(hours) } : {},
+    }).then(rpcJson);
 }
 
 export function fetchReviewQueue(): Promise<Change[]> {
-  return apiFetch("/api/review");
+  return client.rpc.review.$get().then(rpcJson);
 }
 
 export function fetchChange(id: number): Promise<ChangeDetail> {
-  return apiFetch(`/api/changes/${id}`);
+  return client.rpc.changes[":id"].$get({ param: { id: String(id) } }).then(rpcJson);
 }
 
 export function fetchPendingJobs(): Promise<{ pending: number }> {
-  return apiFetch("/api/jobs/pending");
+  return client.rpc.jobs.pending.$get().then(rpcJson);
 }
 
 export async function fetchDiff(id: number): Promise<string> {
-  const res = await fetch(`/api/changes/${id}/diff`);
+  const res = await fetch(`/rpc/changes/${id}/diff`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.text();
 }
 
 export async function regenerateSummary(id: number): Promise<void> {
-  const res = await fetch(`/api/changes/${id}/regenerate-summary`, { method: "POST" });
+  const res = await client.rpc.changes[":id"]["regenerate-summary"].$post({
+    param: { id: String(id) },
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
     throw new Error(body.error ?? `API error: ${res.status}`);
@@ -88,7 +95,9 @@ export async function regenerateSummary(id: number): Promise<void> {
 }
 
 export async function requeueSummary(id: number): Promise<void> {
-  const res = await fetch(`/api/changes/${id}/requeue-summary`, { method: "POST" });
+  const res = await client.rpc.changes[":id"]["requeue-summary"].$post({
+    param: { id: String(id) },
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
     throw new Error(body.error ?? `API error: ${res.status}`);
@@ -96,7 +105,7 @@ export async function requeueSummary(id: number): Promise<void> {
 }
 
 export function fetchRepos(): Promise<string[]> {
-  return apiFetch("/api/repos");
+  return client.rpc.repos.$get().then(rpcJson);
 }
 
 export interface Branch {
@@ -106,7 +115,7 @@ export interface Branch {
 }
 
 export function fetchBranches(repo: string): Promise<Branch[]> {
-  return apiFetch(`/api/branches?repo=${encodeURIComponent(repo)}`);
+  return client.rpc.branches.$get({ query: { repo } }).then(rpcJson);
 }
 
 export type AgentSessionStatus = "running" | "completed" | "failed";
@@ -142,11 +151,14 @@ export interface AgentSessionEvent {
 }
 
 export function fetchSessions(changeId: number): Promise<AgentSession[]> {
-  return apiFetch(`/api/changes/${changeId}/sessions`);
+  return client.rpc.changes[":id"].sessions.$get({ param: { id: String(changeId) } }).then(rpcJson);
 }
 
 export function fetchSessionEvents(sessionId: number, afterSeq: number = 0): Promise<AgentSessionEvent[]> {
-  return apiFetch(`/api/sessions/${sessionId}/events?after=${afterSeq}`);
+  return client.rpc.sessions[":id"].events.$get({
+      param: { id: String(sessionId) },
+      query: { after: String(afterSeq) },
+    }).then(rpcJson);
 }
 
 export function subscribeToAgentEvents(
@@ -154,7 +166,7 @@ export function subscribeToAgentEvents(
   onEvent: (event: AgentSessionEvent) => void,
   onDone: (data?: string) => void,
 ): () => void {
-  const es = new EventSource(`/api/changes/${changeId}/agent-events`);
+  const es = new EventSource(`/rpc/changes/${changeId}/agent-events`);
 
   es.addEventListener("event", (e) => {
     onEvent(JSON.parse(e.data) as AgentSessionEvent);

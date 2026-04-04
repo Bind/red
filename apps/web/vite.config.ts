@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3000";
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:3001";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,7 +15,7 @@ export default defineConfig({
   server: {
     host: true,
     proxy: {
-      "/api": {
+      "/rpc": {
         target: apiProxyTarget,
         // Disable buffering so SSE streams flow through immediately
         configure: (proxy) => {
@@ -27,7 +27,7 @@ export default defineConfig({
           });
         },
       },
-      "/webhook": apiProxyTarget,
+      "/api/auth": apiProxyTarget,
       "/health": apiProxyTarget,
     },
   },

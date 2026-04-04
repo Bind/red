@@ -134,88 +134,17 @@ export interface LLMSummary {
   annotations?: SummaryAnnotation[];
 }
 
-/** Forgejo webhook push payload (relevant fields). */
-export interface ForgejoPushPayload {
-  ref: string;
-  before: string;
-  after: string;
-  compare_url: string;
-  commits: ForgejoCommit[];
-  repository: ForgejoRepository;
-  sender: ForgejoUser;
-}
-
-export interface ForgejoCommit {
-  id: string;
-  message: string;
-  author: { name: string; email: string };
-  timestamp: string;
-}
-
-export interface ForgejoRepository {
-  id: number;
-  name: string;
-  full_name: string;
-  owner: ForgejoUser;
-  default_branch: string;
-}
-
-export interface ForgejoUser {
-  id: number;
-  login: string;
-}
-
-/** Forgejo commit status. */
-export type CommitStatusState = "pending" | "success" | "failure" | "error";
-
-export interface ForgejoCommitStatus {
-  state: CommitStatusState;
-  target_url?: string;
-  description: string;
-  context: string;
-}
-
-/** Forgejo PR (relevant fields). */
-export interface ForgejoPR {
-  number: number;
-  state: "open" | "closed";
-  merged: boolean;
-  head: { ref: string; sha: string };
-  base: { ref: string };
-}
-
 /** Notification webhook config. */
 export interface NotificationConfig {
   url: string;
   events: ("critical" | "needs_review" | "all")[];
 }
 
-/** Forgejo admin API types for bootstrap. */
-export interface ForgejoCreateUserOptions {
-  username: string;
-  password: string;
-  email: string;
-  must_change_password?: boolean;
-}
-
-export interface ForgejoSSHKey {
-  id: number;
-  key: string;
-  title: string;
-  fingerprint: string;
-}
-
-export interface ForgejoRepo {
+export interface RepoInfo {
   id: number;
   name: string;
   full_name: string;
   default_branch: string;
-}
-
-export interface ForgejoToken {
-  id: number;
-  name: string;
-  sha1: string;
 }
 
 /** Agent session tracking. */
@@ -251,8 +180,7 @@ export interface AgentSessionEvent {
   created_at: string;
 }
 
-/** Forgejo branch from the branches API. */
-export interface ForgejoBranch {
+export interface BranchInfo {
   name: string;
   commit: {
     id: string;

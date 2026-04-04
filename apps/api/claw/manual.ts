@@ -13,7 +13,7 @@ const USAGE = `Usage:
   bun run src/claw/manual.ts prompts
   bun run src/claw/manual.ts prompt <prompt-name>
   bun run src/claw/manual.ts runs [--limit <n>]
-  bun run src/claw/manual.ts run <job> [job args] [--image <image>] [--forgejo-url <url>] [--timeout-ms <ms>]
+  bun run src/claw/manual.ts run <job> [job args] [--image <image>] [--git-base-url <url>] [--timeout-ms <ms>]
 
 Jobs:
   summarize-change   --repo owner/repo --head <ref> [--base main]
@@ -24,7 +24,7 @@ Jobs:
 function parseGlobalArgs(argv: string[]) {
   const args = [...argv];
   let image = process.env.CLAW_RUNNER_IMAGE ?? process.env.CODEX_RUNNER_IMAGE ?? "redc-claw-runner";
-  let forgejoUrl = process.env.FORGEJO_URL;
+  let gitBaseUrl = process.env.GIT_STORAGE_PUBLIC_URL ?? process.env.GIT_BASE_URL;
   let timeoutMs: number | undefined;
   let limit = 20;
 
@@ -34,8 +34,8 @@ function parseGlobalArgs(argv: string[]) {
       i--;
       continue;
     }
-    if (args[i] === "--forgejo-url" && args[i + 1]) {
-      forgejoUrl = args.splice(i, 2)[1];
+    if (args[i] === "--git-base-url" && args[i + 1]) {
+      gitBaseUrl = args.splice(i, 2)[1];
       i--;
       continue;
     }
@@ -50,11 +50,11 @@ function parseGlobalArgs(argv: string[]) {
     }
   }
 
-  return { args, image, forgejoUrl, timeoutMs, limit };
+  return { args, image, gitBaseUrl, timeoutMs, limit };
 }
 
 async function main(argv: string[]): Promise<number> {
-  const { args, image, forgejoUrl, timeoutMs, limit } = parseGlobalArgs(argv);
+  const { args, image, gitBaseUrl, timeoutMs, limit } = parseGlobalArgs(argv);
   const [command, maybeJobName, ...rest] = args;
   const tracker = new SqliteClawRunTracker();
 
@@ -96,8 +96,8 @@ async function main(argv: string[]): Promise<number> {
     return 1;
   }
 
-  if (!forgejoUrl) {
-    console.error("Missing FORGEJO_URL or --forgejo-url");
+  if (!gitBaseUrl) {
+    console.error("Missing GIT_STORAGE_PUBLIC_URL, GIT_BASE_URL, or --git-base-url");
     return 1;
   }
 
@@ -118,7 +118,7 @@ async function main(argv: string[]): Promise<number> {
 
   const runner = new DockerClawRunner({
     image,
-    forgejoBaseUrl: forgejoUrl,
+    gitBaseUrl,
     openaiApiKey: process.env.OPENAI_API_KEY ?? null,
     defaultTimeoutMs: timeoutMs,
     tracker,

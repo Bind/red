@@ -285,12 +285,12 @@ describe("PullRequestQueries", () => {
     });
 
     pullRequests.updateStatus(pr.id, "approved");
-    pullRequests.attachProviderRef(pr.id, "forgejo", "42");
+    pullRequests.attachProviderRef(pr.id, "git", "42");
     pullRequests.markMerged(pr.id, "deadbeef");
 
     const updated = pullRequests.getById(pr.id)!;
     expect(updated.status).toBe("merged");
-    expect(updated.provider).toBe("forgejo");
+    expect(updated.provider).toBe("git");
     expect(updated.provider_ref).toBe("42");
     expect(updated.merge_commit_sha).toBe("deadbeef");
   });

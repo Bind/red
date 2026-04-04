@@ -29,7 +29,6 @@ const DEFAULT_CONFIG: ScoringConfig = {
     "Dockerfile*",
     "docker-compose*",
     ".github/**",
-    ".forgejo/**",
     "*.sql",
     "*migration*",
     "*.env*",

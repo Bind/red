@@ -1,11 +1,9 @@
 #!/usr/bin/env bun
 import { statusCommand } from "./status";
-import { bootstrapCommand } from "./bootstrap";
 
 const USAGE = `redc — agent-native code forge
 
 Usage:
-  redc bootstrap           Bootstrap Forgejo user, repo, and git remote
   redc status              Show summary throughput and pending reviews
   redc help                Show this help message
 
@@ -41,12 +39,9 @@ export function parseArgs(argv: string[]): CliContext {
 
 export async function run(argv: string[]): Promise<number> {
   const ctx = parseArgs(argv);
-  const [command, subcommand] = ctx.args;
+  const [command] = ctx.args;
 
   switch (command) {
-    case "bootstrap":
-      return bootstrapCommand(ctx);
-
     case "status":
       return statusCommand(ctx);
 

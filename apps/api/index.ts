@@ -9,12 +9,9 @@ import {
   DeliveryQueries,
   SessionQueries,
 } from "./db/queries";
-import { ForgejoClient } from "./forgejo/client";
-import { ForgejoRepositoryProvider } from "./repo/forgejo-provider";
 import { GitStorageRepositoryProvider } from "./repo/git-storage-provider";
 import { LocalGitProvider } from "./repo/local-git-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
-import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
 import { StubSummaryGenerator, ClawSummaryGenerator } from "./engine/summary";
 import type { SummaryGenerator } from "./engine/summary";
@@ -45,13 +42,6 @@ export interface AppConfig {
   dbPath: string;
   repoBackend:
     | {
-        kind: "forgejo";
-        forgejo: {
-          baseUrl: string;
-          token: string;
-        };
-      }
-    | {
         kind: "local_git";
         reposRoot: string;
       }
@@ -62,7 +52,6 @@ export interface AppConfig {
         defaultBranch: string;
         authTokenSecret?: string;
       };
-  webhookSecret: string;
   repos: string[];
   artifacts: {
     minio: {
@@ -97,22 +86,13 @@ function loadConfig(): AppConfig {
           kind: "local_git",
           reposRoot: required("LOCAL_GIT_REPOS_ROOT"),
         }
-      : process.env.REPO_PROVIDER === "git_storage"
-        ? {
-            kind: "git_storage",
-            publicUrl: required("GIT_STORAGE_PUBLIC_URL"),
-            defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
-            defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
-            authTokenSecret: process.env.GIT_STORAGE_AUTH_TOKEN_SECRET,
-          }
-        : {
-            kind: "forgejo",
-            forgejo: {
-              baseUrl: required("FORGEJO_URL"),
-              token: required("FORGEJO_TOKEN"),
-            },
-          },
-    webhookSecret: required("WEBHOOK_SECRET"),
+      : {
+          kind: "git_storage",
+          publicUrl: process.env.GIT_STORAGE_PUBLIC_URL ?? "http://git-server:8080",
+          defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
+          defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
+          authTokenSecret: process.env.GIT_STORAGE_AUTH_TOKEN_SECRET,
+        },
     repos: configuredRepos,
     artifacts: {
       minio: getRequiredMinioArtifactStoreConfig(),
@@ -128,24 +108,18 @@ export function createApp(config: AppConfig) {
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
   const sessions = new SessionQueries(db);
-  const forgejo = config.repoBackend.kind === "forgejo"
-    ? new ForgejoClient(config.repoBackend.forgejo)
-    : null;
-  const forgejoProvider = forgejo ? new ForgejoRepositoryProvider(forgejo) : null;
   const repositoryProvider: RepositoryProvider =
-    config.repoBackend.kind === "forgejo"
-      ? forgejoProvider!
-      : config.repoBackend.kind === "local_git"
-        ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
-        : new GitStorageRepositoryProvider({
-            storage: new GitSdk({
-              publicUrl: config.repoBackend.publicUrl,
-              defaultOwner: config.repoBackend.defaultOwner,
-              authTokenSecret: config.repoBackend.authTokenSecret,
-            }),
-            knownRepos: config.repos,
-            defaultBranch: config.repoBackend.defaultBranch,
-          });
+    config.repoBackend.kind === "local_git"
+      ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
+      : new GitStorageRepositoryProvider({
+          storage: new GitSdk({
+            publicUrl: config.repoBackend.publicUrl,
+            defaultOwner: config.repoBackend.defaultOwner,
+            authTokenSecret: config.repoBackend.authTokenSecret,
+          }),
+          knownRepos: config.repos,
+          defaultBranch: config.repoBackend.defaultBranch,
+        });
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
@@ -340,7 +314,7 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
-  // List known repos (configured via REDC_REPOS, then DB, then Forgejo)
+  // List known repos (configured via REDC_REPOS, then DB, then provider)
   app.get("/api/repos", async (c) => {
     if (config.repos.length > 0) {
       return c.json(config.repos);
@@ -388,19 +362,6 @@ export function createApp(config: AppConfig) {
 
     return c.json(result);
   });
-
-  // Mount webhook routes
-  const webhookRoutes = createWebhookRoutes({
-    changes,
-    events,
-    deliveries,
-    jobs,
-    forgejo,
-    webhookSecret: config.webhookSecret,
-  });
-  if (forgejo) {
-    app.route("/", webhookRoutes);
-  }
 
   const eventBus = new EventBus();
 
@@ -542,10 +503,10 @@ export function createApp(config: AppConfig) {
     "redc-claw-runner";
   const hasClawAuth = existsSync(join(homedir(), ".local", "share", "opencode", "auth.json"));
   const runner = (openaiKey || hasClawAuth)
-    ? new DockerClawRunner({
+      ? new DockerClawRunner({
         image: clawImage,
-        forgejoBaseUrl: config.repoBackend.kind === "forgejo"
-          ? config.repoBackend.forgejo.baseUrl
+        gitBaseUrl: config.repoBackend.kind === "git_storage"
+          ? config.repoBackend.publicUrl
           : "http://localhost",
         openaiApiKey: openaiKey,
         tracker: clawTracker,
@@ -605,7 +566,6 @@ export function createApp(config: AppConfig) {
     events,
     jobs,
     deliveries,
-    forgejo,
     repositoryProvider,
     worker,
     runner,

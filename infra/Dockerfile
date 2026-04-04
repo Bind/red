@@ -4,6 +4,9 @@ RUN apk add --no-cache docker-cli git python3 make g++
 
 FROM base AS install
 COPY package.json bun.lock ./
+COPY apps/auth/package.json ./apps/auth/
+COPY apps/bff/package.json ./apps/bff/
+COPY apps/git-server/package.json ./apps/git-server/
 COPY apps/web/package.json ./apps/web/
 RUN bun install --frozen-lockfile
 
@@ -16,6 +19,9 @@ RUN cd apps/web && bun run build
 
 FROM base AS prod-install
 COPY package.json bun.lock ./
+COPY apps/auth/package.json ./apps/auth/
+COPY apps/bff/package.json ./apps/bff/
+COPY apps/git-server/package.json ./apps/git-server/
 COPY apps/web/package.json ./apps/web/
 RUN bun install --frozen-lockfile --production
 

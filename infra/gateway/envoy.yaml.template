@@ -20,8 +20,6 @@ static_resources:
                       domains: ["*"]
                       routes:
                         # redc API routes
-                        - match: { prefix: "/webhook/" }
-                          route: { cluster: redc_api }
                         - match: { path: "/health" }
                           route: { cluster: redc_api }
                         - match: { prefix: "/api/" }
@@ -29,13 +27,6 @@ static_resources:
                         # SPA assets
                         - match: { prefix: "/assets/" }
                           route: { cluster: redc_api }
-                        # Forgejo routes
-                        - match: { prefix: "/git/" }
-                          route: { cluster: forgejo }
-                        - match: { regex: "^/[^/]+/[^/]+\\.git/.*" }
-                          route: { cluster: forgejo }
-                        - match: { prefix: "/forgejo/" }
-                          route: { cluster: forgejo }
                         # SPA fallback — serves index.html for client-side routing
                         - match: { prefix: "/" }
                           route: { cluster: redc_api }
@@ -44,21 +35,7 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
-
   clusters:
-    - name: forgejo
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: forgejo
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: ${FORGEJO_HOST}
-                      port_value: 3000
-
     - name: redc_api
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
@@ -71,4 +48,3 @@ static_resources:
                     socket_address:
                       address: ${API_HOST}
                       port_value: 3000
-

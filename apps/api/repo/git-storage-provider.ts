@@ -1,6 +1,6 @@
 import type { CommitDiffFile, GitStorage } from "../../git-server/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
-import type { DiffStats, FileStats, ForgejoBranch, ForgejoRepo } from "../types";
+import type { BranchInfo, DiffStats, FileStats, RepoInfo } from "../types";
 
 export interface GitStorageRepositoryProviderOptions {
   storage: GitStorage;
@@ -44,7 +44,7 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
     return handle.readTextFile({ ref, path: filepath });
   }
 
-  async listRepos(): Promise<ForgejoRepo[]> {
+  async listRepos(): Promise<RepoInfo[]> {
     const discovered = await this.options.storage.listRepos();
     if (discovered.length > 0) {
       return discovered.map((repo) => ({
@@ -68,7 +68,7 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
       });
   }
 
-  async getRepo(owner: string, repo: string): Promise<ForgejoRepo> {
+  async getRepo(owner: string, repo: string): Promise<RepoInfo> {
     const handle = await this.requireRepo(owner, repo);
     const info = await handle.info();
     return {
@@ -79,7 +79,7 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
     };
   }
 
-  async listBranches(owner: string, repo: string): Promise<ForgejoBranch[]> {
+  async listBranches(owner: string, repo: string): Promise<BranchInfo[]> {
     const handle = await this.requireRepo(owner, repo);
     const info = await handle.info();
     const branches = await handle.listBranches();

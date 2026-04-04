@@ -1,4 +1,4 @@
-import type { DiffStats, ForgejoBranch, ForgejoRepo } from "../types";
+import type { BranchInfo, DiffStats, RepoInfo } from "../types";
 
 export interface RepositoryProvider {
   compareDiff(
@@ -14,7 +14,7 @@ export interface RepositoryProvider {
     filepath: string,
     ref: string
   ): Promise<string | null>;
-  listRepos?(): Promise<ForgejoRepo[]>;
-  getRepo?(owner: string, repo: string): Promise<ForgejoRepo>;
-  listBranches?(owner: string, repo: string): Promise<ForgejoBranch[]>;
+  listRepos?(): Promise<RepoInfo[]>;
+  getRepo?(owner: string, repo: string): Promise<RepoInfo>;
+  listBranches?(owner: string, repo: string): Promise<BranchInfo[]>;
 }

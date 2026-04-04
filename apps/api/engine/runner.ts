@@ -21,7 +21,7 @@ export interface RepoTaskResult {
 
 export interface RepoTaskRunnerConfig {
   image: string;
-  forgejoBaseUrl: string;
+  gitBaseUrl: string;
   /** OpenAI API key. If null, mounts ~/.codex into the container for ChatGPT OAuth auth. */
   openaiApiKey: string | null;
   defaultTimeoutMs?: number;
@@ -33,7 +33,7 @@ export class RepoTaskRunner {
   async run(request: RepoTaskRequest): Promise<RepoTaskResult> {
     const timeout = request.timeoutMs ?? this.config.defaultTimeoutMs ?? 120_000;
     // Rewrite localhost URLs to host.docker.internal so the container can reach the host
-    const dockerBaseUrl = this.config.forgejoBaseUrl
+    const dockerBaseUrl = this.config.gitBaseUrl
       .replace(/\/+$/, "")
       .replace(/localhost|127\.0\.0\.1/, "host.docker.internal");
     const repoUrl = `${dockerBaseUrl}/${request.repo}.git`;

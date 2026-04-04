@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { DiffStats, FileStats, ForgejoBranch, ForgejoRepo } from "../types";
+import type { BranchInfo, DiffStats, FileStats, RepoInfo } from "../types";
 import type { RepositoryProvider } from "./repository-provider";
 
 export interface LocalGitProviderConfig {
@@ -64,10 +64,10 @@ export class LocalGitProvider implements RepositoryProvider {
     }
   }
 
-  async listRepos(): Promise<ForgejoRepo[]> {
+  async listRepos(): Promise<RepoInfo[]> {
     if (!existsSync(this.config.reposRoot)) return [];
 
-    const repos: ForgejoRepo[] = [];
+    const repos: RepoInfo[] = [];
     let id = 1;
 
     for (const owner of readdirSync(this.config.reposRoot, { withFileTypes: true })) {
@@ -92,7 +92,7 @@ export class LocalGitProvider implements RepositoryProvider {
     return repos;
   }
 
-  async getRepo(owner: string, repo: string): Promise<ForgejoRepo> {
+  async getRepo(owner: string, repo: string): Promise<RepoInfo> {
     const repoPath = this.resolveRepoPath(owner, repo);
     return {
       id: 0,
@@ -102,7 +102,7 @@ export class LocalGitProvider implements RepositoryProvider {
     };
   }
 
-  async listBranches(owner: string, repo: string): Promise<ForgejoBranch[]> {
+  async listBranches(owner: string, repo: string): Promise<BranchInfo[]> {
     const repoPath = this.resolveRepoPath(owner, repo);
     const defaultBranch = this.getDefaultBranch(repoPath);
     const output = this.runGit(repoPath, [

@@ -40,7 +40,7 @@ export class DockerClawRunner {
     const timeout = request.timeoutMs ?? this.config.defaultTimeoutMs ?? 120_000;
     const runId = request.metadata.runId ?? randomUUID();
     const containerName = buildContainerName(request.metadata.jobName, runId);
-    const dockerBaseUrl = this.config.forgejoBaseUrl
+    const dockerBaseUrl = this.config.gitBaseUrl
       .replace(/\/+$/, "")
       .replace(/localhost|127\.0\.0\.1/, "host.docker.internal");
     const repoUrl = `${dockerBaseUrl}/${request.repo}.git`;

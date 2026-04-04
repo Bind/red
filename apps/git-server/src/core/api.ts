@@ -5,7 +5,7 @@ export interface BaseRepoInput {
   owner: string;
   name: string;
   defaultBranch: string;
-  provider?: "github" | "forgejo" | "git";
+  provider?: "github" | "git";
 }
 
 export interface CreateRepoOptions {

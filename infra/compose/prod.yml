@@ -18,27 +18,11 @@ services:
     build: ../gateway
     restart: unless-stopped
     environment:
-      FORGEJO_HOST: forgejo
       API_HOST: api
     networks:
       - redc-net
     depends_on:
-      - forgejo
       - api
-
-  forgejo:
-    image: codeberg.org/forgejo/forgejo:11
-    restart: unless-stopped
-    ports:
-      - "22:22"
-    environment:
-      FORGEJO__server__ROOT_URL: https://red.computer
-      FORGEJO__server__SSH_DOMAIN: red.computer
-      FORGEJO__server__SSH_PORT: "22"
-    volumes:
-      - forgejo-data:/data
-    networks:
-      - redc-net
 
   api:
     build:
@@ -55,7 +39,6 @@ services:
 volumes:
   caddy-data:
   caddy-config:
-  forgejo-data:
   redc-data:
 
 networks:
