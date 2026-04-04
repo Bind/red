@@ -5,5 +5,5 @@ node_modules/
 *.db-wal
 *.db-shm
 .sst/
-web/dist/
+apps/web/dist/
 .claw-artifacts/
