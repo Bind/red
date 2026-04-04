@@ -2,9 +2,11 @@
 
 set dotenv-load
 
+DEV_COMPOSE := "infra/compose/dev.yml"
+
 # Start the full local stack in Docker
 up:
-    docker compose up -d --build
+    docker compose -f {{ DEV_COMPOSE }} up -d --build
     @echo "Waiting for Forgejo..."
     @for i in $(seq 1 30); do \
         curl -sf http://localhost:3001/api/v1/version > /dev/null 2>&1 && echo "Forgejo is up!" && break; \
@@ -14,17 +16,17 @@ up:
 
 # Stop the full local stack
 down:
-    docker compose down
+    docker compose -f {{ DEV_COMPOSE }} down
 
 # Show container status
 status:
-    docker compose ps
+    docker compose -f {{ DEV_COMPOSE }} ps
 
 # View logs for one or more services
 logs *args:
-    docker compose logs {{ args }}
+    docker compose -f {{ DEV_COMPOSE }} logs {{ args }}
 
 # Nuke all data and start fresh
 reset:
-    docker compose down -v
+    docker compose -f {{ DEV_COMPOSE }} down -v
     rm -f .env

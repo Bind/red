@@ -14,7 +14,7 @@ interface CommandOptions {
 }
 
 export async function startDevGitServer(): Promise<StartedDevGitServer> {
-  const composeFile = join(import.meta.dir, "..", "..", "..", "docker-compose.yml");
+  const composeFile = join(import.meta.dir, "..", "..", "..", "..", "infra", "compose", "dev.yml");
   const composeEnv = await readComposeEnv(composeFile, [
     "GIT_SERVER_PUBLIC_URL",
     "GIT_SERVER_ADMIN_USERNAME",

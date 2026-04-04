@@ -3,9 +3,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { homedir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
-import { buildSummaryPrompt } from "../../../src/engine/tasks/summary";
-import { validateSummaryOutput } from "../../../src/engine/tasks/summary";
-import type { ConfidenceLevel, DiffStats, FileStats, LLMSummary } from "../../../src/types";
+import { buildSummaryPrompt } from "../../../apps/api/engine/tasks/summary";
+import { validateSummaryOutput } from "../../../apps/api/engine/tasks/summary";
+import type { ConfidenceLevel, DiffStats, FileStats, LLMSummary } from "../../../apps/api/types";
 
 interface Options {
   repoUrl: string;
