@@ -2,7 +2,6 @@ import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { initInMemoryDatabase } from "../db/schema";
 import { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
 import { ScoringEngine } from "../engine/review";
-import { PolicyEngine } from "../engine/policy";
 import { StubSummaryGenerator } from "../engine/summary";
 import { ChangeStateMachine } from "../engine/state-machine";
 import { JobWorker, type WorkerDeps } from "./worker";
@@ -54,14 +53,11 @@ beforeEach(() => {
     jobs,
     repositoryProvider: createMockRepositoryProvider(),
     scorer: new ScoringEngine(),
-    policy: new PolicyEngine(deps?.repositoryProvider ?? createMockRepositoryProvider()),
     summary: new StubSummaryGenerator(),
     stateMachine: new ChangeStateMachine(changes, events),
     notifier: new NotificationSender(),
     notificationConfigs: [],
   };
-  // Fix policy engine to use same forgejo mock
-  deps.policy = new PolicyEngine(deps.repositoryProvider);
 
   worker = new JobWorker(deps);
 });
@@ -138,7 +134,6 @@ describe("JobWorker", () => {
             { filename: "src/app.ts", additions: 10, deletions: 2, status: "modified" },
           ],
         },
-        policy_decision: { action: "require-review" },
       }),
     });
 

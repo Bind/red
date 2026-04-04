@@ -192,18 +192,22 @@ class GitSdkRepo implements Repo {
 
       const statsByPath = parseNumstat(numstatOutput.stdout);
       const patchByPath = range.includePatch ? parsePerFilePatch(patchOutput.stdout) : new Map<string, string>();
-      const files = nameStatusOutput.stdout
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map(parseNameStatusLine)
-        .filter((file): file is Omit<CommitDiffFile, "additions" | "deletions" | "patch"> => file !== null)
-        .map((file) => ({
-          ...file,
-          additions: statsByPath.get(file.path)?.additions ?? 0,
-          deletions: statsByPath.get(file.path)?.deletions ?? 0,
-          patch: range.includePatch ? patchByPath.get(file.path) : undefined,
-        }))
-        .filter((file) => !range.pathPrefix || file.path.startsWith(range.pathPrefix));
+      const files: CommitDiffFile[] = [];
+      for (const line of nameStatusOutput.stdout.split(/\r?\n/).filter(Boolean)) {
+        const parsed = parseNameStatusLine(line);
+        if (!parsed) continue;
+
+        const file: CommitDiffFile = {
+          ...parsed,
+          additions: statsByPath.get(parsed.path)?.additions ?? 0,
+          deletions: statsByPath.get(parsed.path)?.deletions ?? 0,
+          patch: range.includePatch ? patchByPath.get(parsed.path) : undefined,
+        };
+
+        if (!range.pathPrefix || file.path.startsWith(range.pathPrefix)) {
+          files.push(file);
+        }
+      }
 
       return {
         baseRef: base.name,

@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 import { statusCommand } from "./status";
-import { policyTestCommand } from "./policy";
 import { bootstrapCommand } from "./bootstrap";
 
 const USAGE = `redc — agent-native code forge
@@ -8,7 +7,6 @@ const USAGE = `redc — agent-native code forge
 Usage:
   redc bootstrap           Bootstrap Forgejo user, repo, and git remote
   redc status              Show summary throughput and pending reviews
-  redc policy test [path]  Dry-run policy evaluation
   redc help                Show this help message
 
 Options:
@@ -51,14 +49,6 @@ export async function run(argv: string[]): Promise<number> {
 
     case "status":
       return statusCommand(ctx);
-
-    case "policy":
-      if (subcommand === "test") {
-        return policyTestCommand(ctx);
-      }
-      console.error(`Unknown policy subcommand: ${subcommand}`);
-      console.error(USAGE);
-      return 1;
 
     case "help":
     case undefined:

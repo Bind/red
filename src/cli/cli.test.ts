@@ -30,10 +30,6 @@ describe("parseArgs", () => {
     expect(ctx.apiUrl).toBe("http://localhost:3000");
   });
 
-  test("parses policy test with path", () => {
-    const ctx = parseArgs(["policy", "test", "/tmp/policy.yaml"]);
-    expect(ctx.args).toEqual(["policy", "test", "/tmp/policy.yaml"]);
-  });
 });
 
 describe("run", () => {
@@ -49,11 +45,6 @@ describe("run", () => {
 
   test("unknown command returns 1", async () => {
     const code = await run(["nonexistent"]);
-    expect(code).toBe(1);
-  });
-
-  test("unknown policy subcommand returns 1", async () => {
-    const code = await run(["policy", "nonexistent"]);
     expect(code).toBe(1);
   });
 });

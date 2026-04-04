@@ -135,6 +135,58 @@ git-server-down:
 opencode-lab-install:
     cd experiments/opencode-lab && bun install
 
+# Install dependencies for the JWKS auth experiment
+jwks-auth-lab-install:
+    cd experiments/jwks-auth-lab && bun install
+
+# Start the JWKS auth experiment server
+jwks-auth-lab-serve:
+    cd experiments/jwks-auth-lab && bun run src/index.ts
+
+# Run tests for the JWKS auth experiment
+jwks-auth-lab-test:
+    cd experiments/jwks-auth-lab && bun test
+
+# Install dependencies for the Better Auth auth experiment
+auth-lab-install:
+    cd experiments/auth-lab && bun install
+
+# Start the Better Auth auth experiment server
+auth-lab-serve:
+    cd experiments/auth-lab && bun run src/index.ts
+
+# Run tests for the Better Auth auth experiment
+auth-lab-test:
+    cd experiments/auth-lab && bun test
+
+# Bring up the auth-lab compose stack
+auth-lab-compose-up:
+    docker compose -f experiments/auth-lab/docker-compose.yml up --build -d auth-db auth
+    until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
+
+# Tear down the auth-lab compose stack
+auth-lab-compose-down:
+    docker compose -f experiments/auth-lab/docker-compose.yml down -v --remove-orphans
+
+# Run auth-lab E2E tests against the compose stack
+auth-lab-compose-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root="$(pwd)"
+    compose_file="$repo_root/experiments/auth-lab/docker-compose.yml"
+    docker compose -f "$compose_file" up --build -d auth-db auth
+    cleanup() {
+        docker compose -f "$compose_file" down -v --remove-orphans
+    }
+    trap cleanup EXIT
+    until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
+    cd experiments/auth-lab && \
+        AUTH_LAB_E2E_BASE_URL=http://127.0.0.1:4020 \
+        AUTH_LAB_E2E_DB_URL=postgres://auth_lab:auth_lab_password@127.0.0.1:5433/auth_lab \
+        AUTH_LAB_E2E_COMPOSE_FILE=./docker-compose.yml \
+        AUTH_LAB_BETTER_AUTH_SECRET=auth-lab-compose-secret \
+        bun test src/compose-e2e.test.ts
+
 # Start an opencode server rooted at a given repo path
 opencode-lab-serve repo_path *args:
     cd experiments/opencode-lab && bun src/serve-repo.ts {{repo_path}} {{args}}

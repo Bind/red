@@ -11,11 +11,11 @@ import {
 } from "./db/queries";
 import { ForgejoClient } from "./forgejo/client";
 import { ForgejoRepositoryProvider } from "./repo/forgejo-provider";
+import { GitStorageRepositoryProvider } from "./repo/git-storage-provider";
 import { LocalGitProvider } from "./repo/local-git-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
 import { createWebhookRoutes } from "./api/webhooks";
 import { ScoringEngine } from "./engine/review";
-import { PolicyEngine } from "./engine/policy";
 import { StubSummaryGenerator, ClawSummaryGenerator } from "./engine/summary";
 import type { SummaryGenerator } from "./engine/summary";
 import { EventBus } from "./engine/event-bus";
@@ -38,6 +38,7 @@ import {
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
+import { GitSdk } from "../git-server/src/core/git-sdk";
 
 export interface AppConfig {
   port: number;
@@ -53,6 +54,13 @@ export interface AppConfig {
     | {
         kind: "local_git";
         reposRoot: string;
+      }
+    | {
+        kind: "git_storage";
+        publicUrl: string;
+        defaultOwner: string;
+        defaultBranch: string;
+        authTokenSecret?: string;
       };
   webhookSecret: string;
   repos: string[];
@@ -76,6 +84,11 @@ function loadConfig(): AppConfig {
     return val;
   };
 
+  const configuredRepos = (process.env.REDC_REPOS ?? "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+
   return {
     port: parseInt(process.env.REDC_PORT ?? "3000", 10),
     dbPath: process.env.REDC_DB_PATH ?? "redc.db",
@@ -84,18 +97,23 @@ function loadConfig(): AppConfig {
           kind: "local_git",
           reposRoot: required("LOCAL_GIT_REPOS_ROOT"),
         }
-      : {
-          kind: "forgejo",
-          forgejo: {
-            baseUrl: required("FORGEJO_URL"),
-            token: required("FORGEJO_TOKEN"),
+      : process.env.REPO_PROVIDER === "git_storage"
+        ? {
+            kind: "git_storage",
+            publicUrl: required("GIT_STORAGE_PUBLIC_URL"),
+            defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
+            defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
+            authTokenSecret: process.env.GIT_STORAGE_AUTH_TOKEN_SECRET,
+          }
+        : {
+            kind: "forgejo",
+            forgejo: {
+              baseUrl: required("FORGEJO_URL"),
+              token: required("FORGEJO_TOKEN"),
+            },
           },
-        },
     webhookSecret: required("WEBHOOK_SECRET"),
-    repos: (process.env.REDC_REPOS ?? "")
-      .split(",")
-      .map((r) => r.trim())
-      .filter(Boolean),
+    repos: configuredRepos,
     artifacts: {
       minio: getRequiredMinioArtifactStoreConfig(),
     },
@@ -114,9 +132,20 @@ export function createApp(config: AppConfig) {
     ? new ForgejoClient(config.repoBackend.forgejo)
     : null;
   const forgejoProvider = forgejo ? new ForgejoRepositoryProvider(forgejo) : null;
-  const repositoryProvider: RepositoryProvider = config.repoBackend.kind === "forgejo"
-    ? forgejoProvider!
-    : new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot });
+  const repositoryProvider: RepositoryProvider =
+    config.repoBackend.kind === "forgejo"
+      ? forgejoProvider!
+      : config.repoBackend.kind === "local_git"
+        ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
+        : new GitStorageRepositoryProvider({
+            storage: new GitSdk({
+              publicUrl: config.repoBackend.publicUrl,
+              defaultOwner: config.repoBackend.defaultOwner,
+              authTokenSecret: config.repoBackend.authTokenSecret,
+            }),
+            knownRepos: config.repos,
+            defaultBranch: config.repoBackend.defaultBranch,
+          });
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
@@ -143,7 +172,7 @@ export function createApp(config: AppConfig) {
     return c.json({ ...change, events: changeEvents });
   });
 
-  // Change diff endpoint (raw unified diff from Forgejo)
+  // Change diff endpoint (raw unified diff)
   app.get("/api/changes/:id/diff", async (c) => {
     const id = parseInt(c.req.param("id"), 10);
     const change = changes.getById(id);
@@ -320,12 +349,11 @@ export function createApp(config: AppConfig) {
     if (dbRepos.length > 0) {
       return c.json(dbRepos);
     }
-    // Fall back to querying Forgejo for all repos accessible by this token
-    const forgejoRepos = await repositoryProvider.listRepos?.();
-    if (!forgejoRepos) {
+    const knownRepos = await repositoryProvider.listRepos?.();
+    if (!knownRepos) {
       return c.json([]);
     }
-    return c.json(forgejoRepos.map((r) => r.full_name));
+    return c.json(knownRepos.map((r) => r.full_name));
   });
 
   // List remote branches for a repo
@@ -506,7 +534,6 @@ export function createApp(config: AppConfig) {
 
   // Engines
   const scorer = new ScoringEngine();
-  const policy = new PolicyEngine(repositoryProvider);
   const openaiKey = process.env.OPENAI_API_KEY ?? null;
   const clawImage =
     process.env.OPENCODE_RUNNER_IMAGE ??
@@ -545,11 +572,10 @@ export function createApp(config: AppConfig) {
     jobs,
     repositoryProvider,
     scorer,
-    policy,
     summary,
     stateMachine,
     notifier,
-    notificationConfigs: [], // loaded from policy at runtime
+    notificationConfigs: [],
     eventBus,
     sessions,
   }, {
@@ -586,6 +612,12 @@ export function createApp(config: AppConfig) {
     clawReconciler,
     clawArtifactUploader,
   };
+}
+
+function inferDefaultOwner(repos: string[]): string {
+  const first = repos[0];
+  if (!first || !first.includes("/")) return "redc";
+  return first.split("/")[0] || "redc";
 }
 
 function eventToLogLines(event: { kind: string; type: string; text: string | null; delta: string | null }): string[] {

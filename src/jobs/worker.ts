@@ -5,7 +5,6 @@ import type { AgentRuntimeEvent } from "../claw/runtime";
 import type { EventBus } from "../engine/event-bus";
 import type { RepositoryProvider } from "../repo/repository-provider";
 import { ScoringEngine } from "../engine/review";
-import { PolicyEngine } from "../engine/policy";
 import { ChangeStateMachine } from "../engine/state-machine";
 import { NotificationSender } from "./notify";
 
@@ -15,7 +14,6 @@ export interface WorkerDeps {
   jobs: JobQueries;
   repositoryProvider: RepositoryProvider;
   scorer: ScoringEngine;
-  policy: PolicyEngine;
   summary: SummaryGenerator;
   stateMachine: ChangeStateMachine;
   notifier: NotificationSender;
@@ -138,10 +136,6 @@ export class JobWorker {
       reasons: result.reasons,
     });
 
-    // Evaluate policy
-    const policy = await this.deps.policy.loadPolicy(owner, repo, change.base_branch);
-    const decision = this.deps.policy.evaluate(policy, diffStats, result.confidence);
-
     // Transition to summarizing and enqueue summary job
     this.deps.stateMachine.transition(change_id, "summarizing");
     this.deps.jobs.enqueue({
@@ -150,7 +144,6 @@ export class JobWorker {
       payload: JSON.stringify({
         change_id,
         diff_stats: diffStats,
-        policy_decision: decision,
       }),
     });
   }
@@ -159,7 +152,6 @@ export class JobWorker {
     const payload = JSON.parse(job.payload) as {
       change_id: number;
       diff_stats: DiffStats;
-      policy_decision: { action: string };
     };
 
     const change = this.deps.changes.getById(payload.change_id);
