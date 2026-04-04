@@ -1,4 +1,4 @@
-import type { CommitDiffFile, GitStorage } from "../../git-server/src/core/api";
+import type { CommitDiffFile, GitStorage } from "../../../services/git-server/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
 import type { DiffStats, FileStats, ForgejoBranch, ForgejoRepo } from "../types";
 

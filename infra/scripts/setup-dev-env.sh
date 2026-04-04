@@ -20,12 +20,14 @@ MINIO_PREFIX="${MINIO_PREFIX:-claw-runs}"
 MINIO_API_PORT="${MINIO_API_PORT:-9003}"
 MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9002}"
 
-docker compose up -d forgejo minio
-docker compose run --rm minio-init > /dev/null
+COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
+
+docker compose -f "$COMPOSE_FILE" up -d forgejo minio
+docker compose -f "$COMPOSE_FILE" run --rm minio-init > /dev/null
 
 echo "Waiting for Forgejo..."
 for i in $(seq 1 "$FORGEJO_WAIT_SECONDS"); do
-  if docker compose exec -T forgejo wget -q -O - http://127.0.0.1:3000/api/v1/version > /dev/null 2>&1; then
+  if docker compose -f "$COMPOSE_FILE" exec -T forgejo wget -q -O - http://127.0.0.1:3000/api/v1/version > /dev/null 2>&1; then
     echo "  Forgejo is up (container)"
     break
   fi
@@ -35,15 +37,15 @@ for i in $(seq 1 "$FORGEJO_WAIT_SECONDS"); do
   fi
   if [ "$i" -eq "$FORGEJO_WAIT_SECONDS" ]; then
     echo "ERROR: Forgejo did not become ready"
-    docker compose ps forgejo || true
-    docker compose logs --tail=50 forgejo || true
+    docker compose -f "$COMPOSE_FILE" ps forgejo || true
+    docker compose -f "$COMPOSE_FILE" logs --tail=50 forgejo || true
     exit 1
   fi
   sleep 1
 done
 
 echo "Creating admin user..."
-docker compose exec -T forgejo su -c \
+docker compose -f "$COMPOSE_FILE" exec -T forgejo su -c \
   "forgejo admin user create --username \"$FORGEJO_ADMIN\" --password \"$FORGEJO_PASS\" --email \"admin@redc.local\" --admin --must-change-password=false" \
   git 2>/dev/null \
   || echo "  (user may already exist)"
@@ -86,7 +88,7 @@ curl -sf -X POST "$FORGEJO_URL/api/v1/repos/$FORGEJO_ADMIN/$TEST_REPO/hooks" \
     \"type\": \"forgejo\",
     \"active\": true,
     \"config\": {
-      \"url\": \"http://redc-api:$REDC_PORT/webhook/push\",
+      \"url\": \"http://api:$REDC_PORT/webhook/push\",
       \"content_type\": \"json\",
       \"secret\": \"$WEBHOOK_SECRET\"
     },
@@ -114,10 +116,10 @@ MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
 EOF
 
 echo "Building Claw runner image..."
-docker build -t redc-claw-runner claw-runner/
+docker build -t redc-claw-runner tools/claw-runner/
 
 echo "Starting app containers..."
-docker compose up -d --build redc-api redc-web
+docker compose -f "$COMPOSE_FILE" up -d --build api web
 
 echo ""
 echo "=== Setup complete ==="

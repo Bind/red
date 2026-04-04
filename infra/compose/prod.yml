@@ -6,7 +6,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
@@ -15,16 +15,16 @@ services:
       - gateway
 
   gateway:
-    build: ./gateway
+    build: ../gateway
     restart: unless-stopped
     environment:
       FORGEJO_HOST: forgejo
-      API_HOST: redc-api
+      API_HOST: api
     networks:
       - redc-net
     depends_on:
       - forgejo
-      - redc-api
+      - api
 
   forgejo:
     image: codeberg.org/forgejo/forgejo:11
@@ -40,11 +40,11 @@ services:
     networks:
       - redc-net
 
-  redc-api:
-    build: .
+  api:
+    build: ../..
     restart: unless-stopped
     env_file:
-      - .env
+      - ../../.env
     volumes:
       - redc-data:/data
     networks:

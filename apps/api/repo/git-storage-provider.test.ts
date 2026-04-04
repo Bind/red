@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MockGitSdk } from "../../git-server/src/core/mock-git-sdk";
+import { MockGitSdk } from "../../../services/git-server/src/core/mock-git-sdk";
 import { GitStorageRepositoryProvider } from "./git-storage-provider";
 
 describe("GitStorageRepositoryProvider", () => {

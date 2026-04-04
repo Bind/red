@@ -12,8 +12,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./apps/api/*"]
     }
   },
-  "include": ["src/**/*.ts", "sst.config.ts"]
+  "include": ["apps/api/**/*.ts", "sst.config.ts"]
 }

@@ -38,7 +38,7 @@ import {
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
-import { GitSdk } from "../git-server/src/core/git-sdk";
+import { GitSdk } from "../../services/git-server/src/core/git-sdk";
 
 export interface AppConfig {
   port: number;
@@ -595,8 +595,8 @@ export function createApp(config: AppConfig) {
   });
 
   // Serve frontend static files (production)
-  app.use("/*", serveStatic({ root: "./web/dist" }));
-  app.get("/*", serveStatic({ path: "./web/dist/index.html" }));
+  app.use("/*", serveStatic({ root: "./apps/web/dist" }));
+  app.get("/*", serveStatic({ path: "./apps/web/dist/index.html" }));
 
   return {
     app,

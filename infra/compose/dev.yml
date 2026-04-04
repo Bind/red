@@ -61,7 +61,7 @@ services:
 
   git-server:
     build:
-      context: ./git-server
+      context: ../../services/git-server
       dockerfile: docker/gitty/Dockerfile
       args:
         GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
@@ -84,16 +84,16 @@ services:
     ports:
       - "${GIT_SERVER_PUBLIC_PORT:-9080}:8080"
 
-  redc-api:
+  api:
     build:
-      context: .
+      context: ../..
     restart: unless-stopped
     depends_on:
       - forgejo
       - minio
       - git-server
     env_file:
-      - .env
+      - ../../.env
     environment:
       REDC_PORT: 3000
       REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
@@ -117,36 +117,36 @@ services:
     working_dir: /app
     command: >
       sh -lc "bun install --frozen-lockfile &&
-      bun run --watch src/index.ts"
+      bun run --watch apps/api/index.ts"
     volumes:
-      - .:/app
+      - ../..:/app
       - redc-node-modules:/app/node_modules
-      - web-node-modules:/app/web/node_modules
+      - web-node-modules:/app/apps/web/node_modules
       - redc-data:/data
       - /tmp:/tmp
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
       - ${HOME}/.codex:/root/.codex:ro
 
-  redc-web:
+  web:
     image: oven/bun:1-alpine
     restart: unless-stopped
     depends_on:
-      - redc-api
-    working_dir: /app/web
+      - api
+    working_dir: /app/apps/web
     environment:
-      VITE_API_PROXY_TARGET: http://redc-api:3000
+      VITE_API_PROXY_TARGET: http://api:3000
     ports:
       - "5173:5173"
     command: >
       sh -lc "cd /app &&
       bun install --frozen-lockfile &&
-      cd /app/web &&
+      cd /app/apps/web &&
       bun run dev --host 0.0.0.0 --port 5173"
     volumes:
-      - .:/app
+      - ../..:/app
       - redc-node-modules:/app/node_modules
-      - web-node-modules:/app/web/node_modules
+      - web-node-modules:/app/apps/web/node_modules
 
 volumes:
   forgejo-data:
