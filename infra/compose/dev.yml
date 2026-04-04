@@ -61,7 +61,7 @@ services:
 
   git-server:
     build:
-      context: ../../services/git-server
+      context: ../../apps/git-server
       dockerfile: docker/gitty/Dockerfile
       args:
         GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
@@ -87,6 +87,7 @@ services:
   api:
     build:
       context: ../..
+      dockerfile: infra/Dockerfile
     restart: unless-stopped
     depends_on:
       - forgejo

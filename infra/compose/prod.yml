@@ -41,7 +41,9 @@ services:
       - redc-net
 
   api:
-    build: ../..
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
     restart: unless-stopped
     env_file:
       - ../../.env

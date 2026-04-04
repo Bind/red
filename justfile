@@ -110,20 +110,20 @@ rivet-summary-smoke branch="HEAD" base_ref="main" confidence="needs_review":
 
 # Run the git server/manual SDK CLI
 git-server-manual *args:
-    cd services/git-server && bun src/manual/cli.ts {{args}}
+    cd apps/git-server && bun src/manual/cli.ts {{args}}
 
 # Run tests for the git server package
 git-server-test:
-    cd services/git-server && bun test
+    cd apps/git-server && bun test
 
 # Run the live git-backed integration harness
 git-server-integration:
-    cd services/git-server && bun src/manual/cli.ts integration
+    cd apps/git-server && bun src/manual/cli.ts integration
 
 # Run the live git-backed integration test
 git-server-integration-test:
-    cd services/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
-    cd services/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
 
 # Start git server dependencies and service from the root compose stack
 git-server-up:

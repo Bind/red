@@ -2,7 +2,7 @@
   "name": "redc",
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["apps/*", "services/*"],
+  "workspaces": ["apps/*"],
   "bin": {
     "redc": "apps/api/cli/index.ts"
   },

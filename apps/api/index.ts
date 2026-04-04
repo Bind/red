@@ -38,7 +38,7 @@ import {
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
-import { GitSdk } from "../../services/git-server/src/core/git-sdk";
+import { GitSdk } from "../git-server/src/core/git-sdk";
 
 export interface AppConfig {
   port: number;
@@ -91,7 +91,7 @@ function loadConfig(): AppConfig {
 
   return {
     port: parseInt(process.env.REDC_PORT ?? "3000", 10),
-    dbPath: process.env.REDC_DB_PATH ?? "redc.db",
+    dbPath: process.env.REDC_DB_PATH ?? ".local/state/redc.db",
     repoBackend: process.env.REPO_PROVIDER === "local_git"
       ? {
           kind: "local_git",
