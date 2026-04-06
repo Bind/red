@@ -36,10 +36,29 @@ export interface AuthPasskeyRow {
   userId: string;
 }
 
+export interface AuthLoginAttemptRow {
+  id: string;
+  email: string;
+  clientId: string;
+  purpose: string;
+  status: string;
+  magicLinkTokenHash?: string | null;
+  loginGrantHash?: string | null;
+  loginGrantEncrypted?: string | null;
+  completedSessionId?: string | null;
+  completedSetCookieEncrypted?: string | null;
+  expiresAt: string;
+  completedAt?: string | null;
+  redeemedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AuthDatabaseSchema {
   user: AuthUserRow;
   session: AuthSessionRow;
   passkey: AuthPasskeyRow;
+  login_attempt: AuthLoginAttemptRow;
 }
 
 export interface AuthDatabase {
@@ -121,7 +140,7 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
   if (config.kind === "sqlite") {
     const database = new Database(config.sqlitePath ?? ":memory:");
     const kysely = new Kysely<AuthDatabaseSchema>({
-      dialect: new BunSqliteDialect({ database }) as never,
+      dialect: new BunSqliteDialect({ database: database as unknown as Database }) as never,
     }) as Kysely<AuthDatabaseSchema> & {
       introspection: {
         getTables(): Promise<TableMetadata[]>;

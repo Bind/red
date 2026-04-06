@@ -25,6 +25,40 @@ function optionalString(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function parseCsv(value: string | undefined, label: string): string[] {
+  const raw = requiredString(value, label);
+  const items = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (items.length === 0) {
+    throw new Error(`${label} must contain at least one value`);
+  }
+  return items;
+}
+
+function parseSingleCsvValue(value: string | undefined, label: string): string {
+  const items = parseCsv(value, label);
+  if (items.length !== 1) {
+    throw new Error(`${label} currently requires exactly one value`);
+  }
+  return items[0];
+}
+
+function parseWebClients(value: string | undefined) {
+  return requiredString(value, "AUTH_LAB_WEB_CLIENTS").split(",").map((entry) => {
+    const [clientId, redirectBaseUrl] = entry.split("=", 2).map((item) => item?.trim() ?? "");
+    if (!clientId || !redirectBaseUrl) {
+      throw new Error("AUTH_LAB_WEB_CLIENTS entries must use clientId=https://base-url form");
+    }
+    return {
+      clientId,
+      redirectBaseUrl,
+      magicLinkPath: "/auth/magic-link",
+    };
+  });
+}
+
 function readRequiredFile(pathValue: string | undefined, label: string): string {
   const path = requiredString(pathValue, label);
   try {
@@ -86,6 +120,10 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     hostname,
     port,
     exposeTestMailbox: env.AUTH_LAB_EXPOSE_TEST_MAILBOX === "true",
+    webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
+    passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
+    passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    allowAnyTotpCode: env.AUTH_LAB_ALLOW_ANY_TOTP_CODE === "true",
     database: {
       kind: "sqlite",
       sqlitePath: env.AUTH_LAB_DB_PATH ?? join(tmpdir(), "redc-auth-lab.sqlite"),
@@ -141,6 +179,13 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     exposeTestMailbox: requiredBoolean(
       env.AUTH_LAB_EXPOSE_TEST_MAILBOX,
       "AUTH_LAB_EXPOSE_TEST_MAILBOX",
+    ),
+    webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
+    passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
+    passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    allowAnyTotpCode: requiredBoolean(
+      env.AUTH_LAB_ALLOW_ANY_TOTP_CODE,
+      "AUTH_LAB_ALLOW_ANY_TOTP_CODE",
     ),
     database: {
       kind: "postgres",

@@ -27,6 +27,10 @@ services:
       AUTH_LAB_PORT: 4020
       AUTH_LAB_ISSUER: http://127.0.0.1:4020
       AUTH_LAB_AUDIENCE: redc-api
+      AUTH_LAB_WEB_CLIENTS: redc-web=http://localhost:5173
+      AUTH_LAB_PASSKEY_ORIGINS: http://localhost:5173
+      AUTH_LAB_PASSKEY_RP_IDS: localhost
+      AUTH_LAB_ALLOW_ANY_TOTP_CODE: "true"
       AUTH_LAB_DB_URL: postgres://auth_lab:auth_lab_password@auth-db:5432/auth_lab
       AUTH_LAB_BETTER_AUTH_SECRET: auth-lab-compose-secret
       AUTH_LAB_SIGNING_PRIVATE_JWK_FILE: /run/config/signing-key.private.jwk

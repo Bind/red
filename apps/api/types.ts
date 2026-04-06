@@ -25,6 +25,7 @@ export type ChangeStatus =
 export type ConfidenceLevel = "safe" | "needs_review" | "critical";
 
 export type CreatedBy = "human" | "agent";
+export type RepoVisibility = "private" | "internal" | "public";
 
 export interface Change {
   id: number;
@@ -40,6 +41,19 @@ export interface Change {
   summary: string | null;
   diff_stats: DiffStats | null;
   delivery_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RepoRecord {
+  id: number;
+  org_id: string;
+  owner: string;
+  name: string;
+  full_name: string;
+  default_branch: string;
+  visibility: RepoVisibility;
+  created_by_subject: string | null;
   created_at: string;
   updated_at: string;
 }

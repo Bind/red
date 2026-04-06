@@ -14,6 +14,8 @@ const baseConfig = {
   hostname: "127.0.0.1",
   port: 4026,
   exposeTestMailbox: true,
+  passkeyOrigins: ["http://127.0.0.1:4026"],
+  passkeyRpId: "127.0.0.1",
   database: {
     kind: "sqlite" as const,
     sqlitePath: ":memory:",

@@ -1,11 +1,15 @@
 import type { CommitDiffFile, GitStorage } from "../../git-server/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
-import type { BranchInfo, DiffStats, FileStats, RepoInfo } from "../types";
+import type { BranchInfo, DiffStats, FileStats, RepoRecord, RepoInfo } from "../types";
 
 export interface GitStorageRepositoryProviderOptions {
   storage: GitStorage;
   knownRepos?: string[];
   defaultBranch?: string;
+  repoCatalog?: {
+    listRepos(): Promise<RepoRecord[]>;
+    getRepo(owner: string, repo: string): Promise<RepoRecord | null>;
+  };
 }
 
 export class GitStorageRepositoryProvider implements RepositoryProvider {
@@ -45,6 +49,11 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
   }
 
   async listRepos(): Promise<RepoInfo[]> {
+    if (this.options.repoCatalog) {
+      const catalog = await this.options.repoCatalog.listRepos();
+      return catalog.map(mapRepoRecord);
+    }
+
     const discovered = await this.options.storage.listRepos();
     if (discovered.length > 0) {
       return discovered.map((repo) => ({
@@ -106,6 +115,18 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
     const existing = await this.options.storage.getRepoByName(owner, name);
     if (existing) return existing;
 
+    const catalogRecord = this.options.repoCatalog
+      ? await this.options.repoCatalog.getRepo(owner, name)
+      : null;
+    if (catalogRecord) {
+      return this.options.storage.createRepo({
+        owner: catalogRecord.owner,
+        name: catalogRecord.name,
+        defaultBranch: catalogRecord.default_branch,
+        visibility: catalogRecord.visibility,
+      });
+    }
+
     const repoId = `${owner}/${name}`;
     if (!this.knownRepos.has(repoId)) {
       return null;
@@ -118,6 +139,15 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
       visibility: "private",
     });
   }
+}
+
+function mapRepoRecord(record: RepoRecord): RepoInfo {
+  return {
+    id: record.id,
+    name: record.name,
+    full_name: record.full_name,
+    default_branch: record.default_branch,
+  };
 }
 
 function mapCommitDiffFile(file: CommitDiffFile): FileStats {

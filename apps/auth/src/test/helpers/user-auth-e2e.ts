@@ -122,12 +122,13 @@ export async function completePasskeyFlow(
   bootstrapCookie: string,
   email: string,
   authenticator: VirtualPasskeyAuthenticator,
+  browserOrigin = issuer,
 ): Promise<PasskeyFlowResult> {
   const registerOptionsResponse = await transport.fetch(
     new Request(`${issuer}/api/auth/passkey/generate-register-options`, {
       method: "GET",
       headers: {
-        origin: issuer,
+        origin: browserOrigin,
         cookie: bootstrapCookie,
       },
     }),
@@ -148,7 +149,7 @@ export async function completePasskeyFlow(
     new Request(`${issuer}/api/auth/passkey/verify-registration`, {
       method: "POST",
       headers: {
-        origin: issuer,
+        origin: browserOrigin,
         cookie: registerCookie,
         "content-type": "application/json",
       },
@@ -171,7 +172,7 @@ export async function completePasskeyFlow(
     new Request(`${issuer}/api/auth/passkey/generate-authenticate-options`, {
       method: "GET",
       headers: {
-        origin: issuer,
+        origin: browserOrigin,
         cookie: postRegistrationCookie,
       },
     }),
@@ -191,7 +192,7 @@ export async function completePasskeyFlow(
     new Request(`${issuer}/api/auth/passkey/verify-authentication`, {
       method: "POST",
       headers: {
-        origin: issuer,
+        origin: browserOrigin,
         cookie: authenticateCookie,
         "content-type": "application/json",
       },
@@ -209,7 +210,7 @@ export async function completePasskeyFlow(
 
   const sessionResponse = await transport.fetch(`${issuer}/api/auth/get-session`, {
     headers: {
-      origin: issuer,
+      origin: browserOrigin,
       cookie: finalCookie,
     },
   });

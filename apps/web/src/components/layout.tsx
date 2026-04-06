@@ -3,6 +3,7 @@ import { Link, Outlet } from "react-router";
 import { Badge } from "@/components/ui/badge";
 
 import { fetchPendingJobs } from "@/lib/api";
+import { getAuthLifecycleState, useAuthSession } from "@/lib/auth";
 
 const HeaderContentContext = createContext<(node: ReactNode | null) => void>(() => {});
 
@@ -13,6 +14,7 @@ export function useHeaderContent() {
 export function Layout() {
   const [pendingJobs, setPendingJobs] = useState<number | null>(null);
   const [headerContent, setHeaderContent] = useState<ReactNode | null>(null);
+  const { status, me, error } = useAuthSession();
 
   const setHeader = useCallback((node: ReactNode | null) => {
     setHeaderContent(node);
@@ -37,12 +39,25 @@ export function Layout() {
                   red
                 </h1>
               </Link>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant="outline">
+                  {getAuthLifecycleState(status, me).replace(/_/g, " ")}
+                </Badge>
+                {me?.user.email && (
+                  <Badge variant="secondary" className="font-mono">
+                    {me.user.email}
+                  </Badge>
+                )}
+                {error && <span className="text-muted-foreground">{error}</span>}
+              </div>
             </div>
-            {pendingJobs !== null && pendingJobs > 0 && (
-              <Badge variant="secondary" className="mt-1">
-                {pendingJobs} job{pendingJobs !== 1 ? "s" : ""} pending
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {pendingJobs !== null && pendingJobs > 0 && (
+                <Badge variant="secondary" className="mt-1">
+                  {pendingJobs} job{pendingJobs !== 1 ? "s" : ""} pending
+                </Badge>
+              )}
+            </div>
           </div>
           {headerContent}
         </div>

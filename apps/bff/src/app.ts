@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 
-type FetchImpl = typeof fetch;
+type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export interface BffConfig {
   port: number;
@@ -42,6 +42,7 @@ function buildForwardHeaders(request: Request): Headers {
     "content-type",
     "cookie",
     "last-event-id",
+    "origin",
   ];
   for (const key of forwarded) {
     const value = request.headers.get(key);
@@ -50,40 +51,86 @@ function buildForwardHeaders(request: Request): Headers {
   return headers;
 }
 
-async function proxyJson(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
+function addHeaders(base: Headers, extra: Record<string, string>): Headers {
+  const headers = new Headers(base);
+  for (const [key, value] of Object.entries(extra)) {
+    headers.set(key, value);
+  }
+  return headers;
+}
+
+async function readJsonBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function readForwardBody(request: Request): Promise<ArrayBuffer | undefined> {
+  if (request.method === "GET" || request.method === "HEAD") {
+    return undefined;
+  }
+  return request.arrayBuffer();
+}
+
+async function proxyJson(
+  c: any,
+  fetchImpl: FetchImpl,
+  targetUrl: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const body = await readForwardBody(c.req.raw);
   const upstream = await fetchImpl(targetUrl, {
     method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
+    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
+    body,
   });
-  const text = await upstream.text();
-  const json = text ? JSON.parse(text) : null;
+  const json = await readJsonBody(upstream);
   return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
 }
 
-async function proxyMutation(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
+async function proxyMutation(
+  c: any,
+  fetchImpl: FetchImpl,
+  targetUrl: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const body = await readForwardBody(c.req.raw);
   const upstream = await fetchImpl(targetUrl, {
     method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
+    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
+    body,
   });
-  const text = await upstream.text();
-  const json = text ? JSON.parse(text) : null;
+  const json = await readJsonBody(upstream);
   return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
 }
 
-async function proxyText(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
+async function proxyText(
+  c: any,
+  fetchImpl: FetchImpl,
+  targetUrl: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const body = await readForwardBody(c.req.raw);
   const upstream = await fetchImpl(targetUrl, {
     method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
+    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
+    body,
   });
   const text = await upstream.text();
   c.header("Content-Type", upstream.headers.get("content-type") ?? "text/plain; charset=utf-8");
   return c.text(text, upstream.status as 200 | 400 | 401 | 403 | 404 | 500);
 }
 
-async function proxyStream(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
+async function proxyStream(
+  c: any,
+  fetchImpl: FetchImpl,
+  targetUrl: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const body = await readForwardBody(c.req.raw);
   const upstream = await fetchImpl(targetUrl, {
     method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
+    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
+    body,
   });
   return new Response(upstream.body, {
     status: upstream.status,
@@ -91,9 +138,7 @@ async function proxyStream(c: any, fetchImpl: FetchImpl, targetUrl: string): Pro
   });
 }
 
-async function proxyAuthRequest(c: any, fetchImpl: FetchImpl, authBaseUrl: string): Promise<Response> {
-  const incoming = new URL(c.req.url);
-  const targetUrl = joinUrl(authBaseUrl, incoming.pathname, incoming.searchParams);
+async function proxyAuthRequest(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
   const body =
     c.req.method === "GET" || c.req.method === "HEAD" ? undefined : await c.req.raw.arrayBuffer();
   const upstream = await fetchImpl(targetUrl, {
@@ -108,65 +153,204 @@ async function proxyAuthRequest(c: any, fetchImpl: FetchImpl, authBaseUrl: strin
   });
 }
 
+async function fetchSessionExchangeToken(
+  request: Request,
+  fetchImpl: FetchImpl,
+  authBaseUrl: string,
+): Promise<{ accessToken: string } | Response> {
+  const upstream = await fetchImpl(joinUrl(authBaseUrl, "/session/exchange"), {
+    method: "POST",
+    headers: buildForwardHeaders(request),
+    redirect: "manual",
+  });
+
+  const text = await upstream.text();
+  if (!upstream.ok) {
+    return new Response(text, {
+      status: upstream.status,
+      headers: copyResponseHeaders(upstream.headers),
+    });
+  }
+
+  const payload = text ? (JSON.parse(text) as { access_token?: unknown }) : null;
+  if (!payload || typeof payload.access_token !== "string") {
+    return new Response(JSON.stringify({ error: "invalid_token_response" }), {
+      status: 502,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  return { accessToken: payload.access_token };
+}
+
 export function createApp(config: BffConfig) {
   const app = new Hono();
   const fetchImpl = config.fetchImpl ?? fetch;
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
-  app.all("/api/auth/*", (c) => proxyAuthRequest(c, fetchImpl, config.authBaseUrl));
+  app.all("/api/auth/*", (c) => {
+    const incoming = new URL(c.req.url);
+    return proxyAuthRequest(
+      c,
+      fetchImpl,
+      joinUrl(config.authBaseUrl, incoming.pathname, incoming.searchParams),
+    );
+  });
 
   const rpc = new Hono()
+    .get("/me", (c) => proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/me")))
+    .get("/dev/magic-link", (c) => {
+      const query = new URLSearchParams();
+      const email = c.req.query("email");
+      if (email) query.set("email", email);
+      return proxyAuthRequest(
+        c,
+        fetchImpl,
+        joinUrl(config.authBaseUrl, "/__test__/mailbox/latest", query),
+      );
+    })
+    .post("/auth/login-attempts", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts"))
+    )
+    .get("/auth/login-attempts/:id", (c) =>
+      proxyAuthRequest(
+        c,
+        fetchImpl,
+        joinUrl(config.authBaseUrl, `/login-attempts/${c.req.param("id")}`),
+      )
+    )
+    .post("/auth/login-attempts/redeem", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts/redeem"))
+    )
+    .post("/auth/magic-link/complete", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/magic-link/complete"))
+    )
+    .post("/auth/user/two-factor/enroll", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/enroll"))
+    )
+    .post("/auth/user/two-factor/verify", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/verify"))
+    )
+    .post("/auth/user/onboarding/complete", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
+    )
     .get("/velocity", (c) => {
       const query = new URLSearchParams();
       const hours = c.req.query("hours");
       if (hours) query.set("hours", hours);
-      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/velocity", query));
+      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/velocity", query), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      });
     })
-    .get("/review", (c) => proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/review")))
-    .get("/jobs/pending", (c) =>
-      proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/jobs/pending"))
+    .get("/review", (c) =>
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/review"), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      })
     )
-    .get("/repos", (c) => proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos")))
+    .get("/jobs/pending", (c) =>
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/jobs/pending"), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      })
+    )
+    .get("/repos", (c) =>
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      })
+    )
+    .post("/repos", (c) =>
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyMutation(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      })
+    )
     .get("/branches", (c) => {
       const query = new URLSearchParams();
       const repo = c.req.query("repo");
       if (repo) query.set("repo", repo);
-      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/branches", query));
+      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/branches", query), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      });
     })
     .get("/changes/:id", (c) =>
-      proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}`))
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}`), {
+          authorization: `Bearer ${result.accessToken}`,
+        });
+      })
     )
     .get("/changes/:id/diff", (c) =>
-      proxyText(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/diff`))
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyText(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/diff`),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      })
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      proxyMutation(
-        c,
-        fetchImpl,
-        joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/regenerate-summary`)
-      )
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyMutation(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/regenerate-summary`),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      })
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      proxyMutation(
-        c,
-        fetchImpl,
-        joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/requeue-summary`)
-      )
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyMutation(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/requeue-summary`),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      })
     )
     .get("/changes/:id/sessions", (c) =>
-      proxyJson(
-        c,
-        fetchImpl,
-        joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/sessions`)
-      )
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/sessions`),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      })
     )
     .get("/changes/:id/agent-events", (c) =>
-      proxyStream(
-        c,
-        fetchImpl,
-        joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/agent-events`)
-      )
+      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyStream(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/agent-events`),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      })
     )
     .get("/sessions/:id/events", (c) => {
       const query = new URLSearchParams();
@@ -174,11 +358,15 @@ export function createApp(config: BffConfig) {
       if (after) query.set("after", after);
       const limit = c.req.query("limit");
       if (limit) query.set("limit", limit);
-      return proxyJson(
-        c,
-        fetchImpl,
-        joinUrl(config.apiBaseUrl, `/api/sessions/${c.req.param("id")}/events`, query)
-      );
+      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+        if (result instanceof Response) return result;
+        return proxyJson(
+          c,
+          fetchImpl,
+          joinUrl(config.apiBaseUrl, `/api/sessions/${c.req.param("id")}/events`, query),
+          { authorization: `Bearer ${result.accessToken}` },
+        );
+      });
     });
 
   app.route("/rpc", rpc);

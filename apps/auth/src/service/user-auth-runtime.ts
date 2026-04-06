@@ -2,6 +2,8 @@ import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { jwt, magicLink } from "better-auth/plugins";
+import { sql } from "kysely";
+import { createLoginAttemptStore, type LoginAttemptStore } from "../store/login-attempt-store";
 import { createSessionStore, type SessionStore } from "../store/session-store";
 import { createUserStore, type UserStore } from "../store/user-store";
 import type { UserMagicLinkPurpose } from "../util/types";
@@ -34,6 +36,8 @@ export interface UserAuthRuntimeConfig {
   hostname: string;
   port: number;
   secret: string;
+  passkeyOrigins: string[];
+  passkeyRpId: string;
   database: UserAuthRuntimeDatabaseConfig;
 }
 
@@ -43,26 +47,65 @@ export interface UserAuthRuntime {
   stores: {
     user: UserStore;
     session: SessionStore;
+    loginAttempt: LoginAttemptStore;
   };
   runMigrations(): Promise<void>;
   close(): Promise<void>;
+}
+
+async function ensureCustomTables(auth: { options?: { database?: { db?: any } } }) {
+  const db = auth.options?.database?.db;
+  if (!db || typeof db.schema?.createTable !== "function") {
+    return;
+  }
+
+  await db.schema
+    .createTable("login_attempt")
+    .ifNotExists()
+    .addColumn("id", "text", (column: any) => column.primaryKey())
+    .addColumn("email", "text", (column: any) => column.notNull())
+    .addColumn("clientId", "text", (column: any) => column.notNull())
+    .addColumn("purpose", "text", (column: any) => column.notNull())
+    .addColumn("status", "text", (column: any) => column.notNull())
+    .addColumn("magicLinkTokenHash", "text")
+    .addColumn("loginGrantHash", "text")
+    .addColumn("loginGrantEncrypted", "text")
+    .addColumn("completedSessionId", "text")
+    .addColumn("completedSetCookieEncrypted", "text")
+    .addColumn("expiresAt", "text", (column: any) => column.notNull())
+    .addColumn("completedAt", "text")
+    .addColumn("redeemedAt", "text")
+    .addColumn("createdAt", "text", (column: any) => column.notNull())
+    .addColumn("updatedAt", "text", (column: any) => column.notNull())
+    .execute();
+
+  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(
+    db,
+  );
+  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_status ON login_attempt(status)`.execute(
+    db,
+  );
 }
 
 export async function createUserAuthRuntime(
   config: UserAuthRuntimeConfig,
 ): Promise<UserAuthRuntime> {
   const mailbox: MagicLinkMail[] = [];
-  const rpId = new URL(config.issuer).hostname;
+  if (config.passkeyOrigins.length === 0) {
+    throw new Error("At least one passkey origin must be configured");
+  }
   const database = await createAuthDatabase(config.database);
   const { kysely } = database;
   const userStore = createUserStore(kysely);
   const sessionStore = createSessionStore(kysely);
+  const loginAttemptStore = createLoginAttemptStore(kysely);
 
   const auth = betterAuth({
     appName: "redc-auth-lab",
     baseURL: config.issuer,
     basePath: "/api/auth",
     secret: config.secret,
+    trustedOrigins: config.passkeyOrigins,
     database: { db: kysely, type: config.database.kind },
     session: {
       expiresIn: 60 * 60 * 24 * 7,
@@ -151,9 +194,10 @@ export async function createUserAuthRuntime(
         },
       }),
       passkey({
-        rpID: rpId,
+        rpID: config.passkeyRpId,
         rpName: "redc auth lab",
-        origin: config.issuer,
+        origin:
+          config.passkeyOrigins.length === 1 ? config.passkeyOrigins[0] : config.passkeyOrigins,
       }),
       jwt({
         jwt: {
@@ -167,6 +211,7 @@ export async function createUserAuthRuntime(
 
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
+  await ensureCustomTables(auth as unknown as { options?: { database?: { db?: any } } });
 
   return {
     auth: auth as unknown as UserAuthRuntimeAuth,
@@ -174,6 +219,7 @@ export async function createUserAuthRuntime(
     stores: {
       user: userStore,
       session: sessionStore,
+      loginAttempt: loginAttemptStore,
     },
     runMigrations,
     async close() {

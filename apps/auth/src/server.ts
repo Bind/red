@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
-import { createBetterAuthAdapter } from "./service/better-auth-adapter";
+import { parseSetCookieHeader } from "better-auth/cookies";
+import { randomBytes, createHash } from "node:crypto";
+import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
+import { createBetterAuthAdapter, type BetterAuthAdapter } from "./service/better-auth-adapter";
 import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
 import { createTokenAuthority } from "./service/m2m/service";
 import { createSessionExchangeService } from "./service/session-exchange-service";
@@ -15,6 +18,14 @@ export interface AuthServerConfig {
   port: number;
   exposeTestMailbox?: boolean;
   seedClients: MachineClientSeed[];
+  webClients?: Array<{
+    clientId: string;
+    redirectBaseUrl: string;
+    magicLinkPath?: string;
+  }>;
+  passkeyOrigins: string[];
+  passkeyRpId: string;
+  allowAnyTotpCode?: boolean;
   userAuthSecret?: string;
   signingPrivateJwk?: string;
   database: {
@@ -30,6 +41,10 @@ export interface AuthServer {
   registry: ReturnType<typeof createMachineClientRegistry>;
   userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
 }
+
+type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
+  response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
+};
 
 function parseBasicAuth(headers: Headers): { clientId: string; clientSecret: string } | null {
   const value = headers.get("authorization");
@@ -102,7 +117,32 @@ function oauthError(error: unknown): { status: number; body: Record<string, unkn
   };
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function isExpired(isoTimestamp: string): boolean {
+  const expiresAt = new Date(isoTimestamp).getTime();
+  return Number.isNaN(expiresAt) || Date.now() >= expiresAt;
+}
+
+function generateOneTimeGrant(): string {
+  return randomBytes(24).toString("base64url");
+}
+
+function normalizeClientId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
+  const webClients = new Map(
+    (config.webClients ?? []).map((client) => [client.clientId, client] as const),
+  );
   const registry = createMachineClientRegistry(config.seedClients);
   const authority = await createTokenAuthority({
     issuer: config.issuer,
@@ -116,15 +156,58 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     hostname: config.hostname,
     port: config.port,
     secret: config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    passkeyOrigins: config.passkeyOrigins,
+    passkeyRpId: config.passkeyRpId,
     database: config.database,
   });
   const authAdapter = createBetterAuthAdapter(userRuntime.auth);
   const userLifecycle = createUserLifecycleService(
     userRuntime.stores,
     config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    {
+      allowAnyTotpCode: config.allowAnyTotpCode,
+    },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
   const app = new Hono();
+  const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
+
+  const resolveSessionState = async (request: Request): Promise<ResolvedSessionState | null> => {
+    const sessionResult = await authAdapter.getSession(request);
+    if (!sessionResult.response) {
+      return null;
+    }
+
+    const { session } = sessionResult.response;
+    const user = { ...sessionResult.response.user };
+    const storedUser = await userRuntime.stores.user.findByEmail(user.email);
+
+    if (
+      storedUser &&
+      storedUser.id === user.id &&
+      storedUser.onboardingState === "pending_passkey" &&
+      (await userRuntime.stores.user.hasPasskey(user.id))
+    ) {
+      const nextAuthAssurance =
+        typeof storedUser.authAssurance === "string" && storedUser.authAssurance.includes("passkey")
+          ? storedUser.authAssurance
+          : "passkey";
+      await userRuntime.stores.user.updateByEmail(user.email, {
+        onboardingState: "pending_recovery_factor",
+        authAssurance: nextAuthAssurance,
+      });
+      user.onboardingState = "pending_recovery_factor";
+      user.authAssurance = nextAuthAssurance;
+    }
+
+    return {
+      ...sessionResult,
+      response: {
+        session,
+        user,
+      },
+    };
+  };
 
   const handleToken = async (request: Request) => {
     const fields = await readBodyFields(request);
@@ -204,6 +287,13 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   app.all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw));
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+  app.get("/me", async (c) => {
+    const sessionResult = await resolveSessionState(c.req.raw);
+    if (!sessionResult) {
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
+    }
+    return c.json(sessionResult.response);
+  });
 
   app.get("/.well-known/jwks.json", (c) => c.json(authority.jwks));
 
@@ -295,6 +385,258 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       }),
     });
     return authAdapter.handle(mailRequest);
+  });
+
+  app.post("/login-attempts", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const email = fields.email?.trim().toLowerCase();
+    const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
+    if (!email) {
+      throw new AuthError("invalid_request", "email is required", 400);
+    }
+    if (!clientId) {
+      throw new AuthError("invalid_request", "client_id is required", 400);
+    }
+
+    const client = webClients.get(clientId);
+    if (!client) {
+      throw new AuthError("invalid_client", "Unknown browser client", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.create({
+      email,
+      clientId,
+      purpose: "bootstrap",
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
+
+    const mailboxLengthBefore = userRuntime.mailbox.length;
+    const signInResponse = await authAdapter.handle(
+      new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: {
+          origin: config.issuer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          metadata: {
+            purpose: "bootstrap",
+          },
+        }),
+      }),
+    );
+
+    if (!signInResponse.ok) {
+      const message = await signInResponse.text();
+      throw new AuthError(
+        "server_error",
+        message || "Failed to dispatch magic link",
+        signInResponse.status,
+      );
+    }
+
+    const mail = userRuntime.mailbox
+      .slice(mailboxLengthBefore)
+      .filter((entry) => normalizeEmail(entry.email) === email)
+      .at(-1);
+    if (!mail?.token) {
+      throw new AuthError("server_error", "Magic link token was not captured", 500);
+    }
+
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      magicLinkTokenHash: hashToken(mail.token),
+    });
+
+    mail.url = new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString()
+      + `?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
+
+    return c.json({
+      attempt_id: attempt.id,
+      email,
+      client_id: clientId,
+      status: "pending",
+      expires_at: attempt.expiresAt,
+    });
+  });
+
+  app.get("/login-attempts/:id", async (c) => {
+    const attempt = await userRuntime.stores.loginAttempt.findById(c.req.param("id"));
+    if (!attempt) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    if (attempt.status === "pending" && isExpired(attempt.expiresAt)) {
+      await userRuntime.stores.loginAttempt.updateById(attempt.id, { status: "expired" });
+      return c.json({
+        attempt_id: attempt.id,
+        client_id: attempt.clientId,
+        status: "expired",
+        expires_at: attempt.expiresAt,
+      });
+    }
+
+    const body: Record<string, unknown> = {
+      attempt_id: attempt.id,
+      client_id: attempt.clientId,
+      status: attempt.status,
+      expires_at: attempt.expiresAt,
+      session_id: attempt.completedSessionId ?? null,
+    };
+
+    if (attempt.status === "completed" && attempt.loginGrantEncrypted) {
+      body.login_grant = await symmetricDecrypt({
+        key: authSecret,
+        data: attempt.loginGrantEncrypted,
+      });
+    }
+
+    return c.json(body);
+  });
+
+  app.post("/magic-link/complete", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const attemptId = fields.attempt_id ?? fields.attemptId;
+    const token = fields.token?.trim();
+    const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
+    if (!attemptId || !token || !clientId) {
+      throw new AuthError("invalid_request", "attempt_id, token, and client_id are required", 400);
+    }
+
+    const client = webClients.get(clientId);
+    if (!client) {
+      throw new AuthError("invalid_client", "Unknown browser client", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
+    if (!attempt) {
+      throw new AuthError("invalid_request", "Unknown login attempt", 404);
+    }
+    if (attempt.clientId !== clientId) {
+      throw new AuthError("invalid_request", "Login attempt client mismatch", 400);
+    }
+    if (attempt.status === "redeemed") {
+      return c.json({ ok: true, status: "redeemed", attempt_id: attempt.id });
+    }
+    if (attempt.status === "expired" || isExpired(attempt.expiresAt)) {
+      await userRuntime.stores.loginAttempt.updateById(attempt.id, { status: "expired" });
+      throw new AuthError("invalid_request", "Login attempt has expired", 400);
+    }
+    if (attempt.magicLinkTokenHash && attempt.magicLinkTokenHash !== hashToken(token)) {
+      throw new AuthError("invalid_magic_link", "Magic link token did not match the login attempt", 401);
+    }
+
+    const verifyResponse = await authAdapter.handle(
+      new Request(
+        `${config.issuer}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent("/")}`,
+        {
+          method: "GET",
+          headers: {
+            origin: config.issuer,
+          },
+          redirect: "manual",
+        },
+      ),
+    );
+
+    if (!verifyResponse.ok && verifyResponse.status !== 302) {
+      const body = await verifyResponse.text();
+      throw new AuthError(
+        "invalid_magic_link",
+        body || "Magic link verification failed",
+        verifyResponse.status,
+      );
+    }
+
+    const setCookie = verifyResponse.headers.get("set-cookie");
+    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get("better-auth.session_token")?.value;
+    if (!setCookie || !sessionCookie) {
+      throw new AuthError("server_error", "Magic link verification did not create a session", 500);
+    }
+
+    const sessionResult = await authAdapter.getSession(
+      new Request(`${config.issuer}/api/auth/get-session`, {
+        headers: {
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        },
+      }),
+    );
+    if (!sessionResult.response) {
+      throw new AuthError("server_error", "Verified session could not be resolved", 500);
+    }
+
+    const loginGrant = generateOneTimeGrant();
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      status: "completed",
+      loginGrantHash: hashToken(loginGrant),
+      loginGrantEncrypted: await symmetricEncrypt({
+        key: authSecret,
+        data: loginGrant,
+      }),
+      completedSessionId: sessionResult.response.session.id,
+      completedSetCookieEncrypted: await symmetricEncrypt({
+        key: authSecret,
+        data: setCookie,
+      }),
+      completedAt: new Date().toISOString(),
+    });
+
+    return c.json({
+      ok: true,
+      status: "completed",
+      attempt_id: attempt.id,
+      session_id: sessionResult.response.session.id,
+      client_id: client.clientId,
+    });
+  });
+
+  app.post("/login-attempts/redeem", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const attemptId = fields.attempt_id ?? fields.attemptId;
+    const loginGrant = fields.login_grant ?? fields.loginGrant;
+    if (!attemptId || !loginGrant) {
+      throw new AuthError("invalid_request", "attempt_id and login_grant are required", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
+    if (!attempt) {
+      throw new AuthError("invalid_request", "Unknown login attempt", 404);
+    }
+    if (attempt.status === "redeemed") {
+      throw new AuthError("invalid_request", "Login attempt has already been redeemed", 400);
+    }
+    if (attempt.status !== "completed" || !attempt.loginGrantHash || !attempt.completedSetCookieEncrypted) {
+      throw new AuthError("invalid_request", "Login attempt is not ready for redemption", 400);
+    }
+    if (attempt.loginGrantHash !== hashToken(loginGrant)) {
+      throw new AuthError("invalid_grant", "Login grant is invalid", 401);
+    }
+
+    const setCookie = await symmetricDecrypt({
+      key: authSecret,
+      data: attempt.completedSetCookieEncrypted,
+    });
+
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      status: "redeemed",
+      redeemedAt: new Date().toISOString(),
+      loginGrantHash: null,
+      loginGrantEncrypted: null,
+      completedSetCookieEncrypted: null,
+    });
+
+    return c.json(
+      {
+        ok: true,
+        status: "redeemed",
+        attempt_id: attempt.id,
+        session_id: attempt.completedSessionId ?? null,
+      },
+      200,
+      {
+        "set-cookie": setCookie,
+      },
+    );
   });
 
   app.post("/session/exchange", async (c) => {

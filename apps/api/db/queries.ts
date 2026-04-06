@@ -11,6 +11,8 @@ import type {
   Job,
   PullRequest,
   PullRequestStatus,
+  RepoRecord,
+  RepoVisibility,
 } from "../types";
 import type { AgentRuntimeEvent } from "../claw/runtime";
 
@@ -195,6 +197,78 @@ export class ChangeQueries {
     const pending = this.db.prepare(pendingQuery).get(...pendingParams) as { count: number };
 
     return { summarized: summarized.count, pending_review: pending.count };
+  }
+}
+
+export class RepoQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    org_id?: string;
+    owner: string;
+    name: string;
+    default_branch?: string;
+    visibility?: RepoVisibility;
+    created_by_subject?: string | null;
+  }): RepoRecord {
+    const record = {
+      org_id: params.org_id ?? "default",
+      owner: params.owner,
+      name: params.name,
+      full_name: `${params.owner}/${params.name}`,
+      default_branch: params.default_branch ?? "main",
+      visibility: params.visibility ?? "private",
+      created_by_subject: params.created_by_subject ?? null,
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO repos (
+          org_id, owner, name, full_name, default_branch, visibility, created_by_subject
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.org_id,
+        record.owner,
+        record.name,
+        record.full_name,
+        record.default_branch,
+        record.visibility,
+        record.created_by_subject,
+      );
+
+    return this.getByFullName(record.full_name, record.org_id)!;
+  }
+
+  ensure(params: {
+    org_id?: string;
+    owner: string;
+    name: string;
+    default_branch?: string;
+    visibility?: RepoVisibility;
+    created_by_subject?: string | null;
+  }): RepoRecord {
+    const existing = this.getByFullName(
+      `${params.owner}/${params.name}`,
+      params.org_id ?? "default",
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return this.create(params);
+  }
+
+  getByFullName(fullName: string, org_id: string = "default"): RepoRecord | null {
+    return this.db
+      .prepare("SELECT * FROM repos WHERE org_id = ? AND full_name = ?")
+      .get(org_id, fullName) as RepoRecord | null;
+  }
+
+  list(org_id: string = "default"): RepoRecord[] {
+    return this.db
+      .prepare("SELECT * FROM repos WHERE org_id = ? ORDER BY full_name")
+      .all(org_id) as RepoRecord[];
   }
 }
 

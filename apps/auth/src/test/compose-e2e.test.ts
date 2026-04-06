@@ -12,6 +12,7 @@ import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-aut
 
 const baseUrl = process.env.AUTH_LAB_E2E_BASE_URL ?? "http://127.0.0.1:4020";
 const composeFile = process.env.AUTH_LAB_E2E_COMPOSE_FILE ?? "./docker-compose.yml";
+const webOrigin = process.env.AUTH_LAB_WEB_BASE_URL ?? "http://localhost:5173";
 
 const runE2E = Boolean(process.env.AUTH_LAB_E2E_BASE_URL);
 const e2e = runE2E ? describe : describe.skip;
@@ -52,8 +53,8 @@ e2e("compose auth stack", () => {
     await waitForHealth(baseUrl);
     const transport = createTransport();
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseUrl).hostname,
-      origin: baseUrl,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
@@ -68,6 +69,7 @@ e2e("compose auth stack", () => {
       bootstrap.cookie,
       "compose-user@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,
@@ -107,8 +109,13 @@ e2e("compose auth stack", () => {
     const tokenBody = (await exchangeResponse.json()) as {
       access_token: string;
       sid: string;
+      scope: string;
     };
     expect(tokenBody.sid).toBe(totp.sessionId);
+    expect(tokenBody.scope).toContain("session:exchange");
+    expect(tokenBody.scope).toContain("repos:read");
+    expect(tokenBody.scope).toContain("repos:create");
+    expect(tokenBody.scope).toContain("changes:read");
 
     const verifier = createTokenVerifier({
       issuer: baseUrl,
@@ -120,14 +127,17 @@ e2e("compose auth stack", () => {
     expect(verified.claims.sid).toBe(totp.sessionId);
     expect(verified.claims.onboarding_state).toBe("active");
     expect(verified.claims.amr).toContain("mfa");
+    expect(verified.scope).toEqual(
+      expect.arrayContaining(["session:exchange", "repos:read", "repos:create", "changes:read"]),
+    );
   });
 
   test("recovery challenge without second factor is denied", async () => {
     await waitForHealth(baseUrl);
     const transport = createTransport();
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseUrl).hostname,
-      origin: baseUrl,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
@@ -142,6 +152,7 @@ e2e("compose auth stack", () => {
       bootstrap.cookie,
       "compose-recovery@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,
@@ -169,8 +180,8 @@ e2e("compose auth stack", () => {
     await waitForHealth(baseUrl);
     const transport = createTransport();
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseUrl).hostname,
-      origin: baseUrl,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
@@ -185,6 +196,7 @@ e2e("compose auth stack", () => {
       bootstrap.cookie,
       "compose-restart@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,

@@ -18,6 +18,15 @@ const baseConfig = {
   hostname: "127.0.0.1",
   port: 4020,
   exposeTestMailbox: true,
+  webClients: [
+    {
+      clientId: "redc-web",
+      redirectBaseUrl: "http://localhost:5173",
+      magicLinkPath: "/auth/magic-link",
+    },
+  ],
+  passkeyOrigins: ["http://localhost:5173"],
+  passkeyRpId: "localhost",
   database: {
     kind: "sqlite" as const,
     sqlitePath: ":memory:",
@@ -50,6 +59,8 @@ const dualClientConfig = {
     },
   ],
 };
+
+const webOrigin = baseConfig.webClients[0]?.redirectBaseUrl ?? baseConfig.issuer;
 
 function basicAuthHeader(clientId: string, clientSecret: string): string {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
@@ -294,6 +305,109 @@ describe("auth lab", () => {
     expect(body.error).toBe("invalid_session");
   });
 
+  test("supports cross-device login attempts with web callback URLs and one-time redemption", async () => {
+    const server = await createAuthServer(baseConfig);
+
+    const createResponse = await server.fetch(
+      new Request("http://127.0.0.1:4020/login-attempts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "cross-device@example.com",
+          client_id: "redc-web",
+        }),
+      }),
+    );
+    expect(createResponse.status).toBe(200);
+    const created = await createResponse.json() as {
+      attempt_id: string;
+      status: string;
+      client_id: string;
+    };
+    expect(created.status).toBe("pending");
+    expect(created.client_id).toBe("redc-web");
+    expect(server.userRuntime.mailbox.at(-1)?.url).toContain(
+      `http://localhost:5173/auth/magic-link?attempt_id=${created.attempt_id}`,
+    );
+
+    const pendingResponse = await server.fetch(
+      new Request(`http://127.0.0.1:4020/login-attempts/${created.attempt_id}`),
+    );
+    expect(pendingResponse.status).toBe(200);
+    expect(await pendingResponse.json()).toMatchObject({
+      attempt_id: created.attempt_id,
+      status: "pending",
+      client_id: "redc-web",
+    });
+
+    const token = server.userRuntime.mailbox.at(-1)?.token;
+    expect(token).toBeTruthy();
+
+    const completeResponse = await server.fetch(
+      new Request("http://127.0.0.1:4020/magic-link/complete", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          attempt_id: created.attempt_id,
+          token,
+          client_id: "redc-web",
+        }),
+      }),
+    );
+    expect(completeResponse.status).toBe(200);
+
+    const completedResponse = await server.fetch(
+      new Request(`http://127.0.0.1:4020/login-attempts/${created.attempt_id}`),
+    );
+    expect(completedResponse.status).toBe(200);
+    const completed = await completedResponse.json() as {
+      attempt_id: string;
+      status: string;
+      session_id: string;
+      login_grant: string;
+    };
+    expect(completed.status).toBe("completed");
+    expect(completed.session_id).toBeTruthy();
+    expect(completed.login_grant).toBeTruthy();
+
+    const redeemResponse = await server.fetch(
+      new Request("http://127.0.0.1:4020/login-attempts/redeem", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          attempt_id: created.attempt_id,
+          login_grant: completed.login_grant,
+        }),
+      }),
+    );
+    expect(redeemResponse.status).toBe(200);
+    const setCookie = redeemResponse.headers.get("set-cookie");
+    expect(setCookie).toContain("better-auth.session_token=");
+
+    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get("better-auth.session_token")?.value;
+    const sessionResponse = await server.fetch(
+      new Request("http://127.0.0.1:4020/api/auth/get-session", {
+        headers: {
+          origin: baseConfig.issuer,
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        },
+      }),
+    );
+    expect(sessionResponse.status).toBe(200);
+    const sessionBody = await sessionResponse.json() as {
+      session: { id: string };
+      user: { email: string };
+    };
+    expect(sessionBody.user.email).toBe("cross-device@example.com");
+    expect(sessionBody.session.id).toBe(completed.session_id);
+  });
+
   test("denies bootstrap-only sessions from receiving privileged JWTs", async () => {
     const server = await createAuthServer(baseConfig);
     const bootstrap = await bootstrapMagicLinkSession(
@@ -314,8 +428,8 @@ describe("auth lab", () => {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseConfig.issuer).hostname,
-      origin: baseConfig.issuer,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
     const bootstrap = await bootstrapUserMagicLinkSession(
@@ -329,6 +443,7 @@ describe("auth lab", () => {
       bootstrap.cookie,
       "recovery@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,
@@ -350,14 +465,53 @@ describe("auth lab", () => {
     expect(body.error).toBe("forbidden");
   });
 
+  test("resolved me state advances to recovery-factor setup once a passkey exists", async () => {
+    const server = await createAuthServer(baseConfig);
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
+    const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
+    });
+    const bootstrap = await bootstrapUserMagicLinkSession(
+      server,
+      baseConfig.issuer,
+      "passkey-state@example.com",
+    );
+
+    await completePasskeyFlow(
+      transport,
+      baseConfig.issuer,
+      bootstrap.cookie,
+      "passkey-state@example.com",
+      passkeyAuthenticator,
+      webOrigin,
+    );
+
+    const meResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/me`, {
+        headers: {
+          cookie: bootstrap.cookie,
+        },
+      }),
+    );
+    expect(meResponse.status).toBe(200);
+    const meBody = (await meResponse.json()) as {
+      user: { onboardingState?: string; authAssurance?: string | null };
+    };
+    expect(meBody.user.onboardingState).toBe("pending_recovery_factor");
+    expect(meBody.user.authAssurance).toContain("passkey");
+  });
+
   test("exchanges an active session for a service JWT with expected claims", async () => {
     const server = await createAuthServer(baseConfig);
     const transport = {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseConfig.issuer).hostname,
-      origin: baseConfig.issuer,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
     const bootstrap = await bootstrapUserMagicLinkSession(
@@ -371,6 +525,7 @@ describe("auth lab", () => {
       bootstrap.cookie,
       "active@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,
@@ -397,7 +552,10 @@ describe("auth lab", () => {
     expect(body.audience).toBe(baseConfig.audience);
     expect(body.sid).toBe(totp.sessionId);
     expect(body.subject.startsWith("user:")).toBe(true);
-    expect(body.scope).toBe("session:exchange");
+    expect(body.scope).toContain("session:exchange");
+    expect(body.scope).toContain("repos:read");
+    expect(body.scope).toContain("repos:create");
+    expect(body.scope).toContain("changes:read");
 
     const verifier = createTokenVerifier({
       issuer: baseConfig.issuer,
@@ -412,7 +570,9 @@ describe("auth lab", () => {
     expect(verified.claims.email).toBe("active@example.com");
     expect(verified.claims.onboarding_state).toBe("active");
     expect(verified.claims.recovery_ready).toBe(true);
-    expect(verified.scope).toEqual(["session:exchange"]);
+    expect(verified.scope).toEqual(
+      expect.arrayContaining(["session:exchange", "repos:read", "repos:create", "changes:read"]),
+    );
     expect(verified.claims.amr).toEqual(expect.arrayContaining(["passkey"]));
   });
 
@@ -422,8 +582,8 @@ describe("auth lab", () => {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseConfig.issuer).hostname,
-      origin: baseConfig.issuer,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
     const bootstrap = await bootstrapUserMagicLinkSession(
@@ -437,6 +597,7 @@ describe("auth lab", () => {
       bootstrap.cookie,
       "valid@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,
@@ -457,8 +618,8 @@ describe("auth lab", () => {
       fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
     };
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(baseConfig.issuer).hostname,
-      origin: baseConfig.issuer,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
     const bootstrap = await bootstrapUserMagicLinkSession(
@@ -472,6 +633,7 @@ describe("auth lab", () => {
       bootstrap.cookie,
       "jwks@example.com",
       passkeyAuthenticator,
+      webOrigin,
     );
     const totp = await completeTotpFlow(
       transport,

@@ -23,6 +23,12 @@ export interface SessionExchangeResult {
   headers: Headers;
 }
 
+export const USER_DASHBOARD_SCOPES = ["repos:read", "repos:create", "changes:read"] as const;
+
+export function buildSessionExchangeScope(scopes: readonly string[] = USER_DASHBOARD_SCOPES): string {
+  return ["session:exchange", ...scopes].join(" ");
+}
+
 function normalizeString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -113,7 +119,7 @@ export function createSessionExchangeService(
         amr: collectSessionAmr(session, user),
         onboardingState,
         recoveryReady,
-        scope: "session:exchange",
+        scope: buildSessionExchangeScope(),
       });
 
       return { body, headers: sessionResult.headers };

@@ -7,6 +7,7 @@ import {
   EventQueries,
   JobQueries,
   DeliveryQueries,
+  RepoQueries,
   SessionQueries,
 } from "./db/queries";
 import { GitStorageRepositoryProvider } from "./repo/git-storage-provider";
@@ -36,6 +37,7 @@ import {
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
 import { GitSdk } from "../git-server/src/core/git-sdk";
+import type { RepoVisibility } from "./types";
 
 export interface AppConfig {
   port: number;
@@ -64,6 +66,13 @@ export interface AppConfig {
       prefix?: string;
     };
   };
+}
+
+interface RepoCreateInput {
+  owner?: string;
+  name?: string;
+  default_branch?: string;
+  visibility?: RepoVisibility;
 }
 
 function loadConfig(): AppConfig {
@@ -107,7 +116,18 @@ export function createApp(config: AppConfig) {
   const events = new EventQueries(db);
   const jobs = new JobQueries(db);
   const deliveries = new DeliveryQueries(db);
+  const repos = new RepoQueries(db);
   const sessions = new SessionQueries(db);
+  for (const repoId of config.repos) {
+    const [owner, name] = repoId.split("/", 2);
+    if (!owner || !name) continue;
+    repos.ensure({
+      owner,
+      name,
+      default_branch: config.repoBackend.kind === "git_storage" ? config.repoBackend.defaultBranch : "main",
+      visibility: "private",
+    });
+  }
   const repositoryProvider: RepositoryProvider =
     config.repoBackend.kind === "local_git"
       ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
@@ -117,7 +137,11 @@ export function createApp(config: AppConfig) {
             defaultOwner: config.repoBackend.defaultOwner,
             authTokenSecret: config.repoBackend.authTokenSecret,
           }),
-          knownRepos: config.repos,
+          repoCatalog: {
+            listRepos: async () => repos.list(),
+            getRepo: async (owner: string, repo: string) =>
+              repos.getByFullName(`${owner}/${repo}`),
+          },
           defaultBranch: config.repoBackend.defaultBranch,
         });
   const stateMachine = new ChangeStateMachine(changes, events);
@@ -316,18 +340,58 @@ export function createApp(config: AppConfig) {
 
   // List known repos (configured via REDC_REPOS, then DB, then provider)
   app.get("/api/repos", async (c) => {
-    if (config.repos.length > 0) {
-      return c.json(config.repos);
+    return c.json(repos.list().map((repo) => repo.full_name));
+  });
+
+  app.get("/api/repos/:owner/:repo", (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) {
+      return c.json({ error: "Not found" }, 404);
     }
-    const dbRepos = changes.listRepos();
-    if (dbRepos.length > 0) {
-      return c.json(dbRepos);
+    return c.json(record);
+  });
+
+  app.post("/api/repos", async (c) => {
+    if (config.repoBackend.kind !== "git_storage") {
+      return c.json({ error: "Repository creation is not supported for the local git backend" }, 501);
     }
-    const knownRepos = await repositoryProvider.listRepos?.();
-    if (!knownRepos) {
-      return c.json([]);
+
+    const body = (await c.req.json().catch(() => null)) as RepoCreateInput | null;
+    const owner = body?.owner?.trim() || config.repoBackend.defaultOwner;
+    const name = body?.name?.trim();
+    if (!name) {
+      return c.json({ error: "Missing required field: name" }, 400);
     }
-    return c.json(knownRepos.map((r) => r.full_name));
+    if (!owner) {
+      return c.json({ error: "Missing required field: owner" }, 400);
+    }
+    if (name.includes("/")) {
+      return c.json({ error: "Repository name must not contain '/'" }, 400);
+    }
+
+    const defaultBranch = body?.default_branch?.trim() || config.repoBackend.defaultBranch;
+    const visibility = body?.visibility ?? "private";
+    if (!["private", "internal", "public"].includes(visibility)) {
+      return c.json({ error: "Invalid visibility" }, 400);
+    }
+
+    const existing = repos.getByFullName(`${owner}/${name}`);
+    if (existing) {
+      return c.json({ error: "Repository already exists", repo: existing }, 409);
+    }
+
+    const created = repos.create({
+      owner,
+      name,
+      default_branch: defaultBranch,
+      visibility,
+      created_by_subject: null,
+    });
+
+    await repositoryProvider.getRepo?.(owner, name);
+    return c.json(created, 201);
   });
 
   // List remote branches for a repo
@@ -566,6 +630,7 @@ export function createApp(config: AppConfig) {
     events,
     jobs,
     deliveries,
+    repos,
     repositoryProvider,
     worker,
     runner,

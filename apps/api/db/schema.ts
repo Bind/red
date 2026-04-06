@@ -70,6 +70,27 @@ function migrate(db: Database): void {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS repos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      owner TEXT NOT NULL,
+      name TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      default_branch TEXT NOT NULL DEFAULT 'main',
+      visibility TEXT NOT NULL DEFAULT 'private',
+      created_by_subject TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(org_id, full_name)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_repos_org_full_name
+    ON repos(org_id, full_name)
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS change_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       change_id INTEGER NOT NULL,

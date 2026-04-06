@@ -38,4 +38,55 @@ describe("GitStorageRepositoryProvider", () => {
     expect(branches?.some((branch) => branch.name === "main")).toBe(true);
     expect(branches?.[0]?.commit.message).toBeTruthy();
   });
+
+  test("rebuilds repo handles and listing from a durable repo catalog", async () => {
+    const provider = new GitStorageRepositoryProvider({
+      storage: new MockGitSdk({
+        publicUrl: "https://git.example.redc.internal",
+        defaultOwner: "redc",
+      }),
+      repoCatalog: {
+        async listRepos() {
+          return [
+            {
+              id: 1,
+              org_id: "default",
+              owner: "redc",
+              name: "dashboard-demo",
+              full_name: "redc/dashboard-demo",
+              default_branch: "main",
+              visibility: "private",
+              created_by_subject: null,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ];
+        },
+        async getRepo(owner: string, repo: string) {
+          if (owner === "redc" && repo === "dashboard-demo") {
+            return {
+              id: 1,
+              org_id: "default",
+              owner,
+              name: repo,
+              full_name: `${owner}/${repo}`,
+              default_branch: "main",
+              visibility: "private",
+              created_by_subject: null,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            };
+          }
+          return null;
+        },
+      },
+    });
+
+    const repos = await provider.listRepos?.();
+    expect(repos?.map((repo) => repo.full_name)).toEqual(["redc/dashboard-demo"]);
+
+    const repo = await provider.getRepo?.("redc", "dashboard-demo");
+    expect(repo?.full_name).toBe("redc/dashboard-demo");
+    expect(repo?.default_branch).toBe("main");
+  });
 });

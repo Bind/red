@@ -16,6 +16,15 @@ const baseConfig = {
   hostname: "127.0.0.1",
   port: 4025,
   exposeTestMailbox: true,
+  webClients: [
+    {
+      clientId: "redc-web",
+      redirectBaseUrl: "http://localhost:5173",
+      magicLinkPath: "/auth/magic-link",
+    },
+  ],
+  passkeyOrigins: ["http://localhost:5173"],
+  passkeyRpId: "localhost",
   database: {
     kind: "sqlite" as const,
     sqlitePath: ":memory:",
@@ -33,13 +42,15 @@ const baseConfig = {
   ],
 };
 
+const webOrigin = baseConfig.webClients[0]?.redirectBaseUrl ?? baseConfig.issuer;
+
 describe("user auth runtime", () => {
   test("mounts Better Auth magic-link bootstrap, passkey flow, TOTP flow, and session exchange", async () => {
     const server = await createAuthServer(baseConfig);
     const issuer = baseConfig.issuer;
     const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
-      rpId: new URL(issuer).hostname,
-      origin: issuer,
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
     });
     const totpAuthenticator = createVirtualTotpAuthenticator();
 
@@ -51,6 +62,7 @@ describe("user auth runtime", () => {
         bootstrap.cookie,
         "new-user@example.com",
         passkeyAuthenticator,
+        webOrigin,
       );
       const totp = await completeTotpFlow(
         server,
@@ -92,8 +104,13 @@ describe("user auth runtime", () => {
       const tokenBody = (await exchangeResponse.json()) as {
         access_token: string;
         sid: string;
+        scope: string;
       };
       expect(tokenBody.sid).toBe(totp.sessionId);
+      expect(tokenBody.scope).toContain("session:exchange");
+      expect(tokenBody.scope).toContain("repos:read");
+      expect(tokenBody.scope).toContain("repos:create");
+      expect(tokenBody.scope).toContain("changes:read");
 
       const verifier = createTokenVerifier({
         issuer,
@@ -107,6 +124,65 @@ describe("user auth runtime", () => {
       expect(verified.claims.recovery_ready).toBe(true);
       expect(verified.claims.amr).toContain("passkey");
       expect(verified.claims.amr).toContain("mfa");
+      expect(verified.scope).toEqual(
+        expect.arrayContaining(["session:exchange", "repos:read", "repos:create", "changes:read"]),
+      );
+    } finally {
+      await server.userRuntime.close();
+    }
+  });
+
+  test("allows any TOTP code when the dev bypass is enabled", async () => {
+    const server = await createAuthServer({
+      ...baseConfig,
+      allowAnyTotpCode: true,
+    });
+    const issuer = baseConfig.issuer;
+    const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
+    });
+
+    try {
+      const bootstrap = await bootstrapMagicLinkSession(server, issuer, "bypass@example.com");
+      const passkey = await completePasskeyFlow(
+        server,
+        issuer,
+        bootstrap.cookie,
+        "bypass@example.com",
+        passkeyAuthenticator,
+        webOrigin,
+      );
+
+      const enrollmentResponse = await server.fetch(
+        new Request(`${issuer}/user/two-factor/enroll`, {
+          method: "POST",
+          headers: {
+            origin: issuer,
+            cookie: passkey.cookie,
+          },
+        }),
+      );
+      expect(enrollmentResponse.status).toBe(200);
+
+      const verifyResponse = await server.fetch(
+        new Request(`${issuer}/user/two-factor/verify`, {
+          method: "POST",
+          headers: {
+            origin: issuer,
+            cookie: passkey.cookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            code: "000000",
+          }),
+        }),
+      );
+      expect(verifyResponse.status).toBe(200);
+      expect(await verifyResponse.json()).toEqual({
+        sessionKind: "active",
+        secondFactorVerified: true,
+      });
     } finally {
       await server.userRuntime.close();
     }

@@ -67,6 +67,52 @@ describe("App integration", () => {
     expect(json.pending).toBe(0);
   });
 
+  test("repo listing is durable and repo creation persists across app instances", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "redc-repos-"));
+    const dbPath = join(dir, "repos.db");
+
+    const first = createApp({ ...testConfig, dbPath });
+
+    const createResponse = await first.app.fetch(new Request("http://localhost/api/repos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        owner: "redc",
+        name: "dashboard-demo",
+        default_branch: "main",
+        visibility: "private",
+      }),
+    }));
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as {
+      full_name: string;
+      default_branch: string;
+      visibility: string;
+    };
+    expect(created.full_name).toBe("redc/dashboard-demo");
+    expect(created.default_branch).toBe("main");
+
+    const listResponse = await first.app.fetch(new Request("http://localhost/api/repos"));
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toEqual(["redc/dashboard-demo"]);
+
+    first.db.close();
+
+    const second = createApp({ ...testConfig, dbPath });
+    const secondListResponse = await second.app.fetch(new Request("http://localhost/api/repos"));
+    expect(secondListResponse.status).toBe(200);
+    expect(await secondListResponse.json()).toEqual(["redc/dashboard-demo"]);
+
+    const repo = await second.repositoryProvider.getRepo?.("redc", "dashboard-demo");
+    expect(repo).not.toBeNull();
+    expect(repo).toMatchObject({
+      full_name: "redc/dashboard-demo",
+      default_branch: "main",
+    });
+
+    second.db.close();
+  });
+
   test("claw actions endpoint returns action metadata", async () => {
     const { app } = createApp(testConfig);
     const res = await app.fetch(new Request("http://localhost/api/claw/actions"));
