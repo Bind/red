@@ -1,6 +1,6 @@
 import type { CommitDiffFile, GitStorage } from "../../git-server/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
-import type { BranchInfo, DiffStats, FileStats, RepoRecord, RepoInfo } from "../types";
+import type { BranchInfo, CommitInfo, DiffStats, FileStats, RepoRecord, RepoInfo } from "../types";
 
 export interface GitStorageRepositoryProviderOptions {
   storage: GitStorage;
@@ -46,6 +46,18 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
   ): Promise<string | null> {
     const handle = await this.requireRepo(owner, repo);
     return handle.readTextFile({ ref, path: filepath });
+  }
+
+  async listCommits(owner: string, repo: string, ref?: string, limit?: number): Promise<CommitInfo[]> {
+    const handle = await this.requireRepo(owner, repo);
+    const commits = await handle.listCommits({ ref, limit });
+    return commits.map((commit) => ({
+      sha: commit.sha,
+      message: commit.message,
+      author_name: commit.authorName ?? null,
+      author_email: commit.authorEmail ?? null,
+      timestamp: commit.timestamp ?? null,
+    }));
   }
 
   async listRepos(): Promise<RepoInfo[]> {

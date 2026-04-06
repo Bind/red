@@ -203,3 +203,11 @@ export interface BranchInfo {
   };
   protected: boolean;
 }
+
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author_name: string | null;
+  author_email: string | null;
+  timestamp: string | null;
+}

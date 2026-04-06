@@ -353,6 +353,63 @@ export function createApp(config: AppConfig) {
     return c.json(record);
   });
 
+  app.get("/api/repos/:owner/:repo/file", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const path = c.req.query("path");
+    const ref = c.req.query("ref") ?? repos.getByFullName(`${owner}/${repo}`)?.default_branch ?? "main";
+
+    if (!path) {
+      return c.json({ error: "Missing required query param: path" }, 400);
+    }
+
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    const content = await repositoryProvider.getFileContent(owner, repo, path, ref);
+    return c.json({ path, ref, content });
+  });
+
+  app.get("/api/repos/:owner/:repo/branches", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!repositoryProvider.listBranches) {
+      return c.json({ error: "Repo provider does not support branch listing" }, 501);
+    }
+
+    const branches = await repositoryProvider.listBranches(owner, repo);
+    return c.json(
+      branches.map((branch) => ({
+        name: branch.name,
+        commit: branch.commit,
+        protected: branch.protected,
+      })),
+    );
+  });
+
+  app.get("/api/repos/:owner/:repo/commits", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!repositoryProvider.listCommits) {
+      return c.json({ error: "Repo provider does not support commit history" }, 501);
+    }
+
+    const ref = c.req.query("ref") ?? record.default_branch;
+    const limit = parseInt(c.req.query("limit") ?? "20", 10);
+    const commits = await repositoryProvider.listCommits(owner, repo, ref, limit);
+    return c.json(commits);
+  });
+
   app.post("/api/repos", async (c) => {
     if (config.repoBackend.kind !== "git_storage") {
       return c.json({ error: "Repository creation is not supported for the local git backend" }, 501);

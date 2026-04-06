@@ -1,3 +1,5 @@
+name: redc
+
 services:
   minio:
     image: minio/minio:latest
@@ -127,9 +129,11 @@ services:
     environment:
       REDC_PORT: 3000
       REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
+      REDC_REPOS: ${REDC_REPOS:-redc/redc}
       REPO_PROVIDER: ${REPO_PROVIDER:-git_storage}
       GIT_STORAGE_PUBLIC_URL: ${GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}
       GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-redc}
+      GIT_STORAGE_AUTH_TOKEN_SECRET: ${GIT_STORAGE_AUTH_TOKEN_SECRET:-dev-git-server-secret}
       OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-redc-claw-runner}
       CLAW_RUNNER_IMAGE: ${CLAW_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-redc-claw-runner}}
       FETCH_REMOTE_AFTER_MERGE: ${FETCH_REMOTE_AFTER_MERGE:-}
@@ -170,10 +174,19 @@ services:
       BFF_PORT: 3001
       REDC_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
+      BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-redc/redc}
+      BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-redc-bff-hosted-repo}
+      BFF_HOSTED_REPO_DEFAULT_BRANCH: ${BFF_HOSTED_REPO_DEFAULT_BRANCH:-main}
+      BFF_HOSTED_REPO_README_PATH: ${BFF_HOSTED_REPO_README_PATH:-README.md}
+      BFF_HOSTED_REPO_TOKEN_TTL_SECONDS: ${BFF_HOSTED_REPO_TOKEN_TTL_SECONDS:-300}
+      BFF_HOSTED_REPO_TOKEN_REFRESH_WINDOW_SECONDS: ${BFF_HOSTED_REPO_TOKEN_REFRESH_WINDOW_SECONDS:-30}
+      BFF_GIT_STORAGE_PUBLIC_URL: ${BFF_GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}
+      BFF_GIT_STORAGE_TOKEN_SECRET: ${BFF_GIT_STORAGE_TOKEN_SECRET:-dev-git-server-secret}
     ports:
       - "3001:3001"
     command: >
-      sh -lc "bun install --frozen-lockfile &&
+      sh -lc "apk add --no-cache git &&
+      bun install --frozen-lockfile &&
       bun run --watch apps/bff/src/index.ts"
     volumes:
       - ../..:/app

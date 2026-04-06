@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { BranchInfo, DiffStats, FileStats, RepoInfo } from "../types";
+import type { BranchInfo, CommitInfo, DiffStats, FileStats, RepoInfo } from "../types";
 import type { RepositoryProvider } from "./repository-provider";
 
 export interface LocalGitProviderConfig {
@@ -62,6 +62,31 @@ export class LocalGitProvider implements RepositoryProvider {
       }
       throw err;
     }
+  }
+
+  async listCommits(owner: string, repo: string, ref: string = "main", limit: number = 20): Promise<CommitInfo[]> {
+    const repoPath = this.resolveRepoPath(owner, repo);
+    const output = this.runGit(repoPath, [
+      "log",
+      "--format=%H\t%s\t%an\t%ae\t%cI",
+      `-${Math.max(1, Math.trunc(limit))}`,
+      ref,
+    ]);
+
+    return output
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const [sha = "", message = "", authorName = "", authorEmail = "", timestamp = ""] = line.split("\t");
+        return {
+          sha,
+          message,
+          author_name: authorName || null,
+          author_email: authorEmail || null,
+          timestamp: timestamp || null,
+        };
+      })
+      .filter((commit) => commit.sha);
   }
 
   async listRepos(): Promise<RepoInfo[]> {

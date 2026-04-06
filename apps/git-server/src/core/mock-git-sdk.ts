@@ -1,4 +1,5 @@
 import type {
+  CommitInfo,
   CommitBuilder,
   CommitDiffRange,
   CommitDiffResult,
@@ -140,6 +141,25 @@ class MockGitSdkRepo implements Repo {
     void options.ref;
     if (options.path === "missing.txt") return null;
     return `mock contents for ${options.path}\n`;
+  }
+
+  async listCommits(_options?: { ref?: string; limit?: number }): Promise<CommitInfo[]> {
+    return [
+      {
+        sha: "git-sdk-main-sha",
+        message: "mock main commit",
+        authorName: "redc mock",
+        authorEmail: "mock@redc.local",
+        timestamp: "2026-01-01T00:00:00Z",
+      },
+      {
+        sha: "git-sdk-parent-sha",
+        message: "mock previous commit",
+        authorName: "redc mock",
+        authorEmail: "mock@redc.local",
+        timestamp: "2025-12-31T23:00:00Z",
+      },
+    ];
   }
 
   async listRefs(): Promise<RefInfo[]> {

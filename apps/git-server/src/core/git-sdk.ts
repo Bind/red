@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
+  CommitInfo,
   CommitBuilder,
   CommitDiffFile,
   CommitDiffRange,
@@ -240,6 +241,38 @@ class GitSdkRepo implements Repo {
       }
       throw error;
     }
+  }
+
+  async listCommits(options: { ref?: string; limit?: number } = {}): Promise<CommitInfo[]> {
+    const ref = normalizeRef(options.ref ?? `refs/heads/${this.repoInfo.defaultBranch}`);
+    const limit = Math.max(1, Math.trunc(options.limit ?? 20));
+
+    return this.withFetchedRemote(async (worktree) => {
+      const rewrittenRef = rewriteRemoteRef(ref);
+      const output = await runCommand("git", [
+        "-C",
+        worktree,
+        "log",
+        "--format=%H\t%s\t%an\t%ae\t%cI",
+        `-${limit}`,
+        rewrittenRef,
+      ]);
+
+      return output.stdout
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => {
+          const [sha = "", message = "", authorName = "", authorEmail = "", timestamp = ""] = line.split("\t");
+          return {
+            sha,
+            message,
+            authorName: authorName || undefined,
+            authorEmail: authorEmail || undefined,
+            timestamp: timestamp || undefined,
+          };
+        })
+        .filter((commit) => commit.sha);
+    });
   }
 
   async listRefs(): Promise<RefInfo[]> {

@@ -1,4 +1,9 @@
 import { Hono } from "hono";
+import {
+  createHostedRepoReader,
+  type HostedRepoConfig,
+  type HostedRepoReader,
+} from "./hosted-repo";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -7,6 +12,8 @@ export interface BffConfig {
   apiBaseUrl: string;
   authBaseUrl: string;
   fetchImpl?: FetchImpl;
+  hostedRepo?: HostedRepoConfig;
+  hostedRepoReader?: HostedRepoReader;
 }
 
 function joinUrl(baseUrl: string, path: string, query?: URLSearchParams): string {
@@ -186,6 +193,9 @@ async function fetchSessionExchangeToken(
 export function createApp(config: BffConfig) {
   const app = new Hono();
   const fetchImpl = config.fetchImpl ?? fetch;
+  const hostedRepoReader =
+    config.hostedRepoReader
+    ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -235,6 +245,12 @@ export function createApp(config: BffConfig) {
     .post("/auth/user/onboarding/complete", (c) =>
       proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
     )
+    .get("/app/hosted-repo", async (c) => {
+      if (!hostedRepoReader) {
+        return c.json({ error: "Hosted repo app is not configured" }, 404);
+      }
+      return c.json(await hostedRepoReader.readSnapshot());
+    })
     .get("/velocity", (c) => {
       const query = new URLSearchParams();
       const hours = c.req.query("hours");

@@ -125,6 +125,42 @@ export interface RepoSummary {
   updated_at?: string;
 }
 
+export interface HostedRepoBranch {
+  name: string;
+  sha: string;
+  message: string;
+  timestamp: string | null;
+  protected: boolean;
+}
+
+export interface HostedRepoCommit {
+  sha: string;
+  message: string;
+  author_name: string | null;
+  author_email: string | null;
+  timestamp: string | null;
+}
+
+export interface HostedRepoSnapshot {
+  repo: RepoSummary;
+  readme: {
+    path: string;
+    content: string;
+  } | null;
+  branches: HostedRepoBranch[];
+  commits: HostedRepoCommit[];
+  access: {
+    actor_id: string;
+    mode: "read";
+    token_ttl_seconds: number;
+  };
+  availability: {
+    reachable: boolean;
+    error: string | null;
+  };
+  fetched_at: string;
+}
+
 export interface CreateRepoInput {
   owner: string;
   name: string;
@@ -415,6 +451,14 @@ export async function fetchRepos(): Promise<RepoSummary[]> {
     }
     throw error;
   }
+}
+
+export async function fetchHostedRepoSnapshot(): Promise<HostedRepoSnapshot> {
+  const payload = await requestJson<HostedRepoSnapshot>("/rpc/app/hosted-repo");
+  return {
+    ...payload,
+    repo: normalizeRepoSummary(payload.repo) ?? payload.repo,
+  };
 }
 
 export async function createRepo(input: CreateRepoInput): Promise<RepoSummary> {

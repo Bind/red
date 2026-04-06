@@ -91,6 +91,14 @@ export interface RefInfo {
   timestamp?: string;
 }
 
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  authorName?: string;
+  authorEmail?: string;
+  timestamp?: string;
+}
+
 export interface ListFilesResult {
   paths: string[];
 }
@@ -107,6 +115,7 @@ export interface Repo {
   createCommit(options: CreateCommitOptions): CommitBuilder;
   getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult>;
   readTextFile(options: { ref: string; path: string }): Promise<string | null>;
+  listCommits(options?: { ref?: string; limit?: number }): Promise<CommitInfo[]>;
   listRefs(): Promise<RefInfo[]>;
   listBranches(): Promise<Array<RefInfo & { protected?: boolean }>>;
   resolveRef(name: string): Promise<RefInfo | null>;

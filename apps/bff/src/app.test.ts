@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "./app";
+import type { HostedRepoSnapshot } from "./hosted-repo";
 
 describe("BFF app", () => {
   test("proxies JSON and text routes through RPC", async () => {
@@ -388,5 +389,63 @@ describe("BFF app", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("session=abc");
+  });
+
+  test("serves the special hosted repo snapshot from the BFF-owned reader", async () => {
+    const snapshot: HostedRepoSnapshot = {
+      repo: {
+        owner: "redc",
+        name: "redc",
+        full_name: "redc/redc",
+        default_branch: "main",
+        visibility: "private",
+      },
+      readme: {
+        path: "README.md",
+        content: "# redc\n",
+      },
+      branches: [
+        {
+          name: "main",
+          sha: "abc123",
+          message: "bootstrap hosted repo",
+          timestamp: "2026-04-05T00:00:00.000Z",
+          protected: true,
+        },
+      ],
+      commits: [
+        {
+          sha: "abc123",
+          message: "bootstrap hosted repo",
+          author_name: "redc",
+          author_email: "team@redc.local",
+          timestamp: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      access: {
+        actor_id: "redc-bff-hosted-repo",
+        mode: "read",
+        token_ttl_seconds: 300,
+      },
+      availability: {
+        reachable: true,
+        error: null,
+      },
+      fetched_at: "2026-04-05T00:00:00.000Z",
+    };
+
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      hostedRepoReader: {
+        readSnapshot: async () => snapshot,
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/app/hosted-repo");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(snapshot);
   });
 });

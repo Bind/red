@@ -1,4 +1,4 @@
-import type { BranchInfo, DiffStats, RepoInfo } from "../types";
+import type { BranchInfo, CommitInfo, DiffStats, RepoInfo } from "../types";
 
 export interface RepositoryProvider {
   compareDiff(
@@ -14,6 +14,7 @@ export interface RepositoryProvider {
     filepath: string,
     ref: string
   ): Promise<string | null>;
+  listCommits?(owner: string, repo: string, ref?: string, limit?: number): Promise<CommitInfo[]>;
   listRepos?(): Promise<RepoInfo[]>;
   getRepo?(owner: string, repo: string): Promise<RepoInfo>;
   listBranches?(owner: string, repo: string): Promise<BranchInfo[]>;

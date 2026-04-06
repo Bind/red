@@ -48,6 +48,7 @@ describe("git-sdk contract", () => {
       headRef: "refs/heads/feature/demo",
       includePatch: true,
     });
+    const commits = await repo.listCommits({ limit: 2 });
     const branches = await repo.listBranches();
     const resolved = await repo.resolveRef("main");
 
@@ -62,6 +63,10 @@ describe("git-sdk contract", () => {
     expect(branches[0]).toMatchObject({
       name: "main",
       protected: false,
+    });
+    expect(commits).toHaveLength(2);
+    expect(commits[0]).toMatchObject({
+      sha: "git-sdk-main-sha",
     });
     expect(resolved).toMatchObject({
       name: "refs/heads/main",
