@@ -1,0 +1,58 @@
+{
+  "title": "Add Codex summary streaming and diff review UI",
+  "what_changed": "Add a reusable repo task runner, prompt builder, log bus, and typed summary annotations so Codex summaries run inside Docker and return validated JSON. Update the server and worker pipeline to support summary regeneration, raw diff retrieval, SSE log streaming, and re-entering `summarizing` from `ready_for_review`. Rework the change detail UI to inject route-specific header content and show annotated summaries, live Codex logs, and an interactive file tree plus rendered patch diff. Pin the Codex runner image to `@openai/codex@0.117.0`, write results through `/output/result.json`, and add new diff/tree rendering dependencies and shared global styles.",
+  "risk_assessment": "`web/src/routes/change.tsx` now renders `<Timeline>` without importing or defining it anywhere in `web/src`, which is a likely frontend build blocker. The new summary regeneration and log streaming path can also leave a change stuck in `summarizing` if summary generation fails before any log line creates a `LogBus` channel, because `complete()` becomes a no-op and no recovery transition is added.",
+  "affected_modules": [
+    "src/engine",
+    "src/jobs",
+    "src/index.ts",
+    "web/src/routes",
+    "web/src/components",
+    "web/src/lib",
+    "codex-runner",
+    "web"
+  ],
+  "recommended_action": "block",
+  "annotations": [
+    {
+      "text": "Add a reusable repo task runner, prompt builder, log bus, and typed summary annotations so Codex summaries run inside Docker and return validated JSON.",
+      "files": [
+        "src/engine/runner.ts",
+        "src/engine/tasks/summary.ts",
+        "src/engine/log-bus.ts",
+        "src/engine/summary.ts",
+        "src/types.ts"
+      ],
+      "type": "new_module"
+    },
+    {
+      "text": "Update the server and worker pipeline to support summary regeneration, raw diff retrieval, SSE log streaming, and re-entering `summarizing` from `ready_for_review`.",
+      "files": [
+        "src/index.ts",
+        "src/jobs/worker.ts",
+        "src/engine/state-machine.ts"
+      ],
+      "type": "change"
+    },
+    {
+      "text": "Rework the change detail UI to inject route-specific header content and show annotated summaries, live Codex logs, and an interactive file tree plus rendered patch diff.",
+      "files": [
+        "web/src/routes/change.tsx",
+        "web/src/components/layout.tsx",
+        "web/src/lib/api.ts"
+      ],
+      "type": "change"
+    },
+    {
+      "text": "Pin the Codex runner image to `@openai/codex@0.117.0`, write results through `/output/result.json`, and add new diff/tree rendering dependencies and shared global styles.",
+      "files": [
+        "codex-runner/Dockerfile",
+        "codex-runner/run.sh",
+        "web/package.json",
+        "bun.lock",
+        "src/globals.css"
+      ],
+      "type": "config"
+    }
+  ]
+}

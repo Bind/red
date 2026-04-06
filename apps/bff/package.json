@@ -1,0 +1,14 @@
+{
+  "name": "redc-bff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  }
+}

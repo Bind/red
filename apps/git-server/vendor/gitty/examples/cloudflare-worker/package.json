@@ -1,0 +1,14 @@
+{
+  "name": "gitty-cloudflare-worker",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build-wasm": "cd ../.. && zig build wasm -Doptimize=ReleaseSmall && cp zig-out/bin/gitty.wasm examples/cloudflare-worker/src/gitty.wasm"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0",
+    "typescript": "^5.0.0",
+    "@cloudflare/workers-types": "^4.0.0"
+  }
+}

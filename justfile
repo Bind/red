@@ -3,130 +3,187 @@
 set dotenv-load
 
 mod infra
-mod e2e
+
+DEV_COMPOSE := "infra/compose/dev.yml"
 
 # Default: show available commands
 default:
     @just --list --unsorted
 
-# ── First-time setup ───────────────────────────────────
-
-FORGEJO_URL := env("FORGEJO_URL", "http://localhost:3001")
-FORGEJO_ADMIN := "redc-admin"
-FORGEJO_PASS := "admin1234"
-WEBHOOK_SECRET := env("WEBHOOK_SECRET", "dev-secret-123")
-REDC_PORT := env("REDC_PORT", "3000")
-TEST_REPO := "test-repo"
-
-# One-time setup: Forgejo + admin + repo + webhook + .env
+# One-time local bootstrap: env, runner image, and dev services
 setup:
+    ./infra/scripts/setup-dev-env.sh
+
+# Start all local services in Docker without forcing rebuilds
+up:
+    SKIP_IMAGE_BUILD=true ./infra/scripts/setup-dev-env.sh
+
+# Rebuild Docker images, then start the full stack
+up-build:
+    ./infra/scripts/setup-dev-env.sh
+
+# Stop all local services
+down:
+    just infra down
+
+# Rebuild app containers and the Claw runner image
+build:
+    docker compose -f {{ DEV_COMPOSE }} build
+    docker build -t redc-claw-runner tools/claw-runner/
+
+# Show local service status
+ps:
+    docker compose -f {{ DEV_COMPOSE }} ps
+
+# Tail logs for one service, or pick one with fzf if omitted
+logs service="":
     #!/usr/bin/env bash
     set -euo pipefail
-
-    just infra up
-
-    echo "Creating admin user..."
-    docker compose exec -T forgejo su -c \
-        'forgejo admin user create --username "{{ FORGEJO_ADMIN }}" --password "{{ FORGEJO_PASS }}" --email "admin@redc.local" --admin --must-change-password=false' \
-        git 2>/dev/null \
-        || echo "  (user may already exist)"
-
-    echo "Creating API token..."
-    TOKEN_RESPONSE=$(curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/users/{{ FORGEJO_ADMIN }}/tokens" \
-        -u "{{ FORGEJO_ADMIN }}:{{ FORGEJO_PASS }}" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"redc-dev-'"$(date +%s)"'","scopes":["all"]}')
-
-    FORGEJO_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"sha1":"[^"]*"' | cut -d'"' -f4)
-    if [ -z "$FORGEJO_TOKEN" ]; then
-        echo "ERROR: Failed to create token. Response: $TOKEN_RESPONSE"
-        exit 1
+    if [ -n "{{ service }}" ]; then
+        docker compose -f {{ DEV_COMPOSE }} logs -f {{ service }}
+    else
+        selected_service="$(
+            docker compose -f {{ DEV_COMPOSE }} config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+        [ -n "$selected_service" ] || exit 0
+        docker compose -f {{ DEV_COMPOSE }} logs -f "$selected_service"
     fi
-    echo "  Token: ${FORGEJO_TOKEN:0:8}..."
 
-    echo "Creating test repo..."
-    curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/user/repos" \
-        -H "Authorization: token $FORGEJO_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{"name":"{{ TEST_REPO }}","auto_init":true,"default_branch":"main"}' > /dev/null 2>&1 \
-        || echo "  (repo may already exist)"
+# Open a shell inside a running service, or pick one with fzf
+shell service="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    selected_service="{{ service }}"
+    if [ -z "$selected_service" ]; then
+        selected_service="$(
+            docker compose -f {{ DEV_COMPOSE }} config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+    fi
+    [ -n "$selected_service" ] || exit 0
+    docker compose -f {{ DEV_COMPOSE }} exec "$selected_service" sh
 
-    echo "Creating webhook..."
-    curl -sf -X POST "{{ FORGEJO_URL }}/api/v1/repos/{{ FORGEJO_ADMIN }}/{{ TEST_REPO }}/hooks" \
-        -H "Authorization: token $FORGEJO_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "type": "forgejo",
-            "active": true,
-            "config": {
-                "url": "http://host.docker.internal:{{ REDC_PORT }}/webhook/push",
-                "content_type": "json",
-                "secret": "{{ WEBHOOK_SECRET }}"
-            },
-            "events": ["push"]
-        }' > /dev/null 2>&1 \
-        || echo "  (webhook may already exist)"
+# Run a command inside a running service, or pick one with fzf
+exec service="" *cmd:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    selected_service="{{ service }}"
+    if [ -z "$selected_service" ]; then
+        selected_service="$(
+            docker compose -f {{ DEV_COMPOSE }} config --services | fzf --prompt='service> ' --height=40% --reverse
+        )"
+    fi
+    [ -n "$selected_service" ] || exit 0
+    docker compose -f {{ DEV_COMPOSE }} exec "$selected_service" {{ cmd }}
 
-    echo "Writing .env..."
-    cat > .env <<EOF
-    FORGEJO_URL={{ FORGEJO_URL }}
-    FORGEJO_TOKEN=$FORGEJO_TOKEN
-    WEBHOOK_SECRET={{ WEBHOOK_SECRET }}
-    REDC_PORT={{ REDC_PORT }}
-    REDC_DB_PATH=redc-dev.db
-    EOF
-    sed -i '' 's/^    //' .env
-
-    echo ""
-    echo "=== Setup complete ==="
-    echo "Run: just dev"
-
-# ── Development ─────────────────────────────────────────
-
-# Start redc API server (hot-reload)
-dev:
-    bun run --watch src/index.ts
-
-# Start Vite dev server for frontend
-web:
-    cd web && bun run dev
-
-# Build frontend for production
-web-build:
-    cd web && bun run build
-
-# Start redc API server
-start:
-    bun run src/index.ts
-
-# Run all tests
+# Run backend tests inside Docker
 test:
-    bun test
+    docker compose -f {{ DEV_COMPOSE }} exec api bun test
 
-# Type check
-check:
-    bunx tsc --noEmit
+# Run type checking inside Docker
+typecheck:
+    docker compose -f {{ DEV_COMPOSE }} exec api bunx tsc --noEmit
 
-# Type check + tests
-ci: check test
+# Build the production frontend bundle inside Docker
+web-build:
+    docker compose -f {{ DEV_COMPOSE }} exec web bun run build
+
+# Full local verification
+verify: typecheck test
+
+# Run the git server/manual SDK CLI
+git-server-manual *args:
+    cd apps/git-server && bun src/manual/cli.ts {{args}}
+
+# Run tests for the git server package
+git-server-test:
+    cd apps/git-server && bun test
+
+# Run the live git-backed integration harness
+git-server-integration:
+    cd apps/git-server && bun src/manual/cli.ts integration
+
+# Run the live git-backed integration test
+git-server-integration-test:
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
+
+# Start git server dependencies and service from the root compose stack
+git-server-up:
+    docker compose -f {{ DEV_COMPOSE }} up --build git-server minio minio-init
+
+# Stop the git server service from the root compose stack
+git-server-down:
+    docker compose -f {{ DEV_COMPOSE }} rm -sf git-server minio-init
+
+# Install dependencies for the auth service
+auth-install:
+    cd apps/auth && bun install
+
+# Start the auth service
+auth-serve:
+    cd apps/auth && bun run src/index.ts
+
+# Run tests for the auth service
+auth-test:
+    cd apps/auth && bun test
+
+# Lint the auth service with Biome
+auth-lint:
+    cd apps/auth && bun run lint
+
+# Format the auth service with Biome
+auth-format:
+    cd apps/auth && bun run format
+
+# Generate the local-only auth compose signing key if needed
+auth-compose-keygen:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p apps/auth/compose
+    if [[ -f apps/auth/compose/signing-key.private.jwk ]]; then
+        exit 0
+    fi
+    cd apps/auth && bun --eval 'import { writeFileSync } from "node:fs"; import { generateKeyPairSync } from "node:crypto"; import { exportJWK } from "jose"; const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 }); const jwk = await exportJWK(privateKey); writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);'
+
+# Bring up the auth compose stack
+auth-compose-up:
+    just auth-compose-keygen
+    docker compose -f apps/auth/docker-compose.yml up --build -d auth-db auth
+    until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
+
+# Tear down the auth compose stack
+auth-compose-down:
+    docker compose -f apps/auth/docker-compose.yml down -v --remove-orphans
+
+# Run auth E2E tests against the compose stack
+auth-compose-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root="$(pwd)"
+    compose_file="$repo_root/apps/auth/docker-compose.yml"
+    just auth-compose-keygen
+    docker compose -f "$compose_file" up --build -d auth-db auth
+    cleanup() {
+        docker compose -f "$compose_file" down -v --remove-orphans
+    }
+    trap cleanup EXIT
+    until curl -fsS http://127.0.0.1:4020/health >/dev/null; do sleep 1; done
+    cd apps/auth && \
+        AUTH_LAB_E2E_BASE_URL=http://127.0.0.1:4020 \
+        AUTH_LAB_E2E_DB_URL=postgres://auth_lab:auth_lab_password@127.0.0.1:5433/auth_lab \
+        AUTH_LAB_E2E_COMPOSE_FILE=./docker-compose.yml \
+        AUTH_LAB_BETTER_AUTH_SECRET=auth-lab-compose-secret \
+        bun test src/test/compose-e2e.test.ts
 
 # ── CLI ─────────────────────────────────────────────────
 
-# Bootstrap Forgejo user, repo, and git remote from GitHub identity
-bootstrap:
-    bun run src/cli/index.ts bootstrap
-
 # Show merge velocity and review queue
 status:
-    bun run src/cli/index.ts status
+    docker compose -f {{ DEV_COMPOSE }} exec api bun run apps/api/cli/index.ts status
 
-# Browse all Forgejo repos with fzf
+# Browse known repos with fzf
 repos:
-    @curl -sf "{{ FORGEJO_URL }}/api/v1/admin/repos?limit=50&token=$FORGEJO_TOKEN" \
-        | bun -e 'const repos=await Bun.stdin.json();for(const r of repos)console.log(r.full_name+"\t"+r.html_url+"\t"+(r.description||""))' \
-        | fzf --delimiter='\t' --with-nth=1 --preview='echo "URL: {2}\nDesc: {3}"' \
-        | cut -f2
-
-# Dry-run policy evaluation
-policy-test path=".redc/policy.yaml":
-    bun run src/cli/index.ts policy test {{ path }}
+    @docker compose -f {{ DEV_COMPOSE }} exec -T api bun run apps/api/cli/index.ts status --format json \
+        | bun -e 'const input=await Bun.stdin.json(); const rows=Object.entries(input.by_repo ?? {}); for (const [name, count] of rows) console.log(`${name}\t${count}`)' \
+        | fzf --delimiter='\t' --with-nth=1 --preview='echo "Queued changes: {2}"' \
+        | cut -f1

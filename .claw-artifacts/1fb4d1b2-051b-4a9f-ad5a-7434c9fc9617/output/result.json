@@ -1,0 +1,26 @@
+{
+  "title": "Add test-file marker",
+  "what_changed": "A new top-level file `test-file.txt` is added as a standalone change marker containing a timestamped line. No refactoring, bug fixes, or configuration changes are included in this branch.",
+  "risk_assessment": "Risk is very low because the change only adds a single text file and does not modify application logic or configuration. The only concern is whether this placeholder file is intentional and should live at the repository root.",
+  "affected_modules": [
+    "test-file.txt",
+    "/"
+  ],
+  "recommended_action": "approve",
+  "annotations": [
+    {
+      "text": "A new top-level file `test-file.txt` is added as a standalone change marker containing a timestamped line.",
+      "files": [
+        "test-file.txt"
+      ],
+      "type": "new_module"
+    },
+    {
+      "text": "No refactoring, bug fixes, or configuration changes are included in this branch.",
+      "files": [
+        "test-file.txt"
+      ],
+      "type": "change"
+    }
+  ]
+}

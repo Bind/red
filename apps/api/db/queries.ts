@@ -1,0 +1,620 @@
+import type { Database, SQLQueryBindings } from "bun:sqlite";
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  AgentSessionStatus,
+  Change,
+  ChangeEvent,
+  ChangeStatus,
+  ConfidenceLevel,
+  CreatedBy,
+  Job,
+  PullRequest,
+  PullRequestStatus,
+  RepoRecord,
+  RepoVisibility,
+} from "../types";
+import type { AgentRuntimeEvent } from "../claw/runtime";
+
+export class ChangeQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    org_id: string;
+    repo: string;
+    branch: string;
+    base_branch: string;
+    head_sha: string;
+    pr_number?: number | null;
+    created_by: CreatedBy;
+    delivery_id: string;
+    diff_stats?: string | null;
+  }): Change {
+    const stmt = this.db.prepare(`
+      INSERT INTO changes (org_id, repo, branch, base_branch, head_sha, pr_number, created_by, delivery_id, diff_stats)
+      VALUES ($org_id, $repo, $branch, $base_branch, $head_sha, $pr_number, $created_by, $delivery_id, $diff_stats)
+    `);
+    stmt.run({
+      $org_id: params.org_id,
+      $repo: params.repo,
+      $branch: params.branch,
+      $base_branch: params.base_branch,
+      $head_sha: params.head_sha,
+      $pr_number: params.pr_number ?? null,
+      $created_by: params.created_by,
+      $delivery_id: params.delivery_id,
+      $diff_stats: params.diff_stats ?? null,
+    });
+    const id = this.db.prepare("SELECT last_insert_rowid() as id").get() as {
+      id: number;
+    };
+    return this.getById(id.id)!;
+  }
+
+  getById(id: number): Change | null {
+    return this.db.prepare("SELECT * FROM changes WHERE id = ?").get(id) as
+      | Change
+      | null;
+  }
+
+  getByDeliveryId(deliveryId: string): Change | null {
+    return this.db
+      .prepare("SELECT * FROM changes WHERE delivery_id = ?")
+      .get(deliveryId) as Change | null;
+  }
+
+  getLatestByRepoHead(repo: string, headSha: string): Change | null {
+    return this.db.prepare(
+      `SELECT * FROM changes
+       WHERE repo = ? AND head_sha = ?
+       ORDER BY created_at DESC
+       LIMIT 1`
+    ).get(repo, headSha) as Change | null;
+  }
+
+  updateStatus(id: number, status: ChangeStatus): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET status = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(status, id);
+  }
+
+  updateConfidence(id: number, confidence: ConfidenceLevel): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET confidence = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(confidence, id);
+  }
+
+  updateSummary(id: number, summary: string): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET summary = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(summary, id);
+  }
+
+  updateDiffStats(id: number, diffStats: string): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(diffStats, id);
+  }
+
+  updatePrNumber(id: number, prNumber: number): void {
+    this.db
+      .prepare(
+        "UPDATE changes SET pr_number = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(prNumber, id);
+  }
+
+  /** Mark all open changes on a repo+branch as superseded (new push arrived). */
+  supersedePrior(repo: string, branch: string, excludeId: number): number {
+    const result = this.db
+      .prepare(
+        `UPDATE changes SET status = 'superseded', updated_at = datetime('now')
+       WHERE repo = ? AND branch = ? AND id != ?
+       AND status NOT IN ('merged', 'closed', 'superseded')`
+      )
+      .run(repo, branch, excludeId);
+    return result.changes;
+  }
+
+  listByStatus(
+    status: ChangeStatus,
+    opts?: { org_id?: string; limit?: number; offset?: number }
+  ): Change[] {
+    let query = "SELECT * FROM changes WHERE status = ?";
+    const params: SQLQueryBindings[] = [status];
+    if (opts?.org_id) {
+      query += " AND org_id = ?";
+      params.push(opts.org_id);
+    }
+    query += " ORDER BY updated_at DESC";
+    if (opts?.limit) {
+      query += " LIMIT ?";
+      params.push(opts.limit);
+    }
+    if (opts?.offset) {
+      query += " OFFSET ?";
+      params.push(opts.offset);
+    }
+    return this.db.prepare(query).all(...params) as Change[];
+  }
+
+  listForReview(org_id?: string): Change[] {
+    let query = `
+      SELECT * FROM changes
+      WHERE status IN ('ready_for_review', 'scored')
+    `;
+    const params: SQLQueryBindings[] = [];
+    if (org_id) {
+      query += " AND org_id = ?";
+      params.push(org_id);
+    }
+    query += " ORDER BY CASE confidence WHEN 'critical' THEN 0 WHEN 'needs_review' THEN 1 WHEN 'safe' THEN 2 ELSE 3 END, updated_at ASC";
+    return this.db.prepare(query).all(...params) as Change[];
+  }
+
+  /** List distinct repos that have changes. */
+  listRepos(): string[] {
+    const rows = this.db.prepare(
+      "SELECT DISTINCT repo FROM changes ORDER BY repo"
+    ).all() as { repo: string }[];
+    return rows.map((r) => r.repo);
+  }
+
+  /** Get the latest active (non-terminal) change for a repo+branch. */
+  getActiveByRepoBranch(repo: string, branch: string): Change | null {
+    return this.db.prepare(
+      `SELECT * FROM changes WHERE repo = ? AND branch = ?
+       AND status NOT IN ('merged', 'closed', 'superseded')
+       ORDER BY created_at DESC LIMIT 1`
+    ).get(repo, branch) as Change | null;
+  }
+
+  /** Queue stats for the last N hours. */
+  mergeVelocity(hours: number = 24, org_id?: string): { summarized: number; pending_review: number } {
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+    let mergedQuery = "SELECT COUNT(*) as count FROM changes WHERE status = 'ready_for_review' AND updated_at >= ?";
+    let pendingQuery = "SELECT COUNT(*) as count FROM changes WHERE status IN ('ready_for_review', 'scored') ";
+    const mergedParams: SQLQueryBindings[] = [since];
+    const pendingParams: SQLQueryBindings[] = [];
+
+    if (org_id) {
+      mergedQuery += " AND org_id = ?";
+      mergedParams.push(org_id);
+      pendingQuery += " AND org_id = ?";
+      pendingParams.push(org_id);
+    }
+
+    const summarized = this.db.prepare(mergedQuery).get(...mergedParams) as { count: number };
+    const pending = this.db.prepare(pendingQuery).get(...pendingParams) as { count: number };
+
+    return { summarized: summarized.count, pending_review: pending.count };
+  }
+}
+
+export class RepoQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    org_id?: string;
+    owner: string;
+    name: string;
+    default_branch?: string;
+    visibility?: RepoVisibility;
+    created_by_subject?: string | null;
+  }): RepoRecord {
+    const record = {
+      org_id: params.org_id ?? "default",
+      owner: params.owner,
+      name: params.name,
+      full_name: `${params.owner}/${params.name}`,
+      default_branch: params.default_branch ?? "main",
+      visibility: params.visibility ?? "private",
+      created_by_subject: params.created_by_subject ?? null,
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO repos (
+          org_id, owner, name, full_name, default_branch, visibility, created_by_subject
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.org_id,
+        record.owner,
+        record.name,
+        record.full_name,
+        record.default_branch,
+        record.visibility,
+        record.created_by_subject,
+      );
+
+    return this.getByFullName(record.full_name, record.org_id)!;
+  }
+
+  ensure(params: {
+    org_id?: string;
+    owner: string;
+    name: string;
+    default_branch?: string;
+    visibility?: RepoVisibility;
+    created_by_subject?: string | null;
+  }): RepoRecord {
+    const existing = this.getByFullName(
+      `${params.owner}/${params.name}`,
+      params.org_id ?? "default",
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return this.create(params);
+  }
+
+  getByFullName(fullName: string, org_id: string = "default"): RepoRecord | null {
+    return this.db
+      .prepare("SELECT * FROM repos WHERE org_id = ? AND full_name = ?")
+      .get(org_id, fullName) as RepoRecord | null;
+  }
+
+  list(org_id: string = "default"): RepoRecord[] {
+    return this.db
+      .prepare("SELECT * FROM repos WHERE org_id = ? ORDER BY full_name")
+      .all(org_id) as RepoRecord[];
+  }
+}
+
+export class EventQueries {
+  constructor(private db: Database) {}
+
+  append(params: {
+    change_id: number;
+    event_type: string;
+    from_status?: ChangeStatus | null;
+    to_status?: ChangeStatus | null;
+    metadata?: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO change_events (change_id, event_type, from_status, to_status, metadata)
+       VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        params.change_id,
+        params.event_type,
+        params.from_status ?? null,
+        params.to_status ?? null,
+        params.metadata ?? null
+      );
+  }
+
+  listByChangeId(changeId: number): ChangeEvent[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM change_events WHERE change_id = ? ORDER BY created_at ASC"
+      )
+      .all(changeId) as ChangeEvent[];
+  }
+}
+
+export class JobQueries {
+  constructor(private db: Database) {}
+
+  getById(id: number): Job | null {
+    return this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job | null;
+  }
+
+  enqueue(params: {
+    org_id: string;
+    type: string;
+    payload: string;
+    max_attempts?: number;
+  }): Job {
+    this.db
+      .prepare(
+        `INSERT INTO jobs (org_id, type, payload, max_attempts)
+       VALUES (?, ?, ?, ?)`
+      )
+      .run(
+        params.org_id,
+        params.type,
+        params.payload,
+        params.max_attempts ?? 3
+      );
+    const id = this.db.prepare("SELECT last_insert_rowid() as id").get() as {
+      id: number;
+    };
+    return this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id.id) as Job;
+  }
+
+  /** Claim the next pending job that's ready to run. */
+  claimNext(type?: string): Job | null {
+    let query = `
+      UPDATE jobs SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
+      WHERE id = (
+        SELECT id FROM jobs
+        WHERE status = 'pending' AND run_at <= datetime('now')
+    `;
+    const params: SQLQueryBindings[] = [];
+    if (type) {
+      query += " AND type = ?";
+      params.push(type);
+    }
+    query += " ORDER BY run_at ASC LIMIT 1) RETURNING *";
+    return this.db.prepare(query).get(...params) as Job | null;
+  }
+
+  complete(id: number): void {
+    this.db
+      .prepare(
+        "UPDATE jobs SET status = 'completed', updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(id);
+  }
+
+  fail(id: number, error: string): void {
+    const job = this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job;
+    if (job && job.attempts >= job.max_attempts) {
+      this.db
+        .prepare(
+          "UPDATE jobs SET status = 'dead', last_error = ?, updated_at = datetime('now') WHERE id = ?"
+        )
+        .run(error, id);
+    } else {
+      // Exponential backoff: 2^attempts minutes
+      const backoffMinutes = Math.pow(2, job?.attempts ?? 1);
+      this.db
+        .prepare(
+          `UPDATE jobs SET status = 'pending', last_error = ?,
+           run_at = datetime('now', '+${backoffMinutes} minutes'),
+           updated_at = datetime('now') WHERE id = ?`
+        )
+        .run(error, id);
+    }
+  }
+
+  pendingCount(): number {
+    return (
+      this.db
+        .prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'pending'")
+        .get() as { count: number }
+    ).count;
+  }
+}
+
+export class DeliveryQueries {
+  constructor(private db: Database) {}
+
+  /** Returns true if this delivery was already processed. */
+  isDuplicate(deliveryId: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 FROM webhook_deliveries WHERE id = ?")
+      .get(deliveryId);
+    return row !== null;
+  }
+
+  record(deliveryId: string): void {
+    this.db
+      .prepare("INSERT OR IGNORE INTO webhook_deliveries (id) VALUES (?)")
+      .run(deliveryId);
+  }
+}
+
+export class PullRequestQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    change_id: number;
+    repo: string;
+    head_branch: string;
+    base_branch: string;
+    title: string;
+    body?: string | null;
+    status?: PullRequestStatus;
+    provider?: string;
+    provider_ref?: string | null;
+    merge_commit_sha?: string | null;
+  }): PullRequest {
+    this.db
+      .prepare(
+        `INSERT INTO pull_requests (
+          change_id, repo, head_branch, base_branch, title, body, status, provider, provider_ref, merge_commit_sha
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        params.change_id,
+        params.repo,
+        params.head_branch,
+        params.base_branch,
+        params.title,
+        params.body ?? null,
+        params.status ?? "draft",
+        params.provider ?? "internal",
+        params.provider_ref ?? null,
+        params.merge_commit_sha ?? null
+      );
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.getById(id)!;
+  }
+
+  getById(id: number): PullRequest | null {
+    return this.db.prepare("SELECT * FROM pull_requests WHERE id = ?").get(id) as PullRequest | null;
+  }
+
+  getLatestByChangeId(changeId: number): PullRequest | null {
+    return this.db
+      .prepare(
+        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC LIMIT 1"
+      )
+      .get(changeId) as PullRequest | null;
+  }
+
+  listByChangeId(changeId: number): PullRequest[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC"
+      )
+      .all(changeId) as PullRequest[];
+  }
+
+  updateStatus(id: number, status: PullRequestStatus): void {
+    this.db
+      .prepare(
+        "UPDATE pull_requests SET status = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(status, id);
+  }
+
+  updateDetails(id: number, title: string, body?: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET title = ?, body = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(title, body ?? null, id);
+  }
+
+  attachProviderRef(id: number, provider: string, providerRef: string): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET provider = ?, provider_ref = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(provider, providerRef, id);
+  }
+
+  markMerged(id: number, mergeCommitSha?: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE pull_requests
+         SET status = 'merged', merge_commit_sha = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .run(mergeCommitSha ?? null, id);
+  }
+}
+
+export class SessionQueries {
+  constructor(private db: Database) {}
+
+  create(params: {
+    changeId: number;
+    jobId: number | null;
+    jobType: string;
+    runId: string;
+    runtime: string;
+  }): AgentSession {
+    this.db
+      .prepare(
+        `INSERT INTO agent_sessions (change_id, job_id, job_type, run_id, runtime)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(params.changeId, params.jobId, params.jobType, params.runId, params.runtime);
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.getById(id)!;
+  }
+
+  getById(id: number): AgentSession | null {
+    return this.db
+      .prepare("SELECT * FROM agent_sessions WHERE id = ?")
+      .get(id) as AgentSession | null;
+  }
+
+  getLatestByChangeId(changeId: number): AgentSession | null {
+    return this.db
+      .prepare(
+        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1"
+      )
+      .get(changeId) as AgentSession | null;
+  }
+
+  listByChangeId(changeId: number): AgentSession[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC"
+      )
+      .all(changeId) as AgentSession[];
+  }
+
+  findLatestRunningByChangeAndJobType(changeId: number, jobType: string): AgentSession | null {
+    return this.db
+      .prepare(
+        `SELECT * FROM agent_sessions
+         WHERE change_id = ? AND job_type = ? AND status = 'running'
+         ORDER BY started_at DESC
+         LIMIT 1`
+      )
+      .get(changeId, jobType) as AgentSession | null;
+  }
+
+  attachRuntimeSessionId(id: number, runtimeSessionId: string): void {
+    this.db
+      .prepare(
+        `UPDATE agent_sessions
+         SET runtime_session_id = ?
+         WHERE id = ?`
+      )
+      .run(runtimeSessionId, id);
+  }
+
+  finish(id: number, status: AgentSessionStatus, durationMs: number): void {
+    this.db
+      .prepare(
+        `UPDATE agent_sessions
+         SET status = ?, finished_at = datetime('now'), duration_ms = ?
+         WHERE id = ?`
+      )
+      .run(status, durationMs, id);
+  }
+
+  appendEvent(sessionId: number, event: AgentRuntimeEvent): AgentSessionEvent {
+    this.db
+      .prepare(
+        `INSERT INTO agent_session_events (
+          session_id, seq, event_id, kind, type, status, role, text, delta, data_json, raw_json
+        ) VALUES (
+          ?,
+          (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_session_events WHERE session_id = ?),
+          ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )`
+      )
+      .run(
+        sessionId,
+        sessionId,
+        event.id,
+        event.kind,
+        event.type,
+        event.status ?? null,
+        event.role ?? null,
+        event.text ?? null,
+        event.delta ?? null,
+        event.data ? JSON.stringify(event.data) : null,
+        event.raw ? JSON.stringify(event.raw) : null
+      );
+    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
+    return this.db
+      .prepare("SELECT * FROM agent_session_events WHERE id = ?")
+      .get(id) as AgentSessionEvent;
+  }
+
+  getEventsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): AgentSessionEvent[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM agent_session_events
+         WHERE session_id = ? AND seq > ?
+         ORDER BY seq ASC
+         LIMIT ?`
+      )
+      .all(sessionId, afterSeq, limit) as AgentSessionEvent[];
+  }
+}

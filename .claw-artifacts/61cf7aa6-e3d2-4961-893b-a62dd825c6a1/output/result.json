@@ -1,0 +1,64 @@
+{
+  "title": "Add Codex-backed summaries and diff review UI",
+  "what_changed": "Introduced a reusable Codex task execution layer with a Docker runner, prompt builder, result validation, and in-memory log streaming so summary generation can diff against the correct base ref and stream agent progress back to the app. Refactored summary generation and job handling to pass `baseRef`/`headRef`, allow `ready_for_review -> summarizing` regeneration, persist annotations in the summary schema, and complete log streams around summary jobs. Expanded the API and change detail experience with endpoints for raw diffs, summary regeneration, and SSE logs, plus a richer review page that renders annotated summaries, live Codex logs, a file tree, and patch diffs. Pinned the Codex runner CLI version, added an output mount in the runner container, and pulled in new frontend diff/tree dependencies alongside a new global theme stylesheet and header slot support.",
+  "risk_assessment": "Risk is moderate because `web/src/routes/change.tsx` now renders `<Timeline />` without importing or defining it, which is likely to break the frontend build or page rendering. The new log streaming path also depends on an in-memory `LogBus`, so streamed history is ephemeral and would not survive process restarts or multi-instance deployments.",
+  "affected_modules": [
+    "src/engine",
+    "src/jobs",
+    "src",
+    "web/src/routes",
+    "web/src/lib",
+    "web/src/components",
+    "codex-runner",
+    "web",
+    "src/engine/tasks"
+  ],
+  "recommended_action": "review",
+  "annotations": [
+    {
+      "text": "Introduced a reusable Codex task execution layer with a Docker runner, prompt builder, result validation, and in-memory log streaming so summary generation can diff against the correct base ref and stream agent progress back to the app.",
+      "files": [
+        "src/engine/runner.ts",
+        "src/engine/log-bus.ts",
+        "src/engine/tasks/summary.ts",
+        "src/engine/summary.ts",
+        "codex-runner/Dockerfile",
+        "codex-runner/run.sh"
+      ],
+      "type": "new_module"
+    },
+    {
+      "text": "Refactored summary generation and job handling to pass `baseRef`/`headRef`, allow `ready_for_review -> summarizing` regeneration, persist annotations in the summary schema, and complete log streams around summary jobs.",
+      "files": [
+        "src/engine/summary.ts",
+        "src/jobs/worker.ts",
+        "src/engine/state-machine.ts",
+        "src/types.ts",
+        "src/engine/summary.test.ts"
+      ],
+      "type": "refactor"
+    },
+    {
+      "text": "Expanded the API and change detail experience with endpoints for raw diffs, summary regeneration, and SSE logs, plus a richer review page that renders annotated summaries, live Codex logs, a file tree, and patch diffs.",
+      "files": [
+        "src/index.ts",
+        "web/src/lib/api.ts",
+        "web/src/routes/change.tsx",
+        "web/src/components/layout.tsx"
+      ],
+      "type": "change"
+    },
+    {
+      "text": "Pinned the Codex runner CLI version, added an output mount in the runner container, and pulled in new frontend diff/tree dependencies alongside a new global theme stylesheet and header slot support.",
+      "files": [
+        "codex-runner/Dockerfile",
+        "codex-runner/run.sh",
+        "web/package.json",
+        "bun.lock",
+        "src/globals.css",
+        "web/src/components/layout.tsx"
+      ],
+      "type": "config"
+    }
+  ]
+}

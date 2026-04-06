@@ -1,0 +1,14 @@
+{
+  "name": "@redc/git-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "manual": "bun run src/manual/cli.ts",
+    "minio-server": "bun run src/core/minio-server.ts",
+    "test": "bun test",
+    "test:integration": "sh -lc 'GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts'"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

@@ -1,0 +1,208 @@
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_API_PORT:-9003}:9000"
+      - "${MINIO_CONSOLE_PORT:-9002}:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-git-server-repos}
+    entrypoint: >
+      /bin/sh -c '
+      until mc alias set local http://$$MINIO_ENDPOINT:$$MINIO_PORT "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"; do
+        sleep 1;
+      done &&
+      mc mb --ignore-existing local/$$MINIO_BUCKET &&
+      mc mb --ignore-existing local/$$GIT_SERVER_S3_BUCKET
+      '
+
+  git-server:
+    build:
+      context: ../../apps/git-server
+      dockerfile: docker/gitty/Dockerfile
+      args:
+        GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - minio-init
+    environment:
+      GIT_SERVER_PORT: 8080
+      GIT_SERVER_PUBLIC_URL: ${GIT_SERVER_PUBLIC_URL:-http://127.0.0.1:9080}
+      GIT_SERVER_S3_ENDPOINT: ${GIT_SERVER_S3_ENDPOINT:-http://minio:9000}
+      GIT_SERVER_S3_REGION: ${GIT_SERVER_S3_REGION:-us-east-1}
+      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-git-server-repos}
+      GIT_SERVER_S3_PREFIX: ${GIT_SERVER_S3_PREFIX:-repos}
+      GIT_SERVER_S3_ACCESS_KEY_ID: ${GIT_SERVER_S3_ACCESS_KEY_ID:-minioadmin}
+      GIT_SERVER_S3_SECRET_ACCESS_KEY: ${GIT_SERVER_S3_SECRET_ACCESS_KEY:-minioadmin}
+      GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
+      GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
+      GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
+    ports:
+      - "${GIT_SERVER_PUBLIC_PORT:-9080}:8080"
+
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_lab}
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_lab}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth_lab_password}
+    ports:
+      - "${AUTH_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth_lab} -d ${AUTH_DB_NAME:-auth_lab}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  auth:
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    working_dir: /app/apps/auth
+    environment:
+      AUTH_LAB_HOST: 0.0.0.0
+      AUTH_LAB_PORT: 4020
+      AUTH_LAB_ISSUER: ${AUTH_ISSUER:-http://localhost:4020}
+      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-redc-api}
+      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-redc-web=http://localhost:5173}
+      AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-http://localhost:5173}
+      AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-localhost}
+      AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-true}
+      AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@auth-db:5432/${AUTH_DB_NAME:-auth_lab}
+      AUTH_LAB_BETTER_AUTH_SECRET: ${AUTH_BETTER_AUTH_SECRET:-auth-lab-compose-secret}
+      AUTH_LAB_SIGNING_PRIVATE_JWK_FILE: /run/config/signing-key.private.jwk
+      AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-compose}
+      AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: ${AUTH_BOOTSTRAP_CLIENT_SECRET:-auth-lab-compose-client-secret}
+      AUTH_LAB_BOOTSTRAP_SCOPES: ${AUTH_BOOTSTRAP_SCOPES:-prs:create changes:read}
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
+      AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
+      AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
+    ports:
+      - "${AUTH_PORT:-4020}:4020"
+    command: >
+      sh -lc "cd /app/apps/auth &&
+      bun install --frozen-lockfile &&
+      bun run dev"
+    volumes:
+      - ../..:/app
+      - auth-node-modules:/app/apps/auth/node_modules
+      - ../../apps/auth/compose/signing-key.private.jwk:/run/config/signing-key.private.jwk:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4020/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - git-server
+    env_file:
+      - ../../.env
+    environment:
+      REDC_PORT: 3000
+      REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
+      REPO_PROVIDER: ${REPO_PROVIDER:-git_storage}
+      GIT_STORAGE_PUBLIC_URL: ${GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}
+      GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-redc}
+      OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-redc-claw-runner}
+      CLAW_RUNNER_IMAGE: ${CLAW_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-redc-claw-runner}}
+      FETCH_REMOTE_AFTER_MERGE: ${FETCH_REMOTE_AFTER_MERGE:-}
+      HOST_OPENCODE_DIR: ${HOME}/.local/share/opencode
+      HOST_CODEX_DIR: ${HOME}/.codex
+      DOCKER_RUN_NETWORK: ${COMPOSE_PROJECT_NAME:-redc}_default
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    command: >
+      sh -lc "bun install --frozen-lockfile &&
+      bun run --watch apps/api/index.ts"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+      - web-node-modules:/app/apps/web/node_modules
+      - redc-data:/data
+      - /tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
+      - ${HOME}/.codex:/root/.codex:ro
+
+  bff:
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - auth
+    working_dir: /app
+    environment:
+      BFF_PORT: 3001
+      REDC_API_BASE_URL: http://api:3000
+      AUTH_BASE_URL: http://auth:4020
+    ports:
+      - "3001:3001"
+    command: >
+      sh -lc "bun install --frozen-lockfile &&
+      bun run --watch apps/bff/src/index.ts"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+      - web-node-modules:/app/apps/web/node_modules
+
+  web:
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    depends_on:
+      - bff
+    working_dir: /app/apps/web
+    environment:
+      VITE_API_PROXY_TARGET: http://bff:3001
+    ports:
+      - "5173:5173"
+    command: >
+      sh -lc "cd /app &&
+      bun install --frozen-lockfile &&
+      cd /app/apps/web &&
+      bun run dev --host 0.0.0.0 --port 5173"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+      - web-node-modules:/app/apps/web/node_modules
+
+volumes:
+  minio-data:
+  redc-data:
+  redc-node-modules:
+  web-node-modules:
+  auth-node-modules:

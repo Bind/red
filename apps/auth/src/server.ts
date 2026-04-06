@@ -1,0 +1,660 @@
+import { Hono } from "hono";
+import { decodeJwt } from "jose";
+import { parseSetCookieHeader } from "better-auth/cookies";
+import { randomBytes, createHash } from "node:crypto";
+import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
+import { createBetterAuthAdapter, type BetterAuthAdapter } from "./service/better-auth-adapter";
+import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
+import { createTokenAuthority } from "./service/m2m/service";
+import { createSessionExchangeService } from "./service/session-exchange-service";
+import { createUserAuthRuntime } from "./service/user-auth-runtime";
+import { createUserLifecycleService } from "./service/user-lifecycle";
+import { AuthError } from "./util/errors";
+
+export interface AuthServerConfig {
+  issuer: string;
+  audience: string;
+  hostname: string;
+  port: number;
+  exposeTestMailbox?: boolean;
+  seedClients: MachineClientSeed[];
+  webClients?: Array<{
+    clientId: string;
+    redirectBaseUrl: string;
+    magicLinkPath?: string;
+  }>;
+  passkeyOrigins: string[];
+  passkeyRpId: string;
+  allowAnyTotpCode?: boolean;
+  userAuthSecret?: string;
+  signingPrivateJwk?: string;
+  database: {
+    kind: "sqlite" | "postgres";
+    sqlitePath?: string;
+    postgresUrl?: string;
+  };
+}
+
+export interface AuthServer {
+  fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response>;
+  authority: Awaited<ReturnType<typeof createTokenAuthority>>;
+  registry: ReturnType<typeof createMachineClientRegistry>;
+  userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
+}
+
+type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
+  response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
+};
+
+function parseBasicAuth(headers: Headers): { clientId: string; clientSecret: string } | null {
+  const value = headers.get("authorization");
+  if (!value) return null;
+  const [scheme, encoded] = value.split(" ");
+  if (scheme?.toLowerCase() !== "basic" || !encoded) {
+    return null;
+  }
+  const decoded = Buffer.from(encoded, "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  if (separator < 0) {
+    return null;
+  }
+  return {
+    clientId: decoded.slice(0, separator),
+    clientSecret: decoded.slice(separator + 1),
+  };
+}
+
+async function readBodyFields(request: Request): Promise<Record<string, string>> {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(body).flatMap(([key, value]) =>
+        typeof value === "string" ? [[key, value]] : [],
+      ),
+    );
+  }
+
+  const formData = await request.formData();
+  return Object.fromEntries(
+    [...formData.entries()].flatMap(([key, value]) =>
+      typeof value === "string" ? [[key, value]] : [],
+    ),
+  );
+}
+
+function collectScopes(scopes: string[]): string[] {
+  return [
+    ...new Set(
+      scopes.flatMap((scope) => scope.split(/\s+/).map((item) => item.trim())).filter(Boolean),
+    ),
+  ].sort();
+}
+
+function extractTokenClientId(token: string): string | null {
+  try {
+    const payload = decodeJwt(token);
+    return typeof payload.client_id === "string" ? payload.client_id : null;
+  } catch {
+    return null;
+  }
+}
+
+function oauthError(error: unknown): { status: number; body: Record<string, unknown> } {
+  if (error instanceof AuthError) {
+    return {
+      status: error.status,
+      body: { error: error.code, error_description: error.message },
+    };
+  }
+  const message = error instanceof Error ? error.message : "Unknown error";
+  return {
+    status: 500,
+    body: { error: "server_error", error_description: message },
+  };
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function isExpired(isoTimestamp: string): boolean {
+  const expiresAt = new Date(isoTimestamp).getTime();
+  return Number.isNaN(expiresAt) || Date.now() >= expiresAt;
+}
+
+function generateOneTimeGrant(): string {
+  return randomBytes(24).toString("base64url");
+}
+
+function normalizeClientId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
+  const webClients = new Map(
+    (config.webClients ?? []).map((client) => [client.clientId, client] as const),
+  );
+  const registry = createMachineClientRegistry(config.seedClients);
+  const authority = await createTokenAuthority({
+    issuer: config.issuer,
+    defaultAudience: config.audience,
+    registry,
+    signingPrivateJwk: config.signingPrivateJwk,
+  });
+  const userRuntime = await createUserAuthRuntime({
+    issuer: config.issuer,
+    audience: config.audience,
+    hostname: config.hostname,
+    port: config.port,
+    secret: config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    passkeyOrigins: config.passkeyOrigins,
+    passkeyRpId: config.passkeyRpId,
+    database: config.database,
+  });
+  const authAdapter = createBetterAuthAdapter(userRuntime.auth);
+  const userLifecycle = createUserLifecycleService(
+    userRuntime.stores,
+    config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    {
+      allowAnyTotpCode: config.allowAnyTotpCode,
+    },
+  );
+  const sessionExchange = createSessionExchangeService(authAdapter, authority);
+  const app = new Hono();
+  const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
+
+  const resolveSessionState = async (request: Request): Promise<ResolvedSessionState | null> => {
+    const sessionResult = await authAdapter.getSession(request);
+    if (!sessionResult.response) {
+      return null;
+    }
+
+    const { session } = sessionResult.response;
+    const user = { ...sessionResult.response.user };
+    const storedUser = await userRuntime.stores.user.findByEmail(user.email);
+
+    if (
+      storedUser &&
+      storedUser.id === user.id &&
+      storedUser.onboardingState === "pending_passkey" &&
+      (await userRuntime.stores.user.hasPasskey(user.id))
+    ) {
+      const nextAuthAssurance =
+        typeof storedUser.authAssurance === "string" && storedUser.authAssurance.includes("passkey")
+          ? storedUser.authAssurance
+          : "passkey";
+      await userRuntime.stores.user.updateByEmail(user.email, {
+        onboardingState: "pending_recovery_factor",
+        authAssurance: nextAuthAssurance,
+      });
+      user.onboardingState = "pending_recovery_factor";
+      user.authAssurance = nextAuthAssurance;
+    }
+
+    return {
+      ...sessionResult,
+      response: {
+        session,
+        user,
+      },
+    };
+  };
+
+  const handleToken = async (request: Request) => {
+    const fields = await readBodyFields(request);
+    const grantType = fields.grant_type ?? fields.grantType;
+    if (grantType !== "client_credentials") {
+      throw new AuthError("unsupported_grant_type", "Only client_credentials is supported", 400);
+    }
+
+    const basic = parseBasicAuth(request.headers);
+    const clientId = basic?.clientId ?? fields.client_id ?? fields.clientId;
+    const clientSecret = basic?.clientSecret ?? fields.client_secret ?? fields.clientSecret;
+    if (!clientId || !clientSecret) {
+      throw new AuthError("invalid_client", "Missing client credentials", 401);
+    }
+
+    return authority.issueClientCredentialsToken({
+      clientId,
+      clientSecret,
+      scope: fields.scope,
+      audience: fields.audience ?? fields.resource ?? config.audience,
+    });
+  };
+
+  const authenticateRequestClient = (request: Request, fields: Record<string, string>) => {
+    const basic = parseBasicAuth(request.headers);
+    const clientId = basic?.clientId ?? fields.client_id ?? fields.clientId;
+    const clientSecret = basic?.clientSecret ?? fields.client_secret ?? fields.clientSecret;
+    if (!clientId || !clientSecret) {
+      throw new AuthError("invalid_client", "Missing client credentials", 401);
+    }
+
+    return registry.authenticate(clientId, clientSecret);
+  };
+
+  const handleIntrospect = async (request: Request) => {
+    const fields = await readBodyFields(request);
+    const token = fields.token;
+    if (!token) {
+      throw new AuthError("invalid_request", "Missing token", 400);
+    }
+    const requestClient = authenticateRequestClient(request, fields);
+    const tokenClientId = extractTokenClientId(token);
+    if (!tokenClientId) {
+      throw new AuthError("invalid_token", "Token is missing client_id", 401);
+    }
+    if (tokenClientId !== requestClient.clientId) {
+      throw new AuthError("access_denied", "Client cannot introspect another client's token", 403);
+    }
+    return authority.introspectToken(token);
+  };
+
+  const handleRevoke = async (request: Request) => {
+    const fields = await readBodyFields(request);
+    const token = fields.token;
+    if (!token) {
+      throw new AuthError("invalid_request", "Missing token", 400);
+    }
+    const requestClient = authenticateRequestClient(request, fields);
+    const tokenClientId = extractTokenClientId(token);
+    if (!tokenClientId) {
+      throw new AuthError("invalid_token", "Token is missing client_id", 401);
+    }
+    if (tokenClientId !== requestClient.clientId) {
+      throw new AuthError("access_denied", "Client cannot revoke another client's token", 403);
+    }
+    await authority.revokeToken(token);
+    return { revoked: true };
+  };
+
+  app.onError((error, c) => {
+    const { status, body } = oauthError(error);
+    return c.json(body, status as 200 | 400 | 401 | 403 | 404 | 500);
+  });
+
+  app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+  app.all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw));
+
+  app.get("/health", (c) => c.json({ status: "ok" }));
+  app.get("/me", async (c) => {
+    const sessionResult = await resolveSessionState(c.req.raw);
+    if (!sessionResult) {
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
+    }
+    return c.json(sessionResult.response);
+  });
+
+  app.get("/.well-known/jwks.json", (c) => c.json(authority.jwks));
+
+  app.get("/.well-known/openid-configuration", (c) =>
+    c.json({
+      issuer: config.issuer,
+      jwks_uri: `${config.issuer}/.well-known/jwks.json`,
+      token_endpoint: `${config.issuer}/oauth/token`,
+      session_exchange_endpoint: `${config.issuer}/session/exchange`,
+      introspection_endpoint: `${config.issuer}/oauth/introspect`,
+      revocation_endpoint: `${config.issuer}/oauth/revoke`,
+      grant_types_supported: ["client_credentials"],
+      token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
+      scopes_supported: collectScopes(registry.list().flatMap((client) => client.allowedScopes)),
+    }),
+  );
+
+  app.get("/__test__/mailbox/latest", (c) => {
+    if (!config.exposeTestMailbox) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    const email = c.req.query("email")?.trim().toLowerCase();
+    const mail = email
+      ? userRuntime.mailbox.filter((entry) => entry.email === email).at(-1)
+      : userRuntime.mailbox.at(-1);
+    if (!mail) {
+      return c.json({ error: "No mailbox entry found" }, 404);
+    }
+    return c.json(mail);
+  });
+
+  app.post("/user/two-factor/enroll", async (c) => {
+    const sessionResult = await authAdapter.getSession(c.req.raw);
+    if (!sessionResult.response) {
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
+    }
+    const { session, user } = sessionResult.response;
+    return c.json(await userLifecycle.enrollRecoveryFactor(session.id, user.email));
+  });
+
+  app.post("/user/two-factor/verify", async (c) => {
+    const sessionResult = await authAdapter.getSession(c.req.raw);
+    if (!sessionResult.response) {
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
+    }
+    const fields = await readBodyFields(c.req.raw);
+    const code = fields.code?.trim();
+    const kind = fields.kind?.trim();
+    if (!code) {
+      throw new AuthError("invalid_request", "code is required", 400);
+    }
+    const { session, user } = sessionResult.response;
+    return c.json(
+      await userLifecycle.verifyRecoveryFactor(session.id, user.email, {
+        code,
+        kind: kind === "backup_code" ? "backup_code" : "totp",
+      }),
+    );
+  });
+
+  app.post("/user/onboarding/complete", async (c) => {
+    const sessionResult = await authAdapter.getSession(c.req.raw);
+    if (!sessionResult.response) {
+      throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
+    }
+    const { session, user } = sessionResult.response;
+    await userLifecycle.completeOnboarding(session.id, user.email);
+    return c.json({ ok: true, sessionId: session.id, email: user.email });
+  });
+
+  app.post("/user/recovery/start", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const email = fields.email?.trim().toLowerCase();
+    if (!email) {
+      throw new AuthError("invalid_request", "email is required", 400);
+    }
+    await userLifecycle.startRecoveryChallenge(email);
+    const mailRequest = new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
+      method: "POST",
+      headers: {
+        origin: config.issuer,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        metadata: {
+          purpose: "recovery",
+        },
+      }),
+    });
+    return authAdapter.handle(mailRequest);
+  });
+
+  app.post("/login-attempts", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const email = fields.email?.trim().toLowerCase();
+    const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
+    if (!email) {
+      throw new AuthError("invalid_request", "email is required", 400);
+    }
+    if (!clientId) {
+      throw new AuthError("invalid_request", "client_id is required", 400);
+    }
+
+    const client = webClients.get(clientId);
+    if (!client) {
+      throw new AuthError("invalid_client", "Unknown browser client", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.create({
+      email,
+      clientId,
+      purpose: "bootstrap",
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
+
+    const mailboxLengthBefore = userRuntime.mailbox.length;
+    const signInResponse = await authAdapter.handle(
+      new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: {
+          origin: config.issuer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          metadata: {
+            purpose: "bootstrap",
+          },
+        }),
+      }),
+    );
+
+    if (!signInResponse.ok) {
+      const message = await signInResponse.text();
+      throw new AuthError(
+        "server_error",
+        message || "Failed to dispatch magic link",
+        signInResponse.status,
+      );
+    }
+
+    const mail = userRuntime.mailbox
+      .slice(mailboxLengthBefore)
+      .filter((entry) => normalizeEmail(entry.email) === email)
+      .at(-1);
+    if (!mail?.token) {
+      throw new AuthError("server_error", "Magic link token was not captured", 500);
+    }
+
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      magicLinkTokenHash: hashToken(mail.token),
+    });
+
+    mail.url = new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString()
+      + `?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
+
+    return c.json({
+      attempt_id: attempt.id,
+      email,
+      client_id: clientId,
+      status: "pending",
+      expires_at: attempt.expiresAt,
+    });
+  });
+
+  app.get("/login-attempts/:id", async (c) => {
+    const attempt = await userRuntime.stores.loginAttempt.findById(c.req.param("id"));
+    if (!attempt) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    if (attempt.status === "pending" && isExpired(attempt.expiresAt)) {
+      await userRuntime.stores.loginAttempt.updateById(attempt.id, { status: "expired" });
+      return c.json({
+        attempt_id: attempt.id,
+        client_id: attempt.clientId,
+        status: "expired",
+        expires_at: attempt.expiresAt,
+      });
+    }
+
+    const body: Record<string, unknown> = {
+      attempt_id: attempt.id,
+      client_id: attempt.clientId,
+      status: attempt.status,
+      expires_at: attempt.expiresAt,
+      session_id: attempt.completedSessionId ?? null,
+    };
+
+    if (attempt.status === "completed" && attempt.loginGrantEncrypted) {
+      body.login_grant = await symmetricDecrypt({
+        key: authSecret,
+        data: attempt.loginGrantEncrypted,
+      });
+    }
+
+    return c.json(body);
+  });
+
+  app.post("/magic-link/complete", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const attemptId = fields.attempt_id ?? fields.attemptId;
+    const token = fields.token?.trim();
+    const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
+    if (!attemptId || !token || !clientId) {
+      throw new AuthError("invalid_request", "attempt_id, token, and client_id are required", 400);
+    }
+
+    const client = webClients.get(clientId);
+    if (!client) {
+      throw new AuthError("invalid_client", "Unknown browser client", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
+    if (!attempt) {
+      throw new AuthError("invalid_request", "Unknown login attempt", 404);
+    }
+    if (attempt.clientId !== clientId) {
+      throw new AuthError("invalid_request", "Login attempt client mismatch", 400);
+    }
+    if (attempt.status === "redeemed") {
+      return c.json({ ok: true, status: "redeemed", attempt_id: attempt.id });
+    }
+    if (attempt.status === "expired" || isExpired(attempt.expiresAt)) {
+      await userRuntime.stores.loginAttempt.updateById(attempt.id, { status: "expired" });
+      throw new AuthError("invalid_request", "Login attempt has expired", 400);
+    }
+    if (attempt.magicLinkTokenHash && attempt.magicLinkTokenHash !== hashToken(token)) {
+      throw new AuthError("invalid_magic_link", "Magic link token did not match the login attempt", 401);
+    }
+
+    const verifyResponse = await authAdapter.handle(
+      new Request(
+        `${config.issuer}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent("/")}`,
+        {
+          method: "GET",
+          headers: {
+            origin: config.issuer,
+          },
+          redirect: "manual",
+        },
+      ),
+    );
+
+    if (!verifyResponse.ok && verifyResponse.status !== 302) {
+      const body = await verifyResponse.text();
+      throw new AuthError(
+        "invalid_magic_link",
+        body || "Magic link verification failed",
+        verifyResponse.status,
+      );
+    }
+
+    const setCookie = verifyResponse.headers.get("set-cookie");
+    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get("better-auth.session_token")?.value;
+    if (!setCookie || !sessionCookie) {
+      throw new AuthError("server_error", "Magic link verification did not create a session", 500);
+    }
+
+    const sessionResult = await authAdapter.getSession(
+      new Request(`${config.issuer}/api/auth/get-session`, {
+        headers: {
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        },
+      }),
+    );
+    if (!sessionResult.response) {
+      throw new AuthError("server_error", "Verified session could not be resolved", 500);
+    }
+
+    const loginGrant = generateOneTimeGrant();
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      status: "completed",
+      loginGrantHash: hashToken(loginGrant),
+      loginGrantEncrypted: await symmetricEncrypt({
+        key: authSecret,
+        data: loginGrant,
+      }),
+      completedSessionId: sessionResult.response.session.id,
+      completedSetCookieEncrypted: await symmetricEncrypt({
+        key: authSecret,
+        data: setCookie,
+      }),
+      completedAt: new Date().toISOString(),
+    });
+
+    return c.json({
+      ok: true,
+      status: "completed",
+      attempt_id: attempt.id,
+      session_id: sessionResult.response.session.id,
+      client_id: client.clientId,
+    });
+  });
+
+  app.post("/login-attempts/redeem", async (c) => {
+    const fields = await readBodyFields(c.req.raw);
+    const attemptId = fields.attempt_id ?? fields.attemptId;
+    const loginGrant = fields.login_grant ?? fields.loginGrant;
+    if (!attemptId || !loginGrant) {
+      throw new AuthError("invalid_request", "attempt_id and login_grant are required", 400);
+    }
+
+    const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
+    if (!attempt) {
+      throw new AuthError("invalid_request", "Unknown login attempt", 404);
+    }
+    if (attempt.status === "redeemed") {
+      throw new AuthError("invalid_request", "Login attempt has already been redeemed", 400);
+    }
+    if (attempt.status !== "completed" || !attempt.loginGrantHash || !attempt.completedSetCookieEncrypted) {
+      throw new AuthError("invalid_request", "Login attempt is not ready for redemption", 400);
+    }
+    if (attempt.loginGrantHash !== hashToken(loginGrant)) {
+      throw new AuthError("invalid_grant", "Login grant is invalid", 401);
+    }
+
+    const setCookie = await symmetricDecrypt({
+      key: authSecret,
+      data: attempt.completedSetCookieEncrypted,
+    });
+
+    await userRuntime.stores.loginAttempt.updateById(attempt.id, {
+      status: "redeemed",
+      redeemedAt: new Date().toISOString(),
+      loginGrantHash: null,
+      loginGrantEncrypted: null,
+      completedSetCookieEncrypted: null,
+    });
+
+    return c.json(
+      {
+        ok: true,
+        status: "redeemed",
+        attempt_id: attempt.id,
+        session_id: attempt.completedSessionId ?? null,
+      },
+      200,
+      {
+        "set-cookie": setCookie,
+      },
+    );
+  });
+
+  app.post("/session/exchange", async (c) => {
+    const result = await sessionExchange.exchange(c.req.raw);
+    return c.json(result.body, 200, Object.fromEntries(result.headers.entries()));
+  });
+
+  app.post("/oauth/token", async (c) => c.json(await handleToken(c.req.raw)));
+  app.post("/oauth/introspect", async (c) => c.json(await handleIntrospect(c.req.raw)));
+  app.post("/oauth/revoke", async (c) => c.json(await handleRevoke(c.req.raw)));
+
+  return {
+    authority,
+    registry,
+    userRuntime,
+    async fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response> {
+      const request = input instanceof Request ? input : new Request(input, init);
+      return app.fetch(request);
+    },
+  };
+}

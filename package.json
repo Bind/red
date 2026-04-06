@@ -2,16 +2,17 @@
   "name": "redc",
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["web"],
+  "workspaces": ["apps/*"],
   "bin": {
-    "redc": "src/cli/index.ts"
+    "redc": "apps/api/cli/index.ts"
   },
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "cli": "bun run src/cli/index.ts",
+    "dev": "bun run --watch apps/api/index.ts",
+    "start": "bun run apps/api/index.ts",
+    "cli": "bun run apps/api/cli/index.ts",
+    "claw:manual": "bun run apps/api/claw/manual.ts",
     "test": "bun test",
-    "deploy": "./scripts/deploy.sh"
+    "deploy": "./infra/scripts/deploy.sh"
   },
   "dependencies": {
     "hono": "^4.7.0",

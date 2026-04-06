@@ -1,0 +1,205 @@
+/**
+ * Core domain types for redc.
+ *
+ * Change lifecycle state machine:
+ *
+ *   pushed → scoring → scored → summarizing → ready_for_review
+ *
+ *   Any state → superseded (new push to same branch)
+ */
+
+export type ChangeStatus =
+  | "pushed"
+  | "scoring"
+  | "scored"
+  | "summarizing"
+  | "ready_for_review"
+  | "approved"
+  | "rejected"
+  | "merging"
+  | "merge_failed"
+  | "merged"
+  | "closed"
+  | "superseded";
+
+export type ConfidenceLevel = "safe" | "needs_review" | "critical";
+
+export type CreatedBy = "human" | "agent";
+export type RepoVisibility = "private" | "internal" | "public";
+
+export interface Change {
+  id: number;
+  org_id: string;
+  repo: string;
+  branch: string;
+  base_branch: string;
+  head_sha: string;
+  pr_number: number | null;
+  status: ChangeStatus;
+  confidence: ConfidenceLevel | null;
+  created_by: CreatedBy;
+  summary: string | null;
+  diff_stats: DiffStats | null;
+  delivery_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RepoRecord {
+  id: number;
+  org_id: string;
+  owner: string;
+  name: string;
+  full_name: string;
+  default_branch: string;
+  visibility: RepoVisibility;
+  created_by_subject: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PullRequestStatus =
+  | "draft"
+  | "open"
+  | "approved"
+  | "merged"
+  | "closed";
+
+export interface PullRequest {
+  id: number;
+  change_id: number;
+  repo: string;
+  head_branch: string;
+  base_branch: string;
+  title: string;
+  body: string | null;
+  status: PullRequestStatus;
+  provider: string;
+  provider_ref: string | null;
+  merge_commit_sha: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiffStats {
+  files_changed: number;
+  additions: number;
+  deletions: number;
+  files: FileStats[];
+}
+
+export interface FileStats {
+  filename: string;
+  additions: number;
+  deletions: number;
+  status: "added" | "modified" | "deleted" | "renamed";
+}
+
+export interface ChangeEvent {
+  id: number;
+  change_id: number;
+  event_type: string;
+  from_status: ChangeStatus | null;
+  to_status: ChangeStatus | null;
+  metadata: string | null;
+  created_at: string;
+}
+
+export interface Job {
+  id: number;
+  org_id: string;
+  type: string;
+  payload: string;
+  status: "pending" | "processing" | "completed" | "failed" | "dead";
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  run_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyRule {
+  name: string;
+  match: {
+    files?: string[];
+    confidence?: ConfidenceLevel;
+  };
+  action: "auto-approve" | "require-review" | "block";
+  reviewers?: string[];
+}
+
+export interface PolicyConfig {
+  rules: PolicyRule[];
+}
+
+export interface SummaryAnnotation {
+  text: string;
+  files: string[];
+  type: "new_module" | "refactor" | "bugfix" | "config" | "change";
+}
+
+export interface LLMSummary {
+  title: string;
+  what_changed: string;
+  risk_assessment: string;
+  affected_modules: string[];
+  recommended_action: "approve" | "review" | "block";
+  annotations?: SummaryAnnotation[];
+}
+
+/** Notification webhook config. */
+export interface NotificationConfig {
+  url: string;
+  events: ("critical" | "needs_review" | "all")[];
+}
+
+export interface RepoInfo {
+  id: number;
+  name: string;
+  full_name: string;
+  default_branch: string;
+}
+
+/** Agent session tracking. */
+export type AgentSessionStatus = "running" | "completed" | "failed";
+
+export interface AgentSession {
+  id: number;
+  change_id: number;
+  job_id: number | null;
+  job_type: string;
+  run_id: string;
+  runtime: string;
+  runtime_session_id: string | null;
+  status: AgentSessionStatus;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface AgentSessionEvent {
+  id: number;
+  session_id: number;
+  seq: number;
+  event_id: string;
+  kind: string;
+  type: string;
+  status: string | null;
+  role: string | null;
+  text: string | null;
+  delta: string | null;
+  data_json: string | null;
+  raw_json: string | null;
+  created_at: string;
+}
+
+export interface BranchInfo {
+  name: string;
+  commit: {
+    id: string;
+    message: string;
+    timestamp: string;
+  };
+  protected: boolean;
+}

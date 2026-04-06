@@ -20,7 +20,7 @@ export default $config({
     const firewall = new hcloud.Firewall("redc-firewall", {
       rules: [
         {
-          description: "Git SSH (Forgejo)",
+          description: "Git SSH",
           direction: "in",
           protocol: "tcp",
           port: "22",

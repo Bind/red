@@ -1,0 +1,46 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - redc-net
+    depends_on:
+      - gateway
+
+  gateway:
+    build: ../gateway
+    restart: unless-stopped
+    environment:
+      API_HOST: api
+    networks:
+      - redc-net
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    volumes:
+      - redc-data:/data
+    networks:
+      - redc-net
+
+volumes:
+  caddy-data:
+  caddy-config:
+  redc-data:
+
+networks:
+  redc-net:
+    driver: bridge
