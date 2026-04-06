@@ -15,6 +15,7 @@ MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9002}"
 GIT_STORAGE_PUBLIC_URL="${GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}"
 GIT_STORAGE_DEFAULT_OWNER="${GIT_STORAGE_DEFAULT_OWNER:-redc}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
+SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
 
 mkdir -p apps/auth/compose
 if [[ ! -f apps/auth/compose/signing-key.private.jwk ]]; then
@@ -44,11 +45,18 @@ MINIO_API_PORT=$MINIO_API_PORT
 MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
 EOF
 
-echo "Building Claw runner image..."
-docker build -t redc-claw-runner tools/claw-runner/
+if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
+  echo "Building Claw runner image..."
+  docker build -t redc-claw-runner tools/claw-runner/
+
+  echo "Building Docker-backed dev services..."
+  docker compose -f "$COMPOSE_FILE" build git-server api
+else
+  echo "Skipping image builds (SKIP_IMAGE_BUILD=true)"
+fi
 
 echo "Starting dev stack..."
-docker compose -f "$COMPOSE_FILE" up -d --build minio minio-init git-server auth-db auth api bff web
+docker compose -f "$COMPOSE_FILE" up -d minio minio-init git-server auth-db auth api bff web
 
 echo ""
 echo "=== Setup complete ==="
