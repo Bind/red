@@ -307,6 +307,15 @@ pub const TreeChange = struct {
     new_mode: ?[]const u8,
 };
 
+pub fn freeTreeChanges(allocator: std.mem.Allocator, changes: []TreeChange) void {
+    for (changes) |change| {
+        allocator.free(change.path);
+        if (change.old_mode) |mode| allocator.free(mode);
+        if (change.new_mode) |mode| allocator.free(mode);
+    }
+    allocator.free(changes);
+}
+
 /// Compare two tree objects (as raw tree data, not parsed).
 /// Returns a list of changes. Both trees must be valid git tree object data.
 /// Caller owns the result (free each path, then the slice).
@@ -342,10 +351,10 @@ pub fn diffTrees(
                 // In old but not new → deleted
                 try changes.append(allocator, .{
                     .kind = .deleted,
-                    .path = old_entries[oi].name,
+                    .path = try allocator.dupe(u8, old_entries[oi].name),
                     .old_hash = old_entries[oi].hash,
                     .new_hash = null,
-                    .old_mode = old_entries[oi].mode,
+                    .old_mode = try allocator.dupe(u8, old_entries[oi].mode),
                     .new_mode = null,
                 });
                 oi += 1;
@@ -354,11 +363,11 @@ pub fn diffTrees(
                 // In new but not old → added
                 try changes.append(allocator, .{
                     .kind = .added,
-                    .path = new_entries[ni].name,
+                    .path = try allocator.dupe(u8, new_entries[ni].name),
                     .old_hash = null,
                     .new_hash = new_entries[ni].hash,
                     .old_mode = null,
-                    .new_mode = new_entries[ni].mode,
+                    .new_mode = try allocator.dupe(u8, new_entries[ni].mode),
                 });
                 ni += 1;
             },
@@ -367,11 +376,11 @@ pub fn diffTrees(
                 if (!std.mem.eql(u8, &old_entries[oi].hash, &new_entries[ni].hash)) {
                     try changes.append(allocator, .{
                         .kind = .modified,
-                        .path = old_entries[oi].name,
+                        .path = try allocator.dupe(u8, old_entries[oi].name),
                         .old_hash = old_entries[oi].hash,
                         .new_hash = new_entries[ni].hash,
-                        .old_mode = old_entries[oi].mode,
-                        .new_mode = new_entries[ni].mode,
+                        .old_mode = try allocator.dupe(u8, old_entries[oi].mode),
+                        .new_mode = try allocator.dupe(u8, new_entries[ni].mode),
                     });
                 }
                 oi += 1;
@@ -384,10 +393,10 @@ pub fn diffTrees(
     while (oi < old_entries.len) : (oi += 1) {
         try changes.append(allocator, .{
             .kind = .deleted,
-            .path = old_entries[oi].name,
+            .path = try allocator.dupe(u8, old_entries[oi].name),
             .old_hash = old_entries[oi].hash,
             .new_hash = null,
-            .old_mode = old_entries[oi].mode,
+            .old_mode = try allocator.dupe(u8, old_entries[oi].mode),
             .new_mode = null,
         });
     }
@@ -396,11 +405,11 @@ pub fn diffTrees(
     while (ni < new_entries.len) : (ni += 1) {
         try changes.append(allocator, .{
             .kind = .added,
-            .path = new_entries[ni].name,
+            .path = try allocator.dupe(u8, new_entries[ni].name),
             .old_hash = null,
             .new_hash = new_entries[ni].hash,
             .old_mode = null,
-            .new_mode = new_entries[ni].mode,
+            .new_mode = try allocator.dupe(u8, new_entries[ni].mode),
         });
     }
 
@@ -442,22 +451,23 @@ pub fn diffTreesRecursive(
 
     // Get flat diff at this level
     const flat = try diffTrees(allocator, old_data, new_data);
-    defer allocator.free(flat);
+    defer freeTreeChanges(allocator, flat);
 
     var result: std.ArrayList(TreeChange) = .empty;
     errdefer result.deinit(allocator);
 
     for (flat) |change| {
         // Build full path
-        const full_path = if (prefix.len > 0) blk: {
-            var buf: [1024]u8 = undefined;
-            break :blk std.fmt.bufPrint(&buf, "{s}/{s}", .{ prefix, change.path }) catch change.path;
-        } else change.path;
+        const full_path = if (prefix.len > 0)
+            try std.fmt.allocPrint(allocator, "{s}/{s}", .{ prefix, change.path })
+        else
+            try allocator.dupe(u8, change.path);
 
         const is_tree_old = if (change.old_mode) |m| std.mem.eql(u8, m, "40000") else false;
         const is_tree_new = if (change.new_mode) |m| std.mem.eql(u8, m, "40000") else false;
 
         if (is_tree_old or is_tree_new) {
+            defer allocator.free(full_path);
             // Recurse into subtrees
             const sub = try diffTreesRecursive(
                 allocator,
@@ -476,8 +486,8 @@ pub fn diffTreesRecursive(
                 .path = full_path,
                 .old_hash = change.old_hash,
                 .new_hash = change.new_hash,
-                .old_mode = change.old_mode,
-                .new_mode = change.new_mode,
+                .old_mode = if (change.old_mode) |mode| try allocator.dupe(u8, mode) else null,
+                .new_mode = if (change.new_mode) |mode| try allocator.dupe(u8, mode) else null,
             });
         }
     }
@@ -511,13 +521,98 @@ test "tree diff" {
     defer allocator.free(new_tree);
 
     const changes = try diffTrees(allocator, old_tree, new_tree);
-    defer allocator.free(changes);
+    defer freeTreeChanges(allocator, changes);
 
     try std.testing.expectEqual(@as(usize, 2), changes.len);
     try std.testing.expectEqual(TreeChangeKind.modified, changes[0].kind);
     try std.testing.expectEqualStrings("file_b.txt", changes[0].path);
     try std.testing.expectEqual(TreeChangeKind.added, changes[1].kind);
     try std.testing.expectEqualStrings("file_d.txt", changes[1].path);
+}
+
+test "recursive tree diff retains owned nested paths" {
+    const allocator = std.testing.allocator;
+
+    var blob_old: sha1_mod.Digest = undefined;
+    @memset(&blob_old, 0x11);
+    var blob_new: sha1_mod.Digest = undefined;
+    @memset(&blob_new, 0x22);
+
+    const old_inner_tree = try object_mod.buildTree(allocator, &[_]object_mod.TreeEntry{
+        .{ .mode = "100644", .name = "file.txt", .hash = blob_old },
+    });
+    defer allocator.free(old_inner_tree);
+    const new_inner_tree = try object_mod.buildTree(allocator, &[_]object_mod.TreeEntry{
+        .{ .mode = "100644", .name = "file.txt", .hash = blob_new },
+    });
+    defer allocator.free(new_inner_tree);
+
+    const old_inner_hash = object_mod.hashObjectDigest(.tree, old_inner_tree);
+    const new_inner_hash = object_mod.hashObjectDigest(.tree, new_inner_tree);
+
+    const old_root_tree = try object_mod.buildTree(allocator, &[_]object_mod.TreeEntry{
+        .{ .mode = "40000", .name = "nested", .hash = old_inner_hash },
+    });
+    defer allocator.free(old_root_tree);
+    const new_root_tree = try object_mod.buildTree(allocator, &[_]object_mod.TreeEntry{
+        .{ .mode = "40000", .name = "nested", .hash = new_inner_hash },
+    });
+    defer allocator.free(new_root_tree);
+
+    const Fixtures = struct {
+        old_root: []const u8,
+        new_root: []const u8,
+        old_inner: []const u8,
+        new_inner: []const u8,
+        old_root_hash: sha1_mod.Digest,
+        new_root_hash: sha1_mod.Digest,
+        old_inner_hash: sha1_mod.Digest,
+        new_inner_hash: sha1_mod.Digest,
+
+        fn load(ptr: *anyopaque, alloc: std.mem.Allocator, hash: sha1_mod.Digest) !?[]u8 {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (std.mem.eql(u8, &hash, &self.old_root_hash)) {
+                return try alloc.dupe(u8, self.old_root);
+            }
+            if (std.mem.eql(u8, &hash, &self.new_root_hash)) {
+                return try alloc.dupe(u8, self.new_root);
+            }
+            if (std.mem.eql(u8, &hash, &self.old_inner_hash)) {
+                return try alloc.dupe(u8, self.old_inner);
+            }
+            if (std.mem.eql(u8, &hash, &self.new_inner_hash)) {
+                return try alloc.dupe(u8, self.new_inner);
+            }
+            return null;
+        }
+    };
+
+    var fixtures = Fixtures{
+        .old_root = old_root_tree,
+        .new_root = new_root_tree,
+        .old_inner = old_inner_tree,
+        .new_inner = new_inner_tree,
+        .old_root_hash = object_mod.hashObjectDigest(.tree, old_root_tree),
+        .new_root_hash = object_mod.hashObjectDigest(.tree, new_root_tree),
+        .old_inner_hash = old_inner_hash,
+        .new_inner_hash = new_inner_hash,
+    };
+
+    const changes = try diffTreesRecursive(
+        allocator,
+        .{
+            .ptr = &fixtures,
+            .loadFn = Fixtures.load,
+        },
+        object_mod.hashObjectDigest(.tree, old_root_tree),
+        object_mod.hashObjectDigest(.tree, new_root_tree),
+        "",
+    );
+    defer freeTreeChanges(allocator, changes);
+
+    try std.testing.expectEqual(@as(usize, 1), changes.len);
+    try std.testing.expectEqual(TreeChangeKind.modified, changes[0].kind);
+    try std.testing.expectEqualStrings("nested/file.txt", changes[0].path);
 }
 
 test "diff identical" {

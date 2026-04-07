@@ -107,6 +107,15 @@ git-server-integration-test:
     cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
     cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
 
+# Promotion smoke for the native Zig git-server
+git-server-promotion-smoke:
+    docker compose -f {{ DEV_COMPOSE }} build git-server
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/http-auth-integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/control-plane-integration.test.ts
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/compare-integration.test.ts
+
 # Start git server dependencies and service from the root compose stack
 git-server-up:
     docker compose -f {{ DEV_COMPOSE }} up --build git-server minio minio-init
@@ -187,3 +196,36 @@ repos:
         | bun -e 'const input=await Bun.stdin.json(); const rows=Object.entries(input.by_repo ?? {}); for (const [name, count] of rows) console.log(`${name}\t${count}`)' \
         | fzf --delimiter='\t' --with-nth=1 --preview='echo "Queued changes: {2}"' \
         | cut -f1
+
+# Install dependencies for the git mirror canary experiment
+git-mirror-canary-install:
+    cd experiments/git-mirror-canary && bun install
+
+# Start the git mirror canary experiment locally
+git-mirror-canary-serve:
+    cd experiments/git-mirror-canary && bun run src/index.ts
+
+# Run tests for the git mirror canary experiment
+git-mirror-canary-test:
+    cd experiments/git-mirror-canary && bun test
+
+# Lint the git mirror canary experiment
+git-mirror-canary-lint:
+    cd experiments/git-mirror-canary && bun run lint
+
+# Format the git mirror canary experiment
+git-mirror-canary-format:
+    cd experiments/git-mirror-canary && bun run format
+
+# Bring up the git mirror canary compose stack
+git-mirror-canary-compose-up:
+    docker compose -f experiments/git-mirror-canary/docker-compose.yml up --build -d
+    until curl -fsS http://127.0.0.1:$${GIT_MIRROR_CANARY_PUBLISHED_PORT:-4080}/health >/dev/null; do sleep 1; done
+
+# Tear down the git mirror canary compose stack
+git-mirror-canary-compose-down:
+    docker compose -f experiments/git-mirror-canary/docker-compose.yml down -v --remove-orphans
+
+# Run compose E2E for the git mirror canary experiment
+git-mirror-canary-compose-e2e:
+    cd experiments/git-mirror-canary && ./compose/e2e.sh

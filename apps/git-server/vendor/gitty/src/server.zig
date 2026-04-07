@@ -55,11 +55,7 @@ fn handleConnection(
 ) void {
     var read_buf: [65536]u8 = undefined;
     var rdr = conn.reader(io, &read_buf);
-    var i: u32 = 0;
-    while (i < 10) : (i += 1) {
-        const keep = handleRequest(alloc, io, conn, &rdr, disk_adapter, use_minio, auth_config, file_cache) catch break;
-        if (!keep) break;
-    }
+    _ = handleRequest(alloc, io, conn, &rdr, disk_adapter, use_minio, auth_config, file_cache) catch {};
 }
 
 fn handleRequest(
@@ -97,7 +93,7 @@ fn handleRequest(
 
     var content_length: ?usize = null;
     var chunked = false;
-    var keep_alive = true;
+    const keep_alive = false;
     var authorization: ?[]const u8 = null;
     var lines = std.mem.splitSequence(u8, hdr[0..hdr_len], "\r\n");
     while (lines.next()) |line| {
@@ -110,11 +106,6 @@ fn handleRequest(
             std.mem.startsWith(u8, line, "transfer-encoding: chunked"))
         {
             chunked = true;
-        }
-        if (std.mem.startsWith(u8, line, "Connection: close") or
-            std.mem.startsWith(u8, line, "connection: close"))
-        {
-            keep_alive = false;
         }
         if (std.mem.startsWith(u8, line, "Authorization: ") or
             std.mem.startsWith(u8, line, "authorization: "))
@@ -182,7 +173,7 @@ fn handleRequest(
         const repo_id = maybe_repo_id orelse {
             return sendPlainError(io, conn, "404 Not Found", "Missing repo\n", keep_alive);
         };
-        const required_access = getRequiredAccess(method, raw_path);
+        const required_access = getRequiredAccess(method, path, raw_path);
         const auth_error = authorizeRequest(alloc, auth_config, authorization, repo_id, required_access) catch {
             return sendPlainError(io, conn, "500 Internal Server Error", "internal authentication error\n", keep_alive);
         };
@@ -350,11 +341,11 @@ fn loadAuthConfig() auth_mod.AuthConfig {
     };
 }
 
-fn getRequiredAccess(method: []const u8, raw_path: []const u8) auth_mod.RepoAccess {
-    if (std.mem.eql(u8, method, "POST") and std.mem.endsWith(u8, raw_path, "/git-receive-pack")) {
+fn getRequiredAccess(method: []const u8, path: []const u8, raw_path: []const u8) auth_mod.RepoAccess {
+    if (std.mem.eql(u8, method, "POST") and std.mem.endsWith(u8, path, "/git-receive-pack")) {
         return .write;
     }
-    if (std.mem.endsWith(u8, raw_path, "/info/refs")) {
+    if (std.mem.endsWith(u8, path, "/info/refs")) {
         if (queryParamStatic(raw_path, "service")) |service| {
             if (std.mem.eql(u8, service, "git-receive-pack")) return .write;
         }

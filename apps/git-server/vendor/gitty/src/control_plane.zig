@@ -134,7 +134,7 @@ pub const ControlPlane = struct {
             head_tree,
             "",
         );
-        defer self.allocator.free(changes);
+        defer diff.freeTreeChanges(self.allocator, changes);
 
         var files: std.ArrayList(CompareFileJson) = .empty;
         defer freeCompareFileList(self.allocator, &files);

@@ -21,12 +21,13 @@ export async function startDevGitServer(): Promise<StartedDevGitServer> {
     "GIT_SERVER_ADMIN_PASSWORD",
     "GIT_SERVER_AUTH_TOKEN_SECRET",
   ]);
-  await runCommand("docker", ["compose", "-f", composeFile, "up", "-d", "--build", "minio", "minio-init", "git-server"]);
+  await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
+  await composeUpWithRetry(composeFile, ["minio", "minio-init", "git-server"], process.env.GIT_SERVER_BUILD_ON_START === "1");
 
   const publicUrl = composeEnv.GIT_SERVER_PUBLIC_URL;
   try {
     await waitForHttpServer(publicUrl);
-    await waitForGitSmartHttp(publicUrl, composeEnv.GIT_SERVER_ADMIN_USERNAME, composeEnv.GIT_SERVER_ADMIN_PASSWORD);
+    await waitForGitSmartHttpRoute(publicUrl, composeEnv.GIT_SERVER_ADMIN_USERNAME, composeEnv.GIT_SERVER_ADMIN_PASSWORD);
   } catch (error) {
     await runCommand("docker", ["compose", "-f", composeFile, "logs", "--no-color", "git-server"]);
     throw error;
@@ -38,9 +39,50 @@ export async function startDevGitServer(): Promise<StartedDevGitServer> {
     adminPassword: composeEnv.GIT_SERVER_ADMIN_PASSWORD,
     authTokenSecret: composeEnv.GIT_SERVER_AUTH_TOKEN_SECRET,
     async stop() {
-      await runCommand("docker", ["compose", "-f", composeFile, "rm", "-sf", "git-server", "minio-init"]);
+      await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
     },
   };
+}
+
+async function composeUpWithRetry(composeFile: string, services: string[], build: boolean) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const args = ["compose", "-f", composeFile, "up", "-d"];
+      if (build) args.push("--build");
+      args.push(...services);
+      await runCommand("docker", args);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientComposeConflict(error)) {
+        throw error;
+      }
+      await Bun.sleep(500 * (attempt + 1));
+      await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("timed out starting git server compose stack");
+}
+
+async function removeComposeServicesBestEffort(composeFile: string, services: string[]) {
+  try {
+    await runCommand("docker", ["compose", "-f", composeFile, "rm", "-sf", ...services]);
+  } catch (error) {
+    if (!isTransientComposeConflict(error)) {
+      throw error;
+    }
+  }
+}
+
+function isTransientComposeConflict(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("removal of container") ||
+    message.includes("already in progress") ||
+    message.includes("already in use by container") ||
+    message.includes("No such container")
+  );
 }
 
 async function waitForHttpServer(baseUrl: string) {
@@ -60,16 +102,21 @@ async function waitForHttpServer(baseUrl: string) {
   throw lastError instanceof Error ? lastError : new Error("timed out waiting for git server");
 }
 
-async function waitForGitSmartHttp(baseUrl: string, username: string, password: string) {
-  const target = new URL(`${baseUrl}/redc/__healthcheck__.git`);
-  target.username = username;
-  target.password = password;
+async function waitForGitSmartHttpRoute(baseUrl: string, username: string, password: string) {
+  const target = new URL("/redc/__healthcheck__.git/info/refs?service=git-upload-pack", baseUrl);
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 50; attempt++) {
     try {
-      await runCommand("git", ["ls-remote", target.toString()]);
-      return;
+      const response = await fetch(target, {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+        },
+      });
+      if (response.status < 500) {
+        return;
+      }
+      throw new Error(`smart-http probe returned ${response.status}`);
     } catch (error) {
       lastError = error;
     }
@@ -120,4 +167,34 @@ export async function runCommand(command: string, args: string[], options: Comma
     stderr: stderr.trim(),
     exitCode,
   };
+}
+
+export async function runCommandWithRetry(
+  command: string,
+  args: string[],
+  options: CommandOptions = {},
+  retries = 10,
+) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await runCommand(command, args, options);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientCommandError(error)) {
+        throw error;
+      }
+      await Bun.sleep(250 * (attempt + 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${command} ${args.join(" ")} failed after retries`);
+}
+
+function isTransientCommandError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Couldn't connect to server") ||
+    message.includes("Failed to connect to 127.0.0.1 port 9080") ||
+    message.includes("Empty reply from server")
+  );
 }

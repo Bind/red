@@ -1,0 +1,25 @@
+services:
+  git-mirror-canary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${GIT_MIRROR_CANARY_PUBLISHED_PORT:-4080}:4080"
+    environment:
+      GIT_MIRROR_CANARY_MODE: compose
+      GIT_MIRROR_CANARY_HOST: 0.0.0.0
+      GIT_MIRROR_CANARY_PORT: 4080
+      GIT_MIRROR_CANARY_POLL_INTERVAL_MS: "${GIT_MIRROR_CANARY_POLL_INTERVAL_MS:?set GIT_MIRROR_CANARY_POLL_INTERVAL_MS}"
+      GIT_MIRROR_CANARY_DATA_DIR: /data
+      GIT_MIRROR_CANARY_CACHE_DIR: /data/cache
+      GIT_MIRROR_CANARY_STATE_DB_PATH: /data/state.sqlite
+      GIT_MIRROR_CANARY_REPOS_FILE: /config/repos.json
+      GIT_MIRROR_CANARY_EVENT_WEBHOOK_URL: "${GIT_MIRROR_CANARY_EVENT_WEBHOOK_URL:-}"
+    volumes:
+      - "${GIT_MIRROR_CANARY_HOST_DATA_DIR:?set GIT_MIRROR_CANARY_HOST_DATA_DIR}:/data"
+      - "${GIT_MIRROR_CANARY_HOST_CONFIG_DIR:?set GIT_MIRROR_CANARY_HOST_CONFIG_DIR}:/config:ro"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

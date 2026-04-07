@@ -8,3 +8,5 @@ node_modules/
 apps/web/dist/
 .claw-artifacts/
 .bun-tmp/
+.zig-cache/
+zig-cache/
