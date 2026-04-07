@@ -55,7 +55,9 @@ fn handleConnection(
 ) void {
     var read_buf: [65536]u8 = undefined;
     var rdr = conn.reader(io, &read_buf);
-    _ = handleRequest(alloc, io, conn, &rdr, disk_adapter, use_minio, auth_config, file_cache) catch {};
+    _ = handleRequest(alloc, io, conn, &rdr, disk_adapter, use_minio, auth_config, file_cache) catch |err| {
+        p("[server] unhandled request error={s}\n", .{@errorName(err)});
+    };
 }
 
 fn handleRequest(
@@ -381,10 +383,15 @@ fn queryParamNoAlloc(raw_path: []const u8, key: []const u8) ?[]const u8 {
 
 fn decodeQueryComponent(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     const out = try allocator.dupe(u8, input);
+    errdefer allocator.free(out);
     for (out) |*b| {
         if (b.* == '+') b.* = ' ';
     }
-    return std.Uri.percentDecodeInPlace(out);
+    const decoded = std.Uri.percentDecodeInPlace(out);
+    if (decoded.len == out.len) return out;
+    const result = try allocator.dupe(u8, decoded);
+    allocator.free(out);
+    return result;
 }
 
 fn parseControlPlaneRoute(pathname: []const u8) ?ControlPlaneRoute {

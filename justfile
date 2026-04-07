@@ -110,6 +110,7 @@ git-server-integration-test:
 # Promotion smoke for the native Zig git-server
 git-server-promotion-smoke:
     docker compose -f {{ DEV_COMPOSE }} build git-server
+    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/fresh-push-integration.test.ts
     cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
     cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
     cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/http-auth-integration.test.ts
