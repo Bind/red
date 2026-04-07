@@ -11,6 +11,7 @@ import {
   SessionQueries,
 } from "./db/queries";
 import { GitStorageRepositoryProvider } from "./repo/git-storage-provider";
+import { GitServerHttpRepositoryProvider } from "./repo/git-server-http-provider";
 import { LocalGitProvider } from "./repo/local-git-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
 import { ScoringEngine } from "./engine/review";
@@ -53,6 +54,11 @@ export interface AppConfig {
         defaultOwner: string;
         defaultBranch: string;
         authTokenSecret?: string;
+        controlPlane?: {
+          baseUrl: string;
+          username?: string;
+          password?: string;
+        };
       };
   repos: string[];
   artifacts: {
@@ -101,6 +107,17 @@ function loadConfig(): AppConfig {
           defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
           defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
           authTokenSecret: process.env.GIT_STORAGE_AUTH_TOKEN_SECRET,
+          controlPlane: process.env.GIT_STORAGE_CONTROL_PLANE_ENABLED === "1"
+            ? {
+                baseUrl: process.env.GIT_STORAGE_CONTROL_PLANE_URL
+                  ?? process.env.GIT_STORAGE_PUBLIC_URL
+                  ?? "http://git-server:8080",
+                username: process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME
+                  ?? process.env.GIT_SERVER_ADMIN_USERNAME,
+                password: process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD
+                  ?? process.env.GIT_SERVER_ADMIN_PASSWORD,
+              }
+            : undefined,
         },
     repos: configuredRepos,
     artifacts: {
@@ -131,19 +148,25 @@ export function createApp(config: AppConfig) {
   const repositoryProvider: RepositoryProvider =
     config.repoBackend.kind === "local_git"
       ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
-      : new GitStorageRepositoryProvider({
-          storage: new GitSdk({
-            publicUrl: config.repoBackend.publicUrl,
-            defaultOwner: config.repoBackend.defaultOwner,
-            authTokenSecret: config.repoBackend.authTokenSecret,
-          }),
-          repoCatalog: {
-            listRepos: async () => repos.list(),
-            getRepo: async (owner: string, repo: string) =>
-              repos.getByFullName(`${owner}/${repo}`),
-          },
-          defaultBranch: config.repoBackend.defaultBranch,
-        });
+      : config.repoBackend.controlPlane
+        ? new GitServerHttpRepositoryProvider({
+            baseUrl: config.repoBackend.controlPlane.baseUrl,
+            username: config.repoBackend.controlPlane.username,
+            password: config.repoBackend.controlPlane.password,
+          })
+        : new GitStorageRepositoryProvider({
+            storage: new GitSdk({
+              publicUrl: config.repoBackend.publicUrl,
+              defaultOwner: config.repoBackend.defaultOwner,
+              authTokenSecret: config.repoBackend.authTokenSecret,
+            }),
+            repoCatalog: {
+              listRepos: async () => repos.list(),
+              getRepo: async (owner: string, repo: string) =>
+                repos.getByFullName(`${owner}/${repo}`),
+            },
+            defaultBranch: config.repoBackend.defaultBranch,
+          });
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
@@ -447,7 +470,9 @@ export function createApp(config: AppConfig) {
       created_by_subject: null,
     });
 
-    await repositoryProvider.getRepo?.(owner, name);
+    if (repositoryProvider.getRepo) {
+      await repositoryProvider.getRepo(owner, name).catch(() => null);
+    }
     return c.json(created, 201);
   });
 

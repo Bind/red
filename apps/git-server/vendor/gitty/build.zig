@@ -64,6 +64,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    server.root_module.link_libc = true;
     b.installArtifact(server);
     const install_server = b.addInstallArtifact(server, .{});
     const server_only_step = b.step("server-only", "Build only the Git HTTP server");

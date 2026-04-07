@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PORT="${GIT_SERVER_PORT:-8080}"
+DATA_DIR="${GIT_SERVER_NATIVE_DATA_DIR:-/tmp/libgitty-data}"
 
-echo "starting git server on :${PORT}"
-cd /app
-exec bun run src/core/minio-server.ts
+echo "starting native zig git server on :${PORT}"
+exec /usr/local/bin/gitty-server "${PORT}" "${DATA_DIR}"
