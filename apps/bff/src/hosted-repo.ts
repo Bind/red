@@ -52,6 +52,8 @@ export interface HostedRepoReader {
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
+const HOSTED_REPO_OPTIONAL_TIMEOUT_MS = 3_000;
+
 interface RepoRecord {
   owner: string;
   name: string;
@@ -94,6 +96,19 @@ async function readJson<T>(fetchImpl: FetchImpl, url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function readJsonWithTimeout<T>(
+  fetchImpl: FetchImpl,
+  url: string,
+  timeoutMs: number,
+): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, { signal });
+  if (!response.ok) {
+    throw new Error(await response.text().catch(() => `Request failed: ${response.status}`));
+  }
+  return response.json() as Promise<T>;
+}
+
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -114,16 +129,37 @@ export function createHostedRepoReader(
   return {
     async readSnapshot() {
       try {
-        const [repo, branches, commits, readme] = await Promise.all([
-          readJson<RepoRecord>(fetchImpl, repoUrl),
-          readJson<BranchRecord[]>(fetchImpl, branchesUrl),
-          readJson<CommitRecord[]>(fetchImpl, commitsUrl),
-          readJson<{ path: string; content: string | null }>(fetchImpl, readmeUrl),
+        const repo = await readJson<RepoRecord>(fetchImpl, repoUrl);
+
+        const [branchesResult, commitsResult, readmeResult] = await Promise.allSettled([
+          readJsonWithTimeout<BranchRecord[]>(fetchImpl, branchesUrl, HOSTED_REPO_OPTIONAL_TIMEOUT_MS),
+          readJsonWithTimeout<CommitRecord[]>(fetchImpl, commitsUrl, HOSTED_REPO_OPTIONAL_TIMEOUT_MS),
+          readJsonWithTimeout<{ path: string; content: string | null }>(
+            fetchImpl,
+            readmeUrl,
+            HOSTED_REPO_OPTIONAL_TIMEOUT_MS,
+          ),
         ]);
+
+        const branches = branchesResult.status === "fulfilled" ? branchesResult.value : [];
+        const commits = commitsResult.status === "fulfilled" ? commitsResult.value : [];
+        const readme =
+          readmeResult.status === "fulfilled" && readmeResult.value.content != null
+            ? {
+                path: readmeResult.value.path,
+                content: readmeResult.value.content,
+              }
+            : null;
+
+        const partialFailures = [
+          branchesResult.status === "rejected" ? `branches: ${toErrorMessage(branchesResult.reason)}` : null,
+          commitsResult.status === "rejected" ? `commits: ${toErrorMessage(commitsResult.reason)}` : null,
+          readmeResult.status === "rejected" ? `readme: ${toErrorMessage(readmeResult.reason)}` : null,
+        ].filter((value): value is string => Boolean(value));
 
         return {
           repo,
-          readme: readme.content == null ? null : readme,
+          readme,
           branches: branches
             .map((branch) => ({
               name: branch.name,
@@ -144,7 +180,7 @@ export function createHostedRepoReader(
           },
           availability: {
             reachable: true,
-            error: null,
+            error: partialFailures.length > 0 ? partialFailures.join("; ") : null,
           },
           fetched_at: new Date().toISOString(),
         };

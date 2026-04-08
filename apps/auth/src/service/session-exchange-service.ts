@@ -25,7 +25,9 @@ export interface SessionExchangeResult {
 
 export const USER_DASHBOARD_SCOPES = ["repos:read", "repos:create", "changes:read"] as const;
 
-export function buildSessionExchangeScope(scopes: readonly string[] = USER_DASHBOARD_SCOPES): string {
+export function buildSessionExchangeScope(
+  scopes: readonly string[] = USER_DASHBOARD_SCOPES,
+): string {
   return ["session:exchange", ...scopes].join(" ");
 }
 

@@ -30,8 +30,15 @@ const testConfig: AppConfig = {
 describe("App integration", () => {
   test("health endpoint returns ok", async () => {
     const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/health"));
+    const res = await app.fetch(
+      new Request("http://localhost/health", {
+        headers: {
+          "x-request-id": "api-health-request",
+        },
+      }),
+    );
     expect(res.status).toBe(200);
+    expect(res.headers.get("x-request-id")).toBe("api-health-request");
     const json = await res.json();
     expect(json.status).toBe("ok");
   });

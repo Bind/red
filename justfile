@@ -83,12 +83,22 @@ test:
 typecheck:
     docker compose -f {{ DEV_COMPOSE }} exec api bunx tsc --noEmit
 
+# Run repository formatters
+fmt:
+    just auth-format
+    just git-mirror-canary-format
+
+# Run repository linters
+lint:
+    just auth-lint
+    just git-mirror-canary-lint
+
 # Build the production frontend bundle inside Docker
 web-build:
     docker compose -f {{ DEV_COMPOSE }} exec web bun run build
 
 # Full local verification
-verify: typecheck test
+verify: lint typecheck test
 
 # Install repo git hooks
 hooks-install:

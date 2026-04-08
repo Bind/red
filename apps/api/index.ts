@@ -1,4 +1,10 @@
 import { Hono } from "hono";
+import {
+  ConsoleJsonSink,
+  getEnvelope,
+  obsMiddleware,
+  type EventEnvelope,
+} from "@redc/obs";
 import { streamSSE } from "hono/streaming";
 import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
@@ -172,10 +178,18 @@ export function createApp(config: AppConfig) {
   const localClawArtifactStore = new LocalClawArtifactStore();
   const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
 
-  const app = new Hono();
+  const app = new Hono<{ Variables: { envelope: EventEnvelope } }>();
+  app.use("*", obsMiddleware({ service: "api", sink: new ConsoleJsonSink() }));
 
   // Health check
-  app.get("/health", (c) => c.json({ status: "ok" }));
+  app.get("/health", (c) => {
+    getEnvelope(c).set({
+      route: {
+        name: "health",
+      },
+    });
+    return c.json({ status: "ok" });
+  });
 
   // Queue stats endpoint
   app.get("/api/velocity", (c) => {

@@ -26,6 +26,18 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d ago`;
 }
 
+function formatTimestamp(dateStr: string | null): string {
+  if (!dateStr) return "unknown";
+  const date = new Date(dateStr);
+  if (!Number.isFinite(date.getTime())) return "unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function ReadmePreview({ content }: { content: string }) {
   const preview = useMemo(() => content.split(/\r?\n/).slice(0, 40).join("\n"), [content]);
 
@@ -36,27 +48,35 @@ function ReadmePreview({ content }: { content: string }) {
   );
 }
 
-function CommitTimeline({ commits }: { commits: HostedRepoCommit[] }) {
+function CommitList({ commits }: { commits: HostedRepoCommit[] }) {
   if (commits.length === 0) {
     return <p className="text-sm text-muted-foreground">No commit history is available yet.</p>;
   }
 
   return (
-    <div className="space-y-4">
+    <div className="overflow-hidden rounded-2xl border border-border/60">
       {commits.map((commit) => (
-        <div key={commit.sha} className="flex gap-4 rounded-2xl border border-border/60 bg-card/40 p-4">
-          <div className="mt-1 h-2.5 w-2.5 rounded-full bg-primary" />
-          <div className="min-w-0 flex-1 space-y-1">
+        <div
+          key={commit.sha}
+          className="grid gap-3 border-t border-border/60 bg-card/30 px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,1fr)_180px_160px]"
+        >
+          <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-foreground">{commit.message || "No message"}</span>
+              <span className="truncate text-sm text-foreground">{commit.message || "No message"}</span>
               <Badge variant="outline" className="font-mono text-[11px]">
                 {commit.sha.slice(0, 12)}
               </Badge>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{commit.author_name || commit.author_email || "unknown author"}</span>
-              <span>{timeAgo(commit.timestamp)}</span>
+            <div className="text-xs text-muted-foreground">
+              {commit.author_name || commit.author_email || "unknown author"}
             </div>
+          </div>
+          <div className="text-xs text-muted-foreground md:self-center">
+            <div className="font-mono">{formatTimestamp(commit.timestamp)}</div>
+            <div>{timeAgo(commit.timestamp)}</div>
+          </div>
+          <div className="text-xs text-muted-foreground md:self-center">
+            commit
           </div>
         </div>
       ))}
@@ -243,10 +263,10 @@ export function HostedRepoPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Commit timeline</CardTitle>
+          <CardTitle>All commits</CardTitle>
         </CardHeader>
         <CardContent>
-          <CommitTimeline commits={snapshot.commits} />
+          <CommitList commits={snapshot.commits} />
         </CardContent>
       </Card>
     </div>

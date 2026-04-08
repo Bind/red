@@ -9,6 +9,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@redc/obs": "workspace:*",
     "hono": "^4.7.0"
   }
 }

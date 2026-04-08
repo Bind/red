@@ -3,6 +3,42 @@ import { createApp } from "./app";
 import type { HostedRepoSnapshot } from "./hosted-repo";
 
 describe("BFF app", () => {
+  test("reports dependency-aware health", async () => {
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      fetchImpl: async (input) => {
+        const request = input instanceof Request ? input : new Request(input);
+        const url = new URL(request.url);
+        if (url.pathname === "/health" && url.host === "auth.test") {
+          return Response.json({ status: "ok" });
+        }
+        if (url.pathname === "/health" && url.host === "api.test") {
+          return Response.json({ status: "ok" });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const response = await app.request("http://bff.test/health", {
+      headers: {
+        "x-request-id": "bff-health-request",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-request-id")).toBe("bff-health-request");
+    expect(await response.json()).toMatchObject({
+      status: "ok",
+      service: "bff",
+      checks: {
+        auth: { status: "ok", upstream: "http://auth.test" },
+        api: { status: "ok", upstream: "http://api.test" },
+      },
+    });
+  });
+
   test("proxies JSON and text routes through RPC", async () => {
     const app = createApp({
       port: 3001,
@@ -70,6 +106,62 @@ describe("BFF app", () => {
       session: { id: "session-123" },
       user: { email: "user@example.com", onboardingState: "active" },
     });
+  });
+
+  test("forwards request ids to upstream auth routes", async () => {
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      fetchImpl: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname === "/me") {
+          expect(request.headers.get("x-request-id")).toBe("req-forward-1");
+          return Response.json({
+            session: { id: "session-123" },
+            user: { email: "user@example.com", onboardingState: "active" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/me", {
+      headers: {
+        "x-request-id": "req-forward-1",
+      },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  test("generates and forwards request ids when the client does not supply one", async () => {
+    let forwardedRequestId: string | null = null;
+
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      fetchImpl: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname === "/me") {
+          forwardedRequestId = request.headers.get("x-request-id");
+          return Response.json({
+            session: { id: "session-123" },
+            user: { email: "user@example.com", onboardingState: "active" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/me");
+
+    expect(response.status).toBe(200);
+    expect(forwardedRequestId).toBeTruthy();
+    expect(response.headers.get("x-request-id")).toBe(forwardedRequestId);
   });
 
   test("exposes the latest dev mailbox magic link through /rpc/dev/magic-link", async () => {

@@ -171,6 +171,36 @@ async function exchangeSession(
 }
 
 describe("auth lab", () => {
+  test("reports dependency-aware health", async () => {
+    const server = await createAuthServer(baseConfig);
+    const response = await server.fetch(
+      new Request("http://127.0.0.1:4020/health", {
+        headers: {
+          "x-request-id": "health-test-request",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-request-id")).toBe("health-test-request");
+    const body = (await response.json()) as {
+      status: string;
+      service: string;
+      uptime_ms: number;
+      checks: {
+        database: {
+          kind: string;
+          status: string;
+        };
+      };
+    };
+    expect(body.status).toBe("ok");
+    expect(body.service).toBe("auth");
+    expect(body.uptime_ms).toBeGreaterThanOrEqual(0);
+    expect(body.checks.database.kind).toBe("sqlite");
+    expect(body.checks.database.status).toBe("ok");
+  });
+
   test("issues client_credentials tokens", async () => {
     const server = await createAuthServer(baseConfig);
     const response = await server.fetch(
@@ -321,7 +351,7 @@ describe("auth lab", () => {
       }),
     );
     expect(createResponse.status).toBe(200);
-    const created = await createResponse.json() as {
+    const created = (await createResponse.json()) as {
       attempt_id: string;
       status: string;
       client_id: string;
@@ -364,7 +394,7 @@ describe("auth lab", () => {
       new Request(`http://127.0.0.1:4020/login-attempts/${created.attempt_id}`),
     );
     expect(completedResponse.status).toBe(200);
-    const completed = await completedResponse.json() as {
+    const completed = (await completedResponse.json()) as {
       attempt_id: string;
       status: string;
       session_id: string;
@@ -390,7 +420,9 @@ describe("auth lab", () => {
     const setCookie = redeemResponse.headers.get("set-cookie");
     expect(setCookie).toContain("better-auth.session_token=");
 
-    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get("better-auth.session_token")?.value;
+    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get(
+      "better-auth.session_token",
+    )?.value;
     const sessionResponse = await server.fetch(
       new Request("http://127.0.0.1:4020/api/auth/get-session", {
         headers: {
@@ -400,7 +432,7 @@ describe("auth lab", () => {
       }),
     );
     expect(sessionResponse.status).toBe(200);
-    const sessionBody = await sessionResponse.json() as {
+    const sessionBody = (await sessionResponse.json()) as {
       session: { id: string };
       user: { email: string };
     };

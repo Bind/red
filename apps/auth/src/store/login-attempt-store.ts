@@ -30,7 +30,10 @@ export interface LoginAttemptStore {
     expiresAt: string;
   }): Promise<LoginAttemptRecord>;
   findById(id: string): Promise<LoginAttemptRecord | undefined>;
-  updateById(id: string, patch: Partial<LoginAttemptRecord> & Record<string, unknown>): Promise<void>;
+  updateById(
+    id: string,
+    patch: Partial<LoginAttemptRecord> & Record<string, unknown>,
+  ): Promise<void>;
 }
 
 function normalizeEmail(email: string): string {
@@ -46,12 +49,7 @@ function normalizeOptionalString(value: unknown): string | undefined {
 }
 
 function normalizeStatus(value: unknown): LoginAttemptStatus {
-  if (
-    value === "pending" ||
-    value === "completed" ||
-    value === "redeemed" ||
-    value === "expired"
-  ) {
+  if (value === "pending" || value === "completed" || value === "redeemed" || value === "expired") {
     return value;
   }
   return "pending";

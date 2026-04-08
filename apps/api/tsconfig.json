@@ -10,11 +10,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "paths": {
-      "@/*": ["./apps/api/*"]
-    }
+    "isolatedModules": true
   },
-  "include": ["apps/api/**/*.ts"],
-  "exclude": [".sst/**/*"]
+  "include": ["**/*.ts"]
 }

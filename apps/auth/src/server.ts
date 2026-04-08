@@ -1,9 +1,16 @@
+import { createHash, randomBytes } from "node:crypto";
+import {
+  ConsoleJsonSink,
+  collectHealthReport,
+  type EventEnvelope,
+  getEnvelope,
+  obsMiddleware,
+} from "@redc/obs";
+import { parseSetCookieHeader } from "better-auth/cookies";
+import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
-import { parseSetCookieHeader } from "better-auth/cookies";
-import { randomBytes, createHash } from "node:crypto";
-import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
-import { createBetterAuthAdapter, type BetterAuthAdapter } from "./service/better-auth-adapter";
+import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
 import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
 import { createTokenAuthority } from "./service/m2m/service";
 import { createSessionExchangeService } from "./service/session-exchange-service";
@@ -41,6 +48,10 @@ export interface AuthServer {
   registry: ReturnType<typeof createMachineClientRegistry>;
   userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
 }
+
+type AppVariables = {
+  envelope: EventEnvelope;
+};
 
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
   response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
@@ -139,6 +150,12 @@ function normalizeClientId(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function withRequestIdHeaders(requestId: string, init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  headers.set("x-request-id", requestId);
+  return headers;
+}
+
 export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
   const webClients = new Map(
     (config.webClients ?? []).map((client) => [client.clientId, client] as const),
@@ -169,8 +186,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
-  const app = new Hono();
+  const app = new Hono<{ Variables: AppVariables }>();
   const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
+  const startedAt = Date.now();
 
   const resolveSessionState = async (request: Request): Promise<ResolvedSessionState | null> => {
     const sessionResult = await authAdapter.getSession(request);
@@ -277,21 +295,71 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return { revoked: true };
   };
 
+  app.use("*", obsMiddleware({ service: "auth", sink: new ConsoleJsonSink() }));
+
   app.onError((error, c) => {
+    getEnvelope(c).fail(error);
     const { status, body } = oauthError(error);
+    c.header("x-request-id", getEnvelope(c).requestId);
     return c.json(body, status as 200 | 400 | 401 | 403 | 404 | 500);
   });
 
-  app.notFound((c) => c.json({ error: "Not found" }, 404));
+  app.notFound((c) => {
+    getEnvelope(c).set({
+      route: {
+        name: "not_found",
+      },
+    });
+    c.header("x-request-id", getEnvelope(c).requestId);
+    return c.json({ error: "Not found" }, 404);
+  });
 
   app.all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw));
 
-  app.get("/health", (c) => c.json({ status: "ok" }));
+  app.get("/health", async (c) => {
+    const envelope = getEnvelope(c);
+    envelope.set({
+      route: {
+        name: "health",
+      },
+    });
+    const report = await collectHealthReport({
+      service: "auth",
+      startedAtMs: startedAt,
+      checks: {
+        database: async () => {
+          await userRuntime.database.ping();
+          return {
+            kind: userRuntime.database.kind,
+          };
+        },
+      },
+    });
+    envelope.set({
+      health: {
+        status: report.status,
+        checks: report.checks as Record<string, unknown>,
+      },
+    });
+
+    c.header("x-request-id", envelope.requestId);
+    return c.json(report, report.status === "ok" ? 200 : 503);
+  });
   app.get("/me", async (c) => {
     const sessionResult = await resolveSessionState(c.req.raw);
     if (!sessionResult) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
+    getEnvelope(c).set({
+      route: {
+        name: "me",
+      },
+      auth: {
+        session_id: sessionResult.response.session.id,
+        user_id: sessionResult.response.user.id,
+        onboarding_state: sessionResult.response.user.onboardingState ?? null,
+      },
+    });
     return c.json(sessionResult.response);
   });
 
@@ -331,6 +399,15 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
     const { session, user } = sessionResult.response;
+    getEnvelope(c).set({
+      route: {
+        name: "user.two_factor.enroll",
+      },
+      auth: {
+        session_id: session.id,
+        user_id: user.id,
+      },
+    });
     return c.json(await userLifecycle.enrollRecoveryFactor(session.id, user.email));
   });
 
@@ -346,6 +423,16 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       throw new AuthError("invalid_request", "code is required", 400);
     }
     const { session, user } = sessionResult.response;
+    getEnvelope(c).set({
+      route: {
+        name: "user.two_factor.verify",
+      },
+      auth: {
+        session_id: session.id,
+        user_id: user.id,
+        second_factor_kind: kind === "backup_code" ? "backup_code" : "totp",
+      },
+    });
     return c.json(
       await userLifecycle.verifyRecoveryFactor(session.id, user.email, {
         code,
@@ -360,23 +447,41 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
     const { session, user } = sessionResult.response;
+    getEnvelope(c).set({
+      route: {
+        name: "user.onboarding.complete",
+      },
+      auth: {
+        session_id: session.id,
+        user_id: user.id,
+      },
+    });
     await userLifecycle.completeOnboarding(session.id, user.email);
     return c.json({ ok: true, sessionId: session.id, email: user.email });
   });
 
   app.post("/user/recovery/start", async (c) => {
+    const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
     if (!email) {
       throw new AuthError("invalid_request", "email is required", 400);
     }
+    getEnvelope(c).set({
+      route: {
+        name: "user.recovery.start",
+      },
+      auth: {
+        email,
+      },
+    });
     await userLifecycle.startRecoveryChallenge(email);
     const mailRequest = new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
       method: "POST",
-      headers: {
+      headers: withRequestIdHeaders(requestId, {
         origin: config.issuer,
         "content-type": "application/json",
-      },
+      }),
       body: JSON.stringify({
         email,
         metadata: {
@@ -388,6 +493,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   });
 
   app.post("/login-attempts", async (c) => {
+    const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
     const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
@@ -402,6 +508,15 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (!client) {
       throw new AuthError("invalid_client", "Unknown browser client", 400);
     }
+    getEnvelope(c).set({
+      route: {
+        name: "login_attempts.create",
+      },
+      auth: {
+        email,
+        client_id: clientId,
+      },
+    });
 
     const attempt = await userRuntime.stores.loginAttempt.create({
       email,
@@ -414,10 +529,10 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     const signInResponse = await authAdapter.handle(
       new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
         method: "POST",
-        headers: {
+        headers: withRequestIdHeaders(requestId, {
           origin: config.issuer,
           "content-type": "application/json",
-        },
+        }),
         body: JSON.stringify({
           email,
           metadata: {
@@ -447,9 +562,17 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     await userRuntime.stores.loginAttempt.updateById(attempt.id, {
       magicLinkTokenHash: hashToken(mail.token),
     });
+    getEnvelope(c).set({
+      login_attempt: {
+        id: attempt.id,
+        status: "pending",
+        purpose: attempt.purpose,
+      },
+    });
 
-    mail.url = new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString()
-      + `?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
+    mail.url =
+      new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString() +
+      `?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
 
     return c.json({
       attempt_id: attempt.id,
@@ -461,6 +584,14 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   });
 
   app.get("/login-attempts/:id", async (c) => {
+    getEnvelope(c).set({
+      route: {
+        name: "login_attempts.get",
+      },
+      login_attempt: {
+        id: c.req.param("id"),
+      },
+    });
     const attempt = await userRuntime.stores.loginAttempt.findById(c.req.param("id"));
     if (!attempt) {
       return c.json({ error: "Not found" }, 404);
@@ -495,6 +626,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   });
 
   app.post("/magic-link/complete", async (c) => {
+    const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const attemptId = fields.attempt_id ?? fields.attemptId;
     const token = fields.token?.trim();
@@ -507,6 +639,17 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (!client) {
       throw new AuthError("invalid_client", "Unknown browser client", 400);
     }
+    getEnvelope(c).set({
+      route: {
+        name: "magic_link.complete",
+      },
+      auth: {
+        client_id: clientId,
+      },
+      login_attempt: {
+        id: attemptId,
+      },
+    });
 
     const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
     if (!attempt) {
@@ -523,7 +666,11 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       throw new AuthError("invalid_request", "Login attempt has expired", 400);
     }
     if (attempt.magicLinkTokenHash && attempt.magicLinkTokenHash !== hashToken(token)) {
-      throw new AuthError("invalid_magic_link", "Magic link token did not match the login attempt", 401);
+      throw new AuthError(
+        "invalid_magic_link",
+        "Magic link token did not match the login attempt",
+        401,
+      );
     }
 
     const verifyResponse = await authAdapter.handle(
@@ -531,9 +678,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
         `${config.issuer}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent("/")}`,
         {
           method: "GET",
-          headers: {
+          headers: withRequestIdHeaders(requestId, {
             origin: config.issuer,
-          },
+          }),
           redirect: "manual",
         },
       ),
@@ -549,16 +696,18 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     }
 
     const setCookie = verifyResponse.headers.get("set-cookie");
-    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get("better-auth.session_token")?.value;
+    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get(
+      "better-auth.session_token",
+    )?.value;
     if (!setCookie || !sessionCookie) {
       throw new AuthError("server_error", "Magic link verification did not create a session", 500);
     }
 
     const sessionResult = await authAdapter.getSession(
       new Request(`${config.issuer}/api/auth/get-session`, {
-        headers: {
+        headers: withRequestIdHeaders(requestId, {
           cookie: `better-auth.session_token=${sessionCookie}`,
-        },
+        }),
       }),
     );
     if (!sessionResult.response) {
@@ -580,6 +729,16 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       }),
       completedAt: new Date().toISOString(),
     });
+    getEnvelope(c).set({
+      auth: {
+        session_id: sessionResult.response.session.id,
+        user_id: sessionResult.response.user.id,
+      },
+      login_attempt: {
+        id: attempt.id,
+        status: "completed",
+      },
+    });
 
     return c.json({
       ok: true,
@@ -597,6 +756,14 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (!attemptId || !loginGrant) {
       throw new AuthError("invalid_request", "attempt_id and login_grant are required", 400);
     }
+    getEnvelope(c).set({
+      route: {
+        name: "login_attempts.redeem",
+      },
+      login_attempt: {
+        id: attemptId,
+      },
+    });
 
     const attempt = await userRuntime.stores.loginAttempt.findById(attemptId);
     if (!attempt) {
@@ -605,7 +772,11 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (attempt.status === "redeemed") {
       throw new AuthError("invalid_request", "Login attempt has already been redeemed", 400);
     }
-    if (attempt.status !== "completed" || !attempt.loginGrantHash || !attempt.completedSetCookieEncrypted) {
+    if (
+      attempt.status !== "completed" ||
+      !attempt.loginGrantHash ||
+      !attempt.completedSetCookieEncrypted
+    ) {
       throw new AuthError("invalid_request", "Login attempt is not ready for redemption", 400);
     }
     if (attempt.loginGrantHash !== hashToken(loginGrant)) {
@@ -624,6 +795,15 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       loginGrantEncrypted: null,
       completedSetCookieEncrypted: null,
     });
+    getEnvelope(c).set({
+      auth: {
+        session_id: attempt.completedSessionId ?? null,
+      },
+      login_attempt: {
+        id: attempt.id,
+        status: "redeemed",
+      },
+    });
 
     return c.json(
       {
@@ -641,12 +821,62 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
 
   app.post("/session/exchange", async (c) => {
     const result = await sessionExchange.exchange(c.req.raw);
+    getEnvelope(c).set({
+      route: {
+        name: "session.exchange",
+      },
+      auth: {
+        session_id: typeof result.body.sid === "string" ? result.body.sid : null,
+        scope: typeof result.body.scope === "string" ? result.body.scope : null,
+      },
+    });
     return c.json(result.body, 200, Object.fromEntries(result.headers.entries()));
   });
 
-  app.post("/oauth/token", async (c) => c.json(await handleToken(c.req.raw)));
-  app.post("/oauth/introspect", async (c) => c.json(await handleIntrospect(c.req.raw)));
-  app.post("/oauth/revoke", async (c) => c.json(await handleRevoke(c.req.raw)));
+  app.post("/oauth/token", async (c) => {
+    const fields = await readBodyFields(c.req.raw.clone());
+    const basic = parseBasicAuth(c.req.raw.headers);
+    getEnvelope(c).set({
+      route: {
+        name: "oauth.token",
+      },
+      oauth: {
+        grant_type: fields.grant_type ?? fields.grantType ?? null,
+        client_id: basic?.clientId ?? fields.client_id ?? fields.clientId ?? null,
+        audience: fields.audience ?? fields.resource ?? config.audience,
+        scope: fields.scope ?? null,
+      },
+    });
+    return c.json(await handleToken(c.req.raw));
+  });
+  app.post("/oauth/introspect", async (c) => {
+    const fields = await readBodyFields(c.req.raw.clone());
+    const basic = parseBasicAuth(c.req.raw.headers);
+    getEnvelope(c).set({
+      route: {
+        name: "oauth.introspect",
+      },
+      oauth: {
+        client_id: basic?.clientId ?? fields.client_id ?? fields.clientId ?? null,
+        token_client_id: fields.token ? extractTokenClientId(fields.token) : null,
+      },
+    });
+    return c.json(await handleIntrospect(c.req.raw));
+  });
+  app.post("/oauth/revoke", async (c) => {
+    const fields = await readBodyFields(c.req.raw.clone());
+    const basic = parseBasicAuth(c.req.raw.headers);
+    getEnvelope(c).set({
+      route: {
+        name: "oauth.revoke",
+      },
+      oauth: {
+        client_id: basic?.clientId ?? fields.client_id ?? fields.clientId ?? null,
+        token_client_id: fields.token ? extractTokenClientId(fields.token) : null,
+      },
+    });
+    return c.json(await handleRevoke(c.req.raw));
+  });
 
   return {
     authority,

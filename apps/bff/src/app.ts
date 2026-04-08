@@ -1,5 +1,11 @@
 import { Hono } from "hono";
 import {
+  collectHealthReport,
+  ConsoleJsonSink,
+  getEnvelope,
+  obsMiddleware,
+} from "@redc/obs";
+import {
   createHostedRepoReader,
   type HostedRepoConfig,
   type HostedRepoReader,
@@ -50,6 +56,7 @@ function buildForwardHeaders(request: Request): Headers {
     "cookie",
     "last-event-id",
     "origin",
+    "x-request-id",
   ];
   for (const key of forwarded) {
     const value = request.headers.get(key);
@@ -192,12 +199,66 @@ async function fetchSessionExchangeToken(
 
 export function createApp(config: BffConfig) {
   const app = new Hono();
+  const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
   const hostedRepoReader =
     config.hostedRepoReader
     ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
-  app.get("/health", (c) => c.json({ status: "ok" }));
+  app.use("*", obsMiddleware({ service: "bff", sink: new ConsoleJsonSink() }));
+
+  app.get("/health", async (c) => {
+    const envelope = getEnvelope(c);
+    envelope.set({
+      route: {
+        name: "health",
+      },
+    });
+    const report = await collectHealthReport({
+      service: "bff",
+      startedAtMs: startedAt,
+      checks: {
+        auth: async () => {
+          const response = await fetchImpl(joinUrl(config.authBaseUrl, "/health"), {
+            headers: {
+              "x-request-id": envelope.requestId,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`auth upstream unhealthy: ${response.status}`);
+          }
+          const body = (await response.json()) as { status?: string };
+          return {
+            upstream: config.authBaseUrl,
+            reported_status: body.status ?? "ok",
+          };
+        },
+        api: async () => {
+          const response = await fetchImpl(joinUrl(config.apiBaseUrl, "/health"), {
+            headers: {
+              "x-request-id": envelope.requestId,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`api upstream unhealthy: ${response.status}`);
+          }
+          const body = (await response.json()) as { status?: string };
+          return {
+            upstream: config.apiBaseUrl,
+            reported_status: body.status ?? "ok",
+          };
+        },
+      },
+    });
+    envelope.set({
+      health: {
+        status: report.status,
+        checks: report.checks as Record<string, unknown>,
+      },
+    });
+    c.header("x-request-id", envelope.requestId);
+    return c.json(report, report.status === "ok" ? 200 : 503);
+  });
 
   app.all("/api/auth/*", (c) => {
     const incoming = new URL(c.req.url);

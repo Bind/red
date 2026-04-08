@@ -12,6 +12,32 @@ type BunSqliteDialectConfig = {
   onCreateConnection?: (connection: unknown) => Promise<void> | void;
 };
 
+type BunSqliteStatement = {
+  all(...parameters: readonly unknown[]): unknown[];
+};
+
+type TransactionConnection = {
+  executeQuery(compiledQuery: CompiledQuery): Promise<unknown>;
+};
+
+type IntrospectionDb = {
+  selectFrom(table: string | ReturnType<typeof sql>): {
+    where(column: string, operator: string, value: string): IntrospectionDb["selectFrom"];
+    select(selection: string | string[]): IntrospectionDb["selectFrom"];
+    $castTo<T>(): {
+      execute(): Promise<T[]>;
+    };
+    execute(): Promise<unknown[]>;
+  };
+};
+
+type TableColumnMetadata = {
+  name: string;
+  type: string;
+  notnull: number;
+  dflt_value: unknown;
+};
+
 class BunSqliteAdapter {
   get supportsCreateIfNotExists() {
     return true;
@@ -42,13 +68,14 @@ class BunSqliteConnection {
   }
 
   executeQuery(compiledQuery: CompiledQuery) {
-    const statement = this.#db.prepare(compiledQuery.sql);
+    const statement = this.#db.prepare(compiledQuery.sql) as BunSqliteStatement;
     return Promise.resolve({
-      rows: (statement as any).all(...(compiledQuery.parameters as any[])),
+      rows: statement.all(...compiledQuery.parameters),
     });
   }
 
   async *streamQuery() {
+    yield undefined as never;
     throw new Error("Streaming query is not supported by the Bun SQLite driver.");
   }
 }
@@ -97,15 +124,15 @@ class BunSqliteDriver {
     return this.#connection as never;
   }
 
-  async beginTransaction(connection: any) {
+  async beginTransaction(connection: TransactionConnection) {
     await connection.executeQuery(CompiledQuery.raw("begin"));
   }
 
-  async commitTransaction(connection: any) {
+  async commitTransaction(connection: TransactionConnection) {
     await connection.executeQuery(CompiledQuery.raw("commit"));
   }
 
-  async rollbackTransaction(connection: any) {
+  async rollbackTransaction(connection: TransactionConnection) {
     await connection.executeQuery(CompiledQuery.raw("rollback"));
   }
 
@@ -119,9 +146,9 @@ class BunSqliteDriver {
 }
 
 class BunSqliteIntrospector {
-  #db: any;
+  #db: IntrospectionDb;
 
-  constructor(db: any) {
+  constructor(db: IntrospectionDb) {
     this.#db = db;
   }
 
@@ -157,9 +184,14 @@ class BunSqliteIntrospector {
   async #getTableMetadata(table: string) {
     const db = this.#db;
     const autoIncrementCol = (
-      await db.selectFrom("sqlite_master").where("name", "=", table).select("sql").$castTo().execute()
-    )[0]
-      ?.sql?.split(/[\(\),]/)
+      await db
+        .selectFrom("sqlite_master")
+        .where("name", "=", table)
+        .select("sql")
+        .$castTo()
+        .execute()
+    )[0]?.sql
+      ?.split(/[(),]/)
       ?.find((item: string) => item.toLowerCase().includes("autoincrement"))
       ?.split(/\s+/)?.[0]
       ?.replace(/["`]/g, "");
@@ -171,7 +203,7 @@ class BunSqliteIntrospector {
 
     return {
       name: table,
-      columns: columns.map((column: any) => ({
+      columns: (columns as TableColumnMetadata[]).map((column) => ({
         name: column.name,
         dataType: column.type,
         isNullable: !column.notnull,
@@ -220,7 +252,7 @@ export class BunSqliteDialect {
     return new BunSqliteAdapter();
   }
 
-  createIntrospector(db: any) {
+  createIntrospector(db: IntrospectionDb) {
     return new BunSqliteIntrospector(db);
   }
 }

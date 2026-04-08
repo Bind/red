@@ -30,5 +30,6 @@ if (config.hostedRepo) {
 
 Bun.serve({
   port: config.port,
+  idleTimeout: 30,
   fetch: app.fetch,
 });

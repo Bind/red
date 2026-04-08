@@ -43,7 +43,13 @@ services:
     volumes:
       - ./compose/signing-key.private.jwk:/run/config/signing-key.private.jwk:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4020/health >/dev/null"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:4020/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20

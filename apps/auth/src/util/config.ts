@@ -46,17 +46,19 @@ function parseSingleCsvValue(value: string | undefined, label: string): string {
 }
 
 function parseWebClients(value: string | undefined) {
-  return requiredString(value, "AUTH_LAB_WEB_CLIENTS").split(",").map((entry) => {
-    const [clientId, redirectBaseUrl] = entry.split("=", 2).map((item) => item?.trim() ?? "");
-    if (!clientId || !redirectBaseUrl) {
-      throw new Error("AUTH_LAB_WEB_CLIENTS entries must use clientId=https://base-url form");
-    }
-    return {
-      clientId,
-      redirectBaseUrl,
-      magicLinkPath: "/auth/magic-link",
-    };
-  });
+  return requiredString(value, "AUTH_LAB_WEB_CLIENTS")
+    .split(",")
+    .map((entry) => {
+      const [clientId, redirectBaseUrl] = entry.split("=", 2).map((item) => item?.trim() ?? "");
+      if (!clientId || !redirectBaseUrl) {
+        throw new Error("AUTH_LAB_WEB_CLIENTS entries must use clientId=https://base-url form");
+      }
+      return {
+        clientId,
+        redirectBaseUrl,
+        magicLinkPath: "/auth/magic-link",
+      };
+    });
 }
 
 function readRequiredFile(pathValue: string | undefined, label: string): string {

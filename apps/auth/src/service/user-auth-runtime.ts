@@ -10,6 +10,35 @@ import type { UserMagicLinkPurpose } from "../util/types";
 import type { BetterAuthSessionResult } from "./better-auth-adapter";
 import { type AuthDatabaseKind, createAuthDatabase } from "./db/auth-db";
 
+type CustomColumnBuilder = {
+  primaryKey(): CustomColumnBuilder;
+  notNull(): CustomColumnBuilder;
+};
+
+type CustomTableBuilder = {
+  ifNotExists(): CustomTableBuilder;
+  addColumn(
+    name: string,
+    dataType: string,
+    configure?: (column: CustomColumnBuilder) => CustomColumnBuilder,
+  ): CustomTableBuilder;
+  execute(): Promise<void>;
+};
+
+type SchemaCapableDb = {
+  schema?: {
+    createTable(name: string): CustomTableBuilder;
+  };
+};
+
+type BetterAuthWithSchemaDb = {
+  options?: {
+    database?: {
+      db?: SchemaCapableDb;
+    };
+  };
+};
+
 export interface UserAuthRuntimeAuth {
   handler(request: Request): Promise<Response>;
   api: {
@@ -49,11 +78,15 @@ export interface UserAuthRuntime {
     session: SessionStore;
     loginAttempt: LoginAttemptStore;
   };
+  database: {
+    kind: AuthDatabaseKind;
+    ping(): Promise<void>;
+  };
   runMigrations(): Promise<void>;
   close(): Promise<void>;
 }
 
-async function ensureCustomTables(auth: { options?: { database?: { db?: any } } }) {
+async function ensureCustomTables(auth: BetterAuthWithSchemaDb) {
   const db = auth.options?.database?.db;
   if (!db || typeof db.schema?.createTable !== "function") {
     return;
@@ -62,26 +95,24 @@ async function ensureCustomTables(auth: { options?: { database?: { db?: any } } 
   await db.schema
     .createTable("login_attempt")
     .ifNotExists()
-    .addColumn("id", "text", (column: any) => column.primaryKey())
-    .addColumn("email", "text", (column: any) => column.notNull())
-    .addColumn("clientId", "text", (column: any) => column.notNull())
-    .addColumn("purpose", "text", (column: any) => column.notNull())
-    .addColumn("status", "text", (column: any) => column.notNull())
+    .addColumn("id", "text", (column) => column.primaryKey())
+    .addColumn("email", "text", (column) => column.notNull())
+    .addColumn("clientId", "text", (column) => column.notNull())
+    .addColumn("purpose", "text", (column) => column.notNull())
+    .addColumn("status", "text", (column) => column.notNull())
     .addColumn("magicLinkTokenHash", "text")
     .addColumn("loginGrantHash", "text")
     .addColumn("loginGrantEncrypted", "text")
     .addColumn("completedSessionId", "text")
     .addColumn("completedSetCookieEncrypted", "text")
-    .addColumn("expiresAt", "text", (column: any) => column.notNull())
+    .addColumn("expiresAt", "text", (column) => column.notNull())
     .addColumn("completedAt", "text")
     .addColumn("redeemedAt", "text")
-    .addColumn("createdAt", "text", (column: any) => column.notNull())
-    .addColumn("updatedAt", "text", (column: any) => column.notNull())
+    .addColumn("createdAt", "text", (column) => column.notNull())
+    .addColumn("updatedAt", "text", (column) => column.notNull())
     .execute();
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(
-    db,
-  );
+  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(db);
   await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_status ON login_attempt(status)`.execute(
     db,
   );
@@ -211,7 +242,7 @@ export async function createUserAuthRuntime(
 
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
-  await ensureCustomTables(auth as unknown as { options?: { database?: { db?: any } } });
+  await ensureCustomTables(auth as BetterAuthWithSchemaDb);
 
   return {
     auth: auth as unknown as UserAuthRuntimeAuth,
@@ -220,6 +251,10 @@ export async function createUserAuthRuntime(
       user: userStore,
       session: sessionStore,
       loginAttempt: loginAttemptStore,
+    },
+    database: {
+      kind: database.kind,
+      ping: () => database.ping(),
     },
     runMigrations,
     async close() {

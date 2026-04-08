@@ -64,6 +64,7 @@ export interface AuthDatabaseSchema {
 export interface AuthDatabase {
   kysely: Kysely<AuthDatabaseSchema>;
   kind: AuthDatabaseKind;
+  ping(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -158,6 +159,9 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
     return {
       kind: "sqlite",
       kysely,
+      async ping() {
+        await sql`SELECT 1 AS ok`.execute(kysely);
+      },
       async close() {
         kysely.destroy();
         database.close();
@@ -187,6 +191,9 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
   return {
     kind: "postgres",
     kysely,
+    async ping() {
+      await sql`SELECT 1 AS ok`.execute(kysely);
+    },
     async close() {
       kysely.destroy();
       await pool.end();
