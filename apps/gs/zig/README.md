@@ -57,6 +57,12 @@ The server handles push, clone, fetch, pull, branches, tags, and large files (10
 
 The `redc` integration emits one JSON wide event per inbound HTTP request from [`src/obs.zig`](src/obs.zig). This behavior should stay aligned with `pkg/obs`.
 
+Sink behavior:
+
+- `OBS_SINK_MODE=collector` with `WIDE_EVENTS_COLLECTOR_URL=http://wide-events:4090` posts collector batches to `/v1/events`.
+- Any other sink mode falls back to the local stdout JSON line for debugging.
+- The collector payload uses the canonical wide-events contract (`event_id`, `kind`, `ts`, `route_name`, `data`), while stdout keeps the legacy debug shape.
+
 Expected request ID behavior:
 
 - If the incoming request already has `x-request-id`, preserve it and emit `is_request_root: false`.

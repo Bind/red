@@ -1,5 +1,15 @@
 const std = @import("std");
 
+const CollectorSinkConfig = struct {
+    endpoint: []u8,
+    auth_header: ?[]u8,
+
+    fn deinit(self: *CollectorSinkConfig, allocator: std.mem.Allocator) void {
+        allocator.free(self.endpoint);
+        if (self.auth_header) |auth_header| allocator.free(auth_header);
+    }
+};
+
 pub const RequestRouteKind = enum {
     root,
     control_plane,
@@ -112,97 +122,26 @@ pub const RequestObs = struct {
         const status_code = self.status_code orelse 500;
         const outcome = if (status_code < 500) "ok" else "error";
 
+        var data_out: std.Io.Writer.Allocating = .init(self.allocator);
+        defer data_out.deinit();
+        writeDataObject(self, &data_out.writer) catch return;
+
         var out: std.Io.Writer.Allocating = .init(self.allocator);
         defer out.deinit();
-
-        writeAll(&out.writer, "{\"id\":\"") catch return;
-        writeAll(&out.writer, std.fmt.bytesToHex(self.event_id, .lower)[0..]) catch return;
-        writeAll(&out.writer, "\",\"type\":\"request\",\"service\":\"gs\",\"request_id\":\"") catch return;
-        writeEscaped(&out.writer, self.request_id) catch return;
-        writeAll(&out.writer, "\",\"is_request_root\":") catch return;
-        writeAll(&out.writer, if (self.is_request_root) "true" else "false") catch return;
-        writeAll(&out.writer, ",\"started_at\":\"") catch return;
-        writeIsoFromMs(&out.writer, self.started_at_ms) catch return;
-        writeAll(&out.writer, "\",\"ended_at\":\"") catch return;
-        writeIsoFromMs(&out.writer, ended_at_ms) catch return;
-        writeAll(&out.writer, "\",\"duration_ms\":") catch return;
-        out.writer.print("{d}", .{duration_ms}) catch return;
-        writeAll(&out.writer, ",\"outcome\":\"") catch return;
-        writeAll(&out.writer, outcome) catch return;
-        writeAll(&out.writer, "\",\"status_code\":") catch return;
-        out.writer.print("{d}", .{status_code}) catch return;
-        writeAll(&out.writer, ",\"data\":{") catch return;
-
-        writeAll(&out.writer, "\"request\":{") catch return;
-        var first_field = true;
-        writeJsonFieldAuto(&out.writer, &first_field, "method", self.method) catch return;
-        writeJsonFieldAuto(&out.writer, &first_field, "path", self.path) catch return;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "host", self.host) catch return;
-        writeJsonFieldAuto(&out.writer, &first_field, "scheme", self.scheme) catch return;
-        writeAll(&out.writer, "},") catch return;
-
-        writeAll(&out.writer, "\"client\":{") catch return;
-        first_field = true;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "ip", self.client_ip) catch return;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "user_agent", self.user_agent) catch return;
-        writeAll(&out.writer, "},") catch return;
-
-        writeAll(&out.writer, "\"http\":{") catch return;
-        first_field = true;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "origin", self.origin) catch return;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "referer", self.referer) catch return;
-        writeJsonOptionalFieldAuto(&out.writer, &first_field, "content_type", self.request_content_type) catch return;
-        writeAll(&out.writer, "}") catch return;
-
-        if (self.route_kind != .unknown or self.route_resource != null) {
-            writeAll(&out.writer, ",\"route\":{") catch return;
-            first_field = true;
-            writeJsonFieldAuto(&out.writer, &first_field, "kind", routeKindName(self.route_kind)) catch return;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "resource", self.route_resource) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        if (self.repo_id != null or self.storage_backend != null) {
-            writeAll(&out.writer, ",\"repo\":{") catch return;
-            first_field = true;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "id", self.repo_id) catch return;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "storage_backend", self.storage_backend) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        if (self.git_service != null) {
-            writeAll(&out.writer, ",\"git\":{") catch return;
-            first_field = true;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "service", self.git_service) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        if (self.auth_required_access != null or self.auth_outcome != null or self.auth_subject != null) {
-            writeAll(&out.writer, ",\"auth\":{") catch return;
-            first_field = true;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "required_access", self.auth_required_access) catch return;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "outcome", self.auth_outcome) catch return;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "subject", self.auth_subject) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        if (self.response_content_type != null) {
-            writeAll(&out.writer, ",\"response\":{") catch return;
-            first_field = true;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "content_type", self.response_content_type) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        if (self.error_name != null or self.error_message != null) {
-            writeAll(&out.writer, ",\"error\":{") catch return;
-            first_field = true;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "name", self.error_name) catch return;
-            writeJsonOptionalFieldAuto(&out.writer, &first_field, "message", self.error_message) catch return;
-            writeAll(&out.writer, "}") catch return;
-        }
-
-        writeAll(&out.writer, "}}\n") catch return;
+        writeLegacyLogEvent(self, &out.writer, ended_at_ms, duration_ms, outcome, status_code, data_out.written()) catch return;
         std.debug.print("{s}", .{out.written()});
+
+        const sink_config = loadCollectorSinkConfig(self.allocator) catch |err| {
+            std.debug.print("[obs] collector sink config error={s}\n", .{@errorName(err)});
+            return;
+        };
+        if (sink_config) |config| {
+            var owned = config;
+            defer owned.deinit(self.allocator);
+            sendCollectorEvent(self, io, &owned, ended_at_ms, duration_ms, outcome, status_code, data_out.written()) catch |err| {
+                std.debug.print("[obs] collector emit failed error={s}\n", .{@errorName(err)});
+            };
+        }
     }
 };
 
@@ -243,6 +182,237 @@ fn routeKindName(kind: RequestRouteKind) []const u8 {
         .smart_http => "smart_http",
         .unknown => "unknown",
     };
+}
+
+fn writeLegacyLogEvent(
+    self: *const RequestObs,
+    writer: *std.Io.Writer,
+    ended_at_ms: i64,
+    duration_ms: i64,
+    outcome: []const u8,
+    status_code: u16,
+    data_json: []const u8,
+) !void {
+    try writeAll(writer, "{\"id\":\"");
+    try writeAll(writer, std.fmt.bytesToHex(self.event_id, .lower)[0..]);
+    try writeAll(writer, "\",\"type\":\"request\",\"service\":\"gs\",\"request_id\":\"");
+    try writeEscaped(writer, self.request_id);
+    try writeAll(writer, "\",\"is_request_root\":");
+    try writeAll(writer, if (self.is_request_root) "true" else "false");
+    try writeAll(writer, ",\"started_at\":\"");
+    try writeIsoFromMs(writer, self.started_at_ms);
+    try writeAll(writer, "\",\"ended_at\":\"");
+    try writeIsoFromMs(writer, ended_at_ms);
+    try writeAll(writer, "\",\"duration_ms\":");
+    try writer.print("{d}", .{duration_ms});
+    try writeAll(writer, ",\"outcome\":\"");
+    try writeAll(writer, outcome);
+    try writeAll(writer, "\",\"status_code\":");
+    try writer.print("{d}", .{status_code});
+    try writeAll(writer, ",\"data\":");
+    try writeAll(writer, data_json);
+    try writeAll(writer, "}\n");
+}
+
+fn writeDataObject(self: *const RequestObs, writer: *std.Io.Writer) !void {
+    try writeAll(writer, "{");
+
+    try writeAll(writer, "\"request\":{");
+    var first_field = true;
+    try writeJsonFieldAuto(writer, &first_field, "method", self.method);
+    try writeJsonFieldAuto(writer, &first_field, "path", self.path);
+    try writeJsonOptionalFieldAuto(writer, &first_field, "host", self.host);
+    try writeJsonFieldAuto(writer, &first_field, "scheme", self.scheme);
+    try writeAll(writer, "},");
+
+    try writeAll(writer, "\"client\":{");
+    first_field = true;
+    try writeJsonOptionalFieldAuto(writer, &first_field, "ip", self.client_ip);
+    try writeJsonOptionalFieldAuto(writer, &first_field, "user_agent", self.user_agent);
+    try writeAll(writer, "},");
+
+    try writeAll(writer, "\"http\":{");
+    first_field = true;
+    try writeJsonOptionalFieldAuto(writer, &first_field, "origin", self.origin);
+    try writeJsonOptionalFieldAuto(writer, &first_field, "referer", self.referer);
+    try writeJsonOptionalFieldAuto(writer, &first_field, "content_type", self.request_content_type);
+    try writeAll(writer, "}");
+
+    if (self.route_kind != .unknown or self.route_resource != null) {
+        try writeAll(writer, ",\"route\":{");
+        first_field = true;
+        if (collectorRouteName(self)) |route_name| {
+            try writeJsonFieldAuto(writer, &first_field, "name", route_name);
+        }
+        try writeJsonFieldAuto(writer, &first_field, "kind", routeKindName(self.route_kind));
+        try writeJsonOptionalFieldAuto(writer, &first_field, "resource", self.route_resource);
+        try writeAll(writer, "}");
+    }
+
+    if (self.repo_id != null or self.storage_backend != null) {
+        try writeAll(writer, ",\"repo\":{");
+        first_field = true;
+        try writeJsonOptionalFieldAuto(writer, &first_field, "id", self.repo_id);
+        try writeJsonOptionalFieldAuto(writer, &first_field, "storage_backend", self.storage_backend);
+        try writeAll(writer, "}");
+    }
+
+    if (self.git_service != null) {
+        try writeAll(writer, ",\"git\":{");
+        first_field = true;
+        try writeJsonOptionalFieldAuto(writer, &first_field, "service", self.git_service);
+        try writeAll(writer, "}");
+    }
+
+    if (self.auth_required_access != null or self.auth_outcome != null or self.auth_subject != null) {
+        try writeAll(writer, ",\"auth\":{");
+        first_field = true;
+        try writeJsonOptionalFieldAuto(writer, &first_field, "required_access", self.auth_required_access);
+        try writeJsonOptionalFieldAuto(writer, &first_field, "outcome", self.auth_outcome);
+        try writeJsonOptionalFieldAuto(writer, &first_field, "subject", self.auth_subject);
+        try writeAll(writer, "}");
+    }
+
+    if (self.response_content_type != null) {
+        try writeAll(writer, ",\"response\":{");
+        first_field = true;
+        try writeJsonOptionalFieldAuto(writer, &first_field, "content_type", self.response_content_type);
+        try writeAll(writer, "}");
+    }
+
+    if (self.error_name != null or self.error_message != null) {
+        try writeAll(writer, ",\"error\":{");
+        first_field = true;
+        try writeJsonOptionalFieldAuto(writer, &first_field, "name", self.error_name);
+        try writeJsonOptionalFieldAuto(writer, &first_field, "message", self.error_message);
+        try writeAll(writer, "}");
+    }
+
+    try writeAll(writer, "}");
+}
+
+fn loadCollectorSinkConfig(allocator: std.mem.Allocator) !?CollectorSinkConfig {
+    const sink_mode = optionalEnv("OBS_SINK_MODE") orelse return null;
+    if (!std.ascii.eqlIgnoreCase(sink_mode, "collector")) return null;
+
+    const base_url = optionalEnv("WIDE_EVENTS_COLLECTOR_URL") orelse return error.MissingCollectorUrl;
+    const endpoint = if (std.mem.endsWith(u8, base_url, "/v1/events"))
+        try allocator.dupe(u8, base_url)
+    else
+        try std.fmt.allocPrint(allocator, "{s}/v1/events", .{trimTrailingSlashes(base_url)});
+    errdefer allocator.free(endpoint);
+
+    const auth_header = if (optionalEnv("OBS_AUTH_TOKEN")) |token|
+        try std.fmt.allocPrint(allocator, "Bearer {s}", .{token})
+    else
+        null;
+
+    return .{
+        .endpoint = endpoint,
+        .auth_header = auth_header,
+    };
+}
+
+fn sendCollectorEvent(
+    self: *const RequestObs,
+    io: std.Io,
+    config: *const CollectorSinkConfig,
+    ended_at_ms: i64,
+    duration_ms: i64,
+    outcome: []const u8,
+    status_code: u16,
+    data_json: []const u8,
+) !void {
+    var payload_out: std.Io.Writer.Allocating = .init(self.allocator);
+    defer payload_out.deinit();
+
+    try writeAll(&payload_out.writer, "{\"sent_at\":\"");
+    try writeIsoFromMs(&payload_out.writer, ended_at_ms);
+    try writeAll(&payload_out.writer, "\",\"source\":{\"service\":\"gs\"},\"events\":[{");
+    try writeAll(&payload_out.writer, "\"event_id\":\"");
+    try writeAll(&payload_out.writer, std.fmt.bytesToHex(self.event_id, .lower)[0..]);
+    try writeAll(&payload_out.writer, "\",\"request_id\":\"");
+    try writeEscaped(&payload_out.writer, self.request_id);
+    try writeAll(&payload_out.writer, "\",\"is_request_root\":");
+    try writeAll(&payload_out.writer, if (self.is_request_root) "true" else "false");
+    try writeAll(&payload_out.writer, ",\"service\":\"gs\",\"kind\":\"request\",\"ts\":\"");
+    try writeIsoFromMs(&payload_out.writer, self.started_at_ms);
+    try writeAll(&payload_out.writer, "\",\"ended_at\":\"");
+    try writeIsoFromMs(&payload_out.writer, ended_at_ms);
+    try writeAll(&payload_out.writer, "\",\"duration_ms\":");
+    try payload_out.writer.print("{d}", .{duration_ms});
+    try writeAll(&payload_out.writer, ",\"outcome\":\"");
+    try writeAll(&payload_out.writer, outcome);
+    try writeAll(&payload_out.writer, "\",\"status_code\":");
+    try payload_out.writer.print("{d}", .{status_code});
+    if (collectorRouteName(self)) |route_name| {
+        try writeAll(&payload_out.writer, ",\"route_name\":\"");
+        try writeEscaped(&payload_out.writer, route_name);
+        try writeAll(&payload_out.writer, "\"");
+    }
+    if (self.error_name) |error_name| {
+        try writeAll(&payload_out.writer, ",\"error_name\":\"");
+        try writeEscaped(&payload_out.writer, error_name);
+        try writeAll(&payload_out.writer, "\"");
+    }
+    if (self.error_message) |error_message| {
+        try writeAll(&payload_out.writer, ",\"error_message\":\"");
+        try writeEscaped(&payload_out.writer, error_message);
+        try writeAll(&payload_out.writer, "\"");
+    }
+    try writeAll(&payload_out.writer, ",\"data\":");
+    try writeAll(&payload_out.writer, data_json);
+    try writeAll(&payload_out.writer, "}]}\n");
+
+    var client: std.http.Client = .{
+        .allocator = self.allocator,
+        .io = io,
+    };
+    defer client.deinit();
+
+    var response_body: std.Io.Writer.Allocating = .init(self.allocator);
+    defer response_body.deinit();
+
+    const result = try client.fetch(.{
+        .location = .{ .url = config.endpoint },
+        .method = .POST,
+        .payload = payload_out.written(),
+        .response_writer = &response_body.writer,
+        .headers = .{
+            .content_type = .{ .override = "application/json" },
+            .authorization = if (config.auth_header) |value| .{ .override = value } else .omit,
+        },
+        .keep_alive = false,
+    });
+
+    if (result.status.class() != .success) {
+        std.debug.print("[obs] collector rejected status={d} body={s}\n", .{
+            @intFromEnum(result.status),
+            response_body.written(),
+        });
+        return error.CollectorRejected;
+    }
+}
+
+fn collectorRouteName(self: *const RequestObs) ?[]const u8 {
+    if (self.route_resource) |route_resource| return route_resource;
+    return if (self.route_kind == .unknown) null else routeKindName(self.route_kind);
+}
+
+fn optionalEnv(name: []const u8) ?[]const u8 {
+    var buf: [128]u8 = undefined;
+    const c_name = std.fmt.bufPrintZ(&buf, "{s}", .{name}) catch return null;
+    const value = std.c.getenv(c_name) orelse return null;
+    const span = std.mem.span(value);
+    return if (span.len == 0) null else span;
+}
+
+fn trimTrailingSlashes(value: []const u8) []const u8 {
+    var end = value.len;
+    while (end > 0 and value[end - 1] == '/') {
+        end -= 1;
+    }
+    return value[0..end];
 }
 
 fn writeAll(writer: *std.Io.Writer, bytes: []const u8) !void {
