@@ -12,6 +12,11 @@ const testConfig: AppConfig = {
     publicUrl: "http://git-server.test",
     defaultOwner: "redc",
     defaultBranch: "main",
+    controlPlane: {
+      baseUrl: "http://git-server.test",
+      username: "admin",
+      password: "admin",
+    },
   },
   repos: [],
   artifacts: {
@@ -109,13 +114,6 @@ describe("App integration", () => {
     const secondListResponse = await second.app.fetch(new Request("http://localhost/api/repos"));
     expect(secondListResponse.status).toBe(200);
     expect(await secondListResponse.json()).toEqual(["redc/dashboard-demo"]);
-
-    const repo = await second.repositoryProvider.getRepo?.("redc", "dashboard-demo");
-    expect(repo).not.toBeNull();
-    expect(repo).toMatchObject({
-      full_name: "redc/dashboard-demo",
-      default_branch: "main",
-    });
 
     second.db.close();
   });

@@ -16,7 +16,6 @@ import {
   RepoQueries,
   SessionQueries,
 } from "./db/queries";
-import { GitStorageRepositoryProvider } from "./repo/git-storage-provider";
 import { GitServerHttpRepositoryProvider } from "./repo/git-server-http-provider";
 import { LocalGitProvider } from "./repo/local-git-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
@@ -43,7 +42,6 @@ import {
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
-import { GitSdk } from "../gs/src/core/git-sdk";
 import type { RepoVisibility } from "./types";
 
 export interface AppConfig {
@@ -54,13 +52,12 @@ export interface AppConfig {
         kind: "local_git";
         reposRoot: string;
       }
-    | {
+      | {
         kind: "git_storage";
         publicUrl: string;
         defaultOwner: string;
         defaultBranch: string;
-        authTokenSecret?: string;
-        controlPlane?: {
+        controlPlane: {
           baseUrl: string;
           username?: string;
           password?: string;
@@ -112,18 +109,15 @@ function loadConfig(): AppConfig {
           publicUrl: process.env.GIT_STORAGE_PUBLIC_URL ?? "http://git-server:8080",
           defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
           defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
-          authTokenSecret: process.env.GIT_STORAGE_AUTH_TOKEN_SECRET,
-          controlPlane: process.env.GIT_STORAGE_CONTROL_PLANE_ENABLED === "1"
-            ? {
-                baseUrl: process.env.GIT_STORAGE_CONTROL_PLANE_URL
-                  ?? process.env.GIT_STORAGE_PUBLIC_URL
-                  ?? "http://git-server:8080",
-                username: process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME
-                  ?? process.env.GIT_SERVER_ADMIN_USERNAME,
-                password: process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD
-                  ?? process.env.GIT_SERVER_ADMIN_PASSWORD,
-              }
-            : undefined,
+          controlPlane: {
+            baseUrl: process.env.GIT_STORAGE_CONTROL_PLANE_URL
+              ?? process.env.GIT_STORAGE_PUBLIC_URL
+              ?? "http://git-server:8080",
+            username: process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME
+              ?? process.env.GIT_SERVER_ADMIN_USERNAME,
+            password: process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD
+              ?? process.env.GIT_SERVER_ADMIN_PASSWORD,
+          },
         },
     repos: configuredRepos,
     artifacts: {
@@ -154,25 +148,11 @@ export function createApp(config: AppConfig) {
   const repositoryProvider: RepositoryProvider =
     config.repoBackend.kind === "local_git"
       ? new LocalGitProvider({ reposRoot: config.repoBackend.reposRoot })
-      : config.repoBackend.controlPlane
-        ? new GitServerHttpRepositoryProvider({
-            baseUrl: config.repoBackend.controlPlane.baseUrl,
-            username: config.repoBackend.controlPlane.username,
-            password: config.repoBackend.controlPlane.password,
-          })
-        : new GitStorageRepositoryProvider({
-            storage: new GitSdk({
-              publicUrl: config.repoBackend.publicUrl,
-              defaultOwner: config.repoBackend.defaultOwner,
-              authTokenSecret: config.repoBackend.authTokenSecret,
-            }),
-            repoCatalog: {
-              listRepos: async () => repos.list(),
-              getRepo: async (owner: string, repo: string) =>
-                repos.getByFullName(`${owner}/${repo}`),
-            },
-            defaultBranch: config.repoBackend.defaultBranch,
-          });
+      : new GitServerHttpRepositoryProvider({
+          baseUrl: config.repoBackend.controlPlane.baseUrl,
+          username: config.repoBackend.controlPlane.username,
+          password: config.repoBackend.controlPlane.password,
+        });
   const stateMachine = new ChangeStateMachine(changes, events);
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
