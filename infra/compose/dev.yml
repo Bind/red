@@ -192,7 +192,6 @@ services:
       REDC_PORT: 3000
       REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
       REDC_REPOS: ${REDC_REPOS:-redc/redc}
-      REPO_PROVIDER: ${REPO_PROVIDER:-git_storage}
       GIT_STORAGE_PUBLIC_URL: ${GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}
       GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-redc}
       GIT_STORAGE_CONTROL_PLANE_URL: ${GIT_STORAGE_CONTROL_PLANE_URL:-http://git-server:8080}

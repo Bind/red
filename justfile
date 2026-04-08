@@ -104,10 +104,6 @@ verify: lint typecheck test
 hooks-install:
     ./scripts/install-githooks.sh
 
-# Run the git server/manual SDK CLI
-git-server-manual *args:
-    cd apps/gs && bun src/manual/cli.ts {{args}}
-
 # Run tests for the git server package
 git-server-test:
     cd apps/gs && bun test
@@ -139,10 +135,6 @@ git-server-zig-check:
     find src -name '*.zig' -print | xargs "$zig_bin" fmt build.zig
     "$zig_bin" build test
     "$zig_bin" build server-only -Doptimize=ReleaseFast
-
-# Run the live git-backed integration harness
-git-server-integration:
-    cd apps/gs && bun src/manual/cli.ts integration
 
 # Run the full native Zig git-server integration suite
 gs-integration:

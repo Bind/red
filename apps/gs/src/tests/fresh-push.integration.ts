@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand, runCommandWithRetry } from "../core/dev-stack";
-import { GitSdk } from "../core/git-sdk";
+import { buildRemoteUrl } from "./http-test-helpers";
 
 describe("native smart-http integration", () => {
   test("accepts the first push into a freshly created repo", async () => {
@@ -13,23 +13,8 @@ describe("native smart-http integration", () => {
     const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-fresh-push-"));
 
     try {
-      const store = new GitSdk({
-        publicUrl: server.publicUrl,
-        defaultOwner: "redc",
-        authTokenSecret: server.authTokenSecret,
-      });
-
-      const repo = await store.createRepo({
-        owner: "redc",
-        name: `fresh-push-${runId}`,
-        defaultBranch: "main",
-        visibility: "private",
-      });
-      const remote = await repo.getRemoteUrl({
-        actorId: "fresh-push-test",
-        ttlSeconds: 300,
-        access: "write",
-      });
+      const repoId = `redc/fresh-push-${runId}`;
+      const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "fresh-push-test", "write");
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "fresh push"], { cwd: repoDir });
@@ -42,8 +27,8 @@ describe("native smart-http integration", () => {
 
       await runCommandWithRetry("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
 
-      const mainRef = await repo.resolveRef("refs/heads/main");
-      expect(mainRef).not.toBeNull();
+      const mainRef = await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"]);
+      expect(mainRef.stdout.length).toBe(40);
 
       const lsRemote = await runCommandWithRetry("git", ["ls-remote", remote.fetchUrl]);
       expect(lsRemote.stdout).toContain("refs/heads/main");

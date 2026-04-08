@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand } from "../core/dev-stack";
-import { GitSdk } from "../core/git-sdk";
+import { buildRemoteUrl } from "./http-test-helpers";
 
 interface CompareResponse {
   base: string;
@@ -27,25 +27,9 @@ describe("git server compare integration", () => {
     const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-compare-"));
 
     try {
-      const store = new GitSdk({
-        publicUrl: server.publicUrl,
-        defaultOwner: "redc",
-        authTokenSecret: server.authTokenSecret,
-      });
-
-      const repo = await store.createRepo({
-        owner: "redc",
-        name: `compare-repo-${runId}`,
-        defaultBranch: "main",
-        visibility: "private",
-      });
-      const repoInfo = await repo.info();
-
-      const remote = await repo.getRemoteUrl({
-        actorId: "compare-test",
-        ttlSeconds: 300,
-        access: "write",
-      });
+      const repoName = `compare-repo-${runId}`;
+      const repoId = `redc/${repoName}`;
+      const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "compare-test", "write");
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "compare test"], { cwd: repoDir });
@@ -57,8 +41,7 @@ describe("git server compare integration", () => {
       await runCommand("git", ["remote", "add", "origin", remote.pushUrl], { cwd: repoDir });
       await runCommand("git", ["push", "-u", "origin", "main"], { cwd: repoDir });
 
-      const mainRef = await repo.resolveRef("refs/heads/main");
-      expect(mainRef).not.toBeNull();
+      const mainRef = (await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"])).stdout;
 
       await runCommand("git", ["checkout", "-b", "feature/nested-diff"], { cwd: repoDir });
       await mkdir(join(repoDir, "src"), { recursive: true });
@@ -69,12 +52,11 @@ describe("git server compare integration", () => {
       await runCommand("git", ["commit", "-m", "add nested files"], { cwd: repoDir });
       await runCommand("git", ["push", "origin", "HEAD:refs/heads/feature/nested-diff"], { cwd: repoDir });
 
-      const featureRef = await repo.resolveRef("refs/heads/feature/nested-diff");
-      expect(featureRef).not.toBeNull();
+      const featureRef = (await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"])).stdout;
 
-      const compareUrl = new URL(`/api/repos/${repoInfo.owner}/${repoInfo.name}/compare`, server.publicUrl);
-      compareUrl.searchParams.set("base", mainRef!.sha);
-      compareUrl.searchParams.set("head", featureRef!.sha);
+      const compareUrl = new URL(`/api/repos/redc/${repoName}/compare`, server.publicUrl);
+      compareUrl.searchParams.set("base", mainRef);
+      compareUrl.searchParams.set("head", featureRef);
 
       const response = await fetch(compareUrl, {
         headers: {
@@ -86,8 +68,8 @@ describe("git server compare integration", () => {
       const result = await response.json() as CompareResponse;
       const filenames = result.files.map((file) => file.filename).sort();
 
-      expect(result.base).toBe(mainRef!.sha);
-      expect(result.head).toBe(featureRef!.sha);
+      expect(result.base).toBe(mainRef);
+      expect(result.head).toBe(featureRef);
       expect(result.files_changed).toBe(2);
       expect(filenames).toEqual(["docs/guide.md", "src/feature.ts"]);
       expect(result.files.every((file) => !file.filename.includes("\n"))).toBe(true);

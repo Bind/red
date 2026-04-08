@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "manual": "bun run src/manual/cli.ts",
     "test": "bun test",
     "test:integration": "bun test ./src/tests/*.integration.ts"
   },

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand } from "../core/dev-stack";
-import { GitSdk } from "../core/git-sdk";
+import { buildRemoteUrl } from "./http-test-helpers";
 
 describe("git-sdk auth integration", () => {
   test("allows clone with read credentials and rejects push with read-only credentials", async () => {
@@ -14,27 +14,9 @@ describe("git-sdk auth integration", () => {
     const readerCloneDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-read-"));
 
     try {
-      const store = new GitSdk({
-        publicUrl: server.publicUrl,
-        defaultOwner: "redc",
-        authTokenSecret: server.authTokenSecret,
-      });
-
-      const repo = await store.createRepo({
-        owner: "redc",
-        name: `auth-repo-${runId}`,
-        defaultBranch: "main",
-        visibility: "private",
-      });
-
-      const writeRemote = await repo.getRemoteUrl({
-        actorId: "auth-test",
-        access: "write",
-      });
-      const readRemote = await repo.getRemoteUrl({
-        actorId: "auth-test",
-        access: "read",
-      });
+      const repoId = `redc/auth-repo-${runId}`;
+      const writeRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "write");
+      const readRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "read");
 
       await runCommand("git", ["init"], { cwd: writerDir });
       await runCommand("git", ["config", "user.name", "auth test"], { cwd: writerDir });
@@ -61,7 +43,8 @@ describe("git-sdk auth integration", () => {
       }
 
       expect(pushError).not.toBeNull();
-      expect(await repo.resolveRef("refs/heads/read-only-fail")).toBeNull();
+      const remoteBranch = await runCommand("git", ["ls-remote", writeRemote.fetchUrl, "refs/heads/read-only-fail"]);
+      expect(remoteBranch.stdout).toBe("");
     } finally {
       await rm(writerDir, { recursive: true, force: true });
       await rm(readerCloneDir, { recursive: true, force: true });

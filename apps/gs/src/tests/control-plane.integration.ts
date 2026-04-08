@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand, runCommandWithRetry, type StartedDevGitServer } from "../core/dev-stack";
-import { GitSdk } from "../core/git-sdk";
-import { fetchJson } from "./http-test-helpers";
+import { buildRemoteUrl, fetchJson } from "./http-test-helpers";
 
 interface RepoPayload {
   id: string;
@@ -55,23 +54,12 @@ interface ComparePayload {
 }
 
 async function createRepoWithHistory(server: StartedDevGitServer, repoName: string) {
-  const store = new GitSdk({
-    publicUrl: server.publicUrl,
-    defaultOwner: "redc",
-    authTokenSecret: server.authTokenSecret,
-  });
-  const repo = await store.createRepo({
+  const repoInfo = {
+    id: `redc/${repoName}`,
     owner: "redc",
     name: repoName,
-    defaultBranch: "main",
-    visibility: "private",
-  });
-  const repoInfo = await repo.info();
-  const remote = await repo.getRemoteUrl({
-    actorId: "control-plane-test",
-    ttlSeconds: 300,
-    access: "write",
-  });
+  };
+  const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoInfo.id, "control-plane-test", "write");
 
   const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-control-plane-"));
 
@@ -94,14 +82,14 @@ async function createRepoWithHistory(server: StartedDevGitServer, repoName: stri
   await runCommand("git", ["commit", "-m", "add nested control plane files"], { cwd: repoDir });
   await runCommandWithRetry("git", ["push", "origin", "HEAD:refs/heads/feature/native-control-plane"], { cwd: repoDir });
 
-  const mainRef = await repo.resolveRef("refs/heads/main");
-  const featureRef = await repo.resolveRef("refs/heads/feature/native-control-plane");
-  if (!mainRef || !featureRef) {
-    throw new Error("expected pushed refs to resolve");
-  }
+  const mainRef = {
+    sha: (await runCommand("git", ["-C", repoDir, "rev-parse", "main"])).stdout,
+  };
+  const featureRef = {
+    sha: (await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"])).stdout,
+  };
 
   return {
-    repo,
     repoInfo,
     repoDir,
     mainRef,

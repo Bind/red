@@ -48,18 +48,6 @@ export interface CommitAuthor {
   email: string;
 }
 
-export interface CreateCommitOptions {
-  branch: string;
-  message: string;
-  author: CommitAuthor;
-  parentSha?: string;
-}
-
-export interface CreateCommitResult {
-  commitSha: string;
-  branch: string;
-}
-
 export interface CommitDiffRange {
   baseRef: string;
   headRef: string;
@@ -84,13 +72,6 @@ export interface CommitDiffResult {
   patch?: string;
 }
 
-export interface RefInfo {
-  name: string;
-  sha: string;
-  message?: string;
-  timestamp?: string;
-}
-
 export interface CommitInfo {
   sha: string;
   message: string;
@@ -99,36 +80,24 @@ export interface CommitInfo {
   timestamp?: string;
 }
 
-export interface ListFilesResult {
-  paths: string[];
-}
-
-export interface CommitBuilder {
-  put(path: string, content: string): CommitBuilder;
-  delete(path: string): CommitBuilder;
-  send(): Promise<CreateCommitResult>;
-}
-
 export interface Repo {
   info(): Promise<RepoInfo>;
   getRemoteUrl(options: RemoteUrlOptions): Promise<RemoteUrlResult>;
-  createCommit(options: CreateCommitOptions): CommitBuilder;
   getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult>;
   readTextFile(options: { ref: string; path: string }): Promise<string | null>;
   listCommits(options?: { ref?: string; limit?: number }): Promise<CommitInfo[]>;
-  listRefs(): Promise<RefInfo[]>;
-  listBranches(): Promise<Array<RefInfo & { protected?: boolean }>>;
-  resolveRef(name: string): Promise<RefInfo | null>;
-  createBranch(name: string, fromSha: string): Promise<RefInfo>;
-  updateBranch(name: string, toSha: string, expectedOldSha?: string): Promise<RefInfo>;
-  listFiles(ref?: string): Promise<ListFilesResult>;
+  listBranches(): Promise<Array<{
+    name: string;
+    sha: string;
+    message?: string;
+    timestamp?: string;
+    protected?: boolean;
+  }>>;
 }
 
 export interface GitStorage {
-  createRepo(options: CreateRepoOptions): Promise<Repo>;
   getRepo(id: string): Promise<Repo | null>;
   getRepoByName(owner: string, name: string): Promise<Repo | null>;
-  listRepos(): Promise<RepoInfo[]>;
 }
 
 export interface ChangeRecord {
@@ -149,7 +118,6 @@ export interface ChangeStore {
 export interface GitStorageAdapter extends GitStorage {
   readonly name: string;
   readonly capabilities: {
-    createCommit: boolean;
     getRemoteUrl: boolean;
     getCommitDiff: boolean;
     ephemeralBranches: boolean;
@@ -164,25 +132,21 @@ export function describeExperimentArchitecture() {
       client: "GitStorage",
       repo: "Repo",
       coreMethods: [
-        "createRepo",
         "getRepo",
         "getRepoByName",
         "getRemoteUrl",
-        "createCommit",
         "getCommitDiff",
         "readTextFile",
-        "listRefs",
         "listBranches",
-        "resolveRef",
+        "listCommits",
       ],
     },
     separation: {
       storage: [
-        "repo lifecycle",
         "git remotes",
-        "direct commits",
-        "ref resolution",
         "diffs",
+        "history reads",
+        "file reads",
       ],
       product: [
         "redc review/change lifecycle",
