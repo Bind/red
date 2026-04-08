@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import {
-  ConsoleJsonSink,
+  createObsSinkFromEnv,
   getEnvelope,
   obsMiddleware,
   type EventEnvelope,
@@ -179,7 +179,7 @@ export function createApp(config: AppConfig) {
   const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
 
   const app = new Hono<{ Variables: { envelope: EventEnvelope } }>();
-  app.use("*", obsMiddleware({ service: "api", sink: new ConsoleJsonSink() }));
+  app.use("*", obsMiddleware({ service: "api", sink: createObsSinkFromEnv({ service: "api" }) }));
 
   // Health check
   app.get("/health", (c) => {
@@ -445,6 +445,21 @@ export function createApp(config: AppConfig) {
     const limit = parseInt(c.req.query("limit") ?? "20", 10);
     const commits = await repositoryProvider.listCommits(owner, repo, ref, limit);
     return c.json(commits);
+  });
+
+  app.get("/api/repos/:owner/:repo/commits/:sha/diff", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!repositoryProvider.getCommitDiff) {
+      return c.json({ error: "Repo provider does not support commit diffs" }, 501);
+    }
+
+    const diff = await repositoryProvider.getCommitDiff(owner, repo, c.req.param("sha"));
+    return c.text(diff);
   });
 
   app.post("/api/repos", async (c) => {

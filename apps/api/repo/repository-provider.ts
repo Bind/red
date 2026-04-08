@@ -8,6 +8,7 @@ export interface RepositoryProvider {
     head: string
   ): Promise<DiffStats>;
   getDiff(owner: string, repo: string, base: string, head: string): Promise<string>;
+  getCommitDiff?(owner: string, repo: string, sha: string): Promise<string>;
   getFileContent(
     owner: string,
     repo: string,

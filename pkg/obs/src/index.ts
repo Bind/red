@@ -14,4 +14,19 @@ export {
   type ObsPrimitive,
   type ObsValue,
 } from "./core";
+export {
+  createObsSinkFromEnv,
+  FileNdjsonSink,
+  HttpBatchSink,
+  toCollectorWideEvent,
+  type CollectorBatchRequest,
+  type CollectorBatchResponse,
+  type CollectorSinkEnvOptions,
+  type CollectorRejectedEvent,
+  type CollectorSource,
+  type CollectorWideEvent,
+  type FileNdjsonSinkOptions,
+  type FlushableEventSink,
+  type HttpBatchSinkOptions,
+} from "./collector";
 export { getEnvelope, obsMiddleware, type ObsMiddlewareOptions } from "./hono";

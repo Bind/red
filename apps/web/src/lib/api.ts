@@ -461,6 +461,12 @@ export async function fetchHostedRepoSnapshot(): Promise<HostedRepoSnapshot> {
   };
 }
 
+export async function fetchHostedRepoCommitDiff(sha: string): Promise<string> {
+  const res = await fetch(`/rpc/app/hosted-repo/commits/${encodeURIComponent(sha)}/diff`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.text();
+}
+
 export async function createRepo(input: CreateRepoInput): Promise<RepoSummary> {
   try {
     const payload = await requestJson<unknown>("/rpc/repos", {

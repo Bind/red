@@ -42,6 +42,11 @@ export class LocalGitProvider implements RepositoryProvider {
     return this.runGit(repoPath, ["diff", "--find-renames", `${base}...${head}`]);
   }
 
+  async getCommitDiff(owner: string, repo: string, sha: string): Promise<string> {
+    const repoPath = this.resolveRepoPath(owner, repo);
+    return this.runGit(repoPath, ["show", "--format=medium", "--find-renames", "--patch", sha]);
+  }
+
   async getFileContent(
     owner: string,
     repo: string,

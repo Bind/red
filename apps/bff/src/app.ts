@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import {
   collectHealthReport,
-  ConsoleJsonSink,
+  createObsSinkFromEnv,
   getEnvelope,
   obsMiddleware,
 } from "@redc/obs";
 import {
   createHostedRepoReader,
+  splitHostedRepoId,
   type HostedRepoConfig,
   type HostedRepoReader,
 } from "./hosted-repo";
@@ -205,7 +206,7 @@ export function createApp(config: BffConfig) {
     config.hostedRepoReader
     ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
-  app.use("*", obsMiddleware({ service: "bff", sink: new ConsoleJsonSink() }));
+  app.use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }));
 
   app.get("/health", async (c) => {
     const envelope = getEnvelope(c);
@@ -311,6 +312,25 @@ export function createApp(config: BffConfig) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
       return c.json(await hostedRepoReader.readSnapshot());
+    })
+    .get("/app/hosted-repo/commits/:sha/diff", async (c) => {
+      if (!config.hostedRepo) {
+        return c.json({ error: "Hosted repo app is not configured" }, 404);
+      }
+      const { owner, name } = splitHostedRepoId(config.hostedRepo.repoId);
+      const sha = encodeURIComponent(c.req.param("sha"));
+      const response = await fetchImpl(
+        new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
+      );
+      if (!response.ok) {
+        return c.text(await response.text().catch(() => "Unable to load commit diff"), response.status as any);
+      }
+      return c.newResponse(response.body, {
+        status: response.status,
+        headers: {
+          "content-type": response.headers.get("content-type") ?? "text/plain; charset=utf-8",
+        },
+      });
     })
     .get("/velocity", (c) => {
       const query = new URLSearchParams();

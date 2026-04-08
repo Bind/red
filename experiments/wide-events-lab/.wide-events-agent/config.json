@@ -1,0 +1,25 @@
+{
+  "duckdb": {
+    "path": "/Users/db/workspace/redc/experiments/wide-events-lab/.wide-events-agent/agent.duckdb"
+  },
+  "s3": {
+    "endpoint": "http://127.0.0.1:9000",
+    "region": "us-east-1",
+    "access_key_id": "minioadmin",
+    "secret_access_key": "minioadmin",
+    "raw_bucket": "wide-events-raw",
+    "raw_prefix": "raw/",
+    "rollup_bucket": "wide-events-rollup",
+    "rollup_prefix": "rollup/",
+    "use_ssl": false,
+    "url_style": "path"
+  },
+  "cache": {
+    "dir": "/Users/db/workspace/redc/experiments/wide-events-lab/.wide-events-agent/cache",
+    "materialized_dir": "/Users/db/workspace/redc/experiments/wide-events-lab/.wide-events-agent/materialized"
+  },
+  "refresh": {
+    "rollup_scan_interval_seconds": 30,
+    "incomplete_request_grace_seconds": 60
+  }
+}

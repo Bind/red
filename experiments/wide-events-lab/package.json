@@ -1,0 +1,22 @@
+{
+  "name": "@redc/wide-events-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "replay": "bun run src/replay.ts",
+    "test": "bun test",
+    "lint": "biome check src",
+    "format": "biome format --write src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.12.10"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}

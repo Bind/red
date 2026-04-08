@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,9 +57,10 @@ function CommitList({ commits }: { commits: HostedRepoCommit[] }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60">
       {commits.map((commit) => (
-        <div
+        <Link
+          to={`/hosted-repo/commits/${commit.sha}`}
           key={commit.sha}
-          className="grid gap-2 border-t border-border/60 bg-card/30 px-4 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_132px_56px] md:items-center"
+          className="grid gap-2 border-t border-border/60 bg-card/30 px-4 py-2.5 transition-colors first:border-t-0 hover:bg-card/60 focus-visible:bg-card/60 focus-visible:outline-none md:grid-cols-[minmax(0,1fr)_132px] md:items-center"
         >
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -75,10 +77,7 @@ function CommitList({ commits }: { commits: HostedRepoCommit[] }) {
             <div className="font-mono">{formatTimestamp(commit.timestamp)}</div>
             <div>{timeAgo(commit.timestamp)}</div>
           </div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground md:text-right">
-            commit
-          </div>
-        </div>
+        </Link>
       ))}
     </div>
   );

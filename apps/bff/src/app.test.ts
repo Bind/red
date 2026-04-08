@@ -66,7 +66,17 @@ describe("BFF app", () => {
             headers: { "Content-Type": "text/plain; charset=utf-8" },
           });
         }
+        if (url.pathname === "/api/repos/redc/redc/commits/abc123/diff") {
+          return new Response("diff --git a/src/app.ts b/src/app.ts\n", {
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          });
+        }
         return new Response("not found", { status: 404 });
+      },
+      hostedRepo: {
+        repoId: "redc/redc",
+        apiBaseUrl: "http://api.test",
+        readmePath: "README.md",
       },
     });
 
@@ -77,6 +87,10 @@ describe("BFF app", () => {
     const diff = await app.request("http://bff.test/rpc/changes/42/diff");
     expect(diff.status).toBe(200);
     expect(await diff.text()).toContain("diff --git");
+
+    const commitDiff = await app.request("http://bff.test/rpc/app/hosted-repo/commits/abc123/diff");
+    expect(commitDiff.status).toBe(200);
+    expect(await commitDiff.text()).toContain("diff --git");
   });
 
   test("exposes the auth session through /rpc/me", async () => {

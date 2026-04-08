@@ -26,14 +26,62 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
       GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-git-server-repos}
+      WIDE_EVENTS_RAW_BUCKET: ${WIDE_EVENTS_RAW_BUCKET:-wide-events-raw}
+      WIDE_EVENTS_ROLLUP_BUCKET: ${WIDE_EVENTS_ROLLUP_BUCKET:-wide-events-rollup}
     entrypoint: >
       /bin/sh -c '
       until mc alias set local http://$$MINIO_ENDPOINT:$$MINIO_PORT "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"; do
         sleep 1;
       done &&
       mc mb --ignore-existing local/$$MINIO_BUCKET &&
-      mc mb --ignore-existing local/$$GIT_SERVER_S3_BUCKET
+      mc mb --ignore-existing local/$$GIT_SERVER_S3_BUCKET &&
+      mc mb --ignore-existing local/$$WIDE_EVENTS_RAW_BUCKET &&
+      mc mb --ignore-existing local/$$WIDE_EVENTS_ROLLUP_BUCKET
       '
+
+  wide-events:
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - minio-init
+    working_dir: /app/apps/wide-events
+    environment:
+      WIDE_EVENTS_LAB_HOST: 0.0.0.0
+      WIDE_EVENTS_LAB_PORT: 4090
+      WIDE_EVENTS_STORAGE_BACKEND: ${WIDE_EVENTS_STORAGE_BACKEND:-minio}
+      WIDE_EVENTS_LAB_SWEEP_INTERVAL_MS: ${WIDE_EVENTS_LAB_SWEEP_INTERVAL_MS:-5000}
+      WIDE_EVENTS_LAB_INCOMPLETE_GRACE_MS: ${WIDE_EVENTS_LAB_INCOMPLETE_GRACE_MS:-60000}
+      WIDE_EVENTS_LAB_REPLAY_WINDOW_MS: ${WIDE_EVENTS_LAB_REPLAY_WINDOW_MS:-600000}
+      WIDE_EVENTS_S3_ENDPOINT: ${WIDE_EVENTS_S3_ENDPOINT:-http://minio:9000}
+      WIDE_EVENTS_S3_REGION: ${WIDE_EVENTS_S3_REGION:-us-east-1}
+      WIDE_EVENTS_S3_ACCESS_KEY_ID: ${WIDE_EVENTS_S3_ACCESS_KEY_ID:-minioadmin}
+      WIDE_EVENTS_S3_SECRET_ACCESS_KEY: ${WIDE_EVENTS_S3_SECRET_ACCESS_KEY:-minioadmin}
+      WIDE_EVENTS_RAW_BUCKET: ${WIDE_EVENTS_RAW_BUCKET:-wide-events-raw}
+      WIDE_EVENTS_RAW_PREFIX: ${WIDE_EVENTS_RAW_PREFIX:-raw}
+      WIDE_EVENTS_ROLLUP_BUCKET: ${WIDE_EVENTS_ROLLUP_BUCKET:-wide-events-rollup}
+      WIDE_EVENTS_ROLLUP_PREFIX: ${WIDE_EVENTS_ROLLUP_PREFIX:-rollup}
+    ports:
+      - "${WIDE_EVENTS_PORT:-4090}:4090"
+    command: >
+      sh -lc "cd /app &&
+      bun install --frozen-lockfile &&
+      cd /app/apps/wide-events &&
+      bun run --watch src/index.ts"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:4090/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   git-server:
     build:
@@ -81,6 +129,8 @@ services:
     depends_on:
       auth-db:
         condition: service_healthy
+      wide-events:
+        condition: service_healthy
     working_dir: /app/apps/auth
     environment:
       AUTH_LAB_HOST: 0.0.0.0
@@ -100,6 +150,8 @@ services:
       AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
       AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
       AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
+      OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
+      WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://wide-events:4090}
     ports:
       - "${AUTH_PORT:-4020}:4020"
     command: >
@@ -130,6 +182,7 @@ services:
     depends_on:
       - minio
       - git-server
+      - wide-events
     env_file:
       - ../../.env
     environment:
@@ -159,6 +212,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
       MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
+      OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
+      WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://wide-events:4090}
     ports:
       - "3000:3000"
     working_dir: /app
@@ -181,6 +236,7 @@ services:
     depends_on:
       - api
       - auth
+      - wide-events
     working_dir: /app
     environment:
       BFF_PORT: 3001
@@ -194,6 +250,8 @@ services:
       BFF_HOSTED_REPO_TOKEN_REFRESH_WINDOW_SECONDS: ${BFF_HOSTED_REPO_TOKEN_REFRESH_WINDOW_SECONDS:-30}
       BFF_GIT_STORAGE_PUBLIC_URL: ${BFF_GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}
       BFF_GIT_STORAGE_TOKEN_SECRET: ${BFF_GIT_STORAGE_TOKEN_SECRET:-dev-git-server-secret}
+      OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
+      WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://wide-events:4090}
     ports:
       - "3001:3001"
     command: >

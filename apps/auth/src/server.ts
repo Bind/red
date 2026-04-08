@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  ConsoleJsonSink,
   collectHealthReport,
+  createObsSinkFromEnv,
   type EventEnvelope,
   getEnvelope,
   obsMiddleware,
@@ -295,7 +295,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return { revoked: true };
   };
 
-  app.use("*", obsMiddleware({ service: "auth", sink: new ConsoleJsonSink() }));
+  app.use("*", obsMiddleware({ service: "auth", sink: createObsSinkFromEnv({ service: "auth" }) }));
 
   app.onError((error, c) => {
     getEnvelope(c).fail(error);

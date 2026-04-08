@@ -1,6 +1,9 @@
 import type { CommitDiffFile, GitStorage } from "../../gs/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
 import type { BranchInfo, CommitInfo, DiffStats, FileStats, RepoRecord, RepoInfo } from "../types";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export interface GitStorageRepositoryProviderOptions {
   storage: GitStorage;
@@ -36,6 +39,24 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
     const handle = await this.requireRepo(owner, repo);
     const diff = await handle.getCommitDiff({ baseRef: base, headRef: head, includePatch: true });
     return diff.patch ?? "";
+  }
+
+  async getCommitDiff(owner: string, repo: string, sha: string): Promise<string> {
+    const handle = await this.requireRepo(owner, repo);
+    const remote = await handle.getRemoteUrl({ actorId: "api-commit-diff", access: "read" });
+    const worktree = await mkdtemp(join(tmpdir(), "redc-commit-diff-"));
+
+    try {
+      runGit(worktree, ["init"]);
+      runGit(worktree, ["remote", "add", "origin", remote.fetchUrl]);
+      runGit(worktree, ["fetch", "origin", "+refs/heads/*:refs/remotes/origin/*"]);
+      return runGit(worktree, ["show", "--format=medium", "--find-renames", "--patch", sha]);
+    } catch {
+      const diff = await handle.getCommitDiff({ baseRef: sha, headRef: sha, includePatch: true });
+      return diff.patch ?? "";
+    } finally {
+      await rm(worktree, { recursive: true, force: true });
+    }
   }
 
   async getFileContent(
@@ -151,6 +172,18 @@ export class GitStorageRepositoryProvider implements RepositoryProvider {
       visibility: "private",
     });
   }
+}
+
+function runGit(cwd: string, args: string[]): string {
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(Buffer.from(result.stderr).toString("utf8") || `git ${args[0]} failed`);
+  }
+  return Buffer.from(result.stdout).toString("utf8");
 }
 
 function mapRepoRecord(record: RepoRecord): RepoInfo {

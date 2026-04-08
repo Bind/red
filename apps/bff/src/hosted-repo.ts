@@ -80,7 +80,7 @@ interface CommitRecord {
   timestamp: string | null;
 }
 
-function splitRepoId(repoId: string) {
+export function splitHostedRepoId(repoId: string) {
   const [owner, name] = repoId.split("/", 2).map((value) => value.trim());
   if (!owner || !name) {
     throw new Error(`Invalid hosted repo id: ${repoId}`);
@@ -117,7 +117,7 @@ export function createHostedRepoReader(
   config: HostedRepoConfig,
   fetchImpl: FetchImpl = fetch,
 ): HostedRepoReader {
-  const { owner, name } = splitRepoId(config.repoId);
+  const { owner, name } = splitHostedRepoId(config.repoId);
   const repoUrl = new URL(`/api/repos/${owner}/${name}`, config.apiBaseUrl).toString();
   const branchesUrl = new URL(`/api/repos/${owner}/${name}/branches`, config.apiBaseUrl).toString();
   const commitsUrl = new URL(`/api/repos/${owner}/${name}/commits?limit=20`, config.apiBaseUrl).toString();
