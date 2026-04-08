@@ -58,24 +58,24 @@ function CommitList({ commits }: { commits: HostedRepoCommit[] }) {
       {commits.map((commit) => (
         <div
           key={commit.sha}
-          className="grid gap-3 border-t border-border/60 bg-card/30 px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,1fr)_180px_160px]"
+          className="grid gap-2 border-t border-border/60 bg-card/30 px-4 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_132px_56px] md:items-center"
         >
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="truncate text-sm text-foreground">{commit.message || "No message"}</span>
-              <Badge variant="outline" className="font-mono text-[11px]">
+              <Badge variant="outline" className="h-5 px-1.5 font-mono text-[10px] leading-none">
                 {commit.sha.slice(0, 12)}
               </Badge>
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-[11px] leading-4 text-muted-foreground">
               {commit.author_name || commit.author_email || "unknown author"}
             </div>
           </div>
-          <div className="text-xs text-muted-foreground md:self-center">
+          <div className="text-[11px] leading-4 text-muted-foreground md:text-right">
             <div className="font-mono">{formatTimestamp(commit.timestamp)}</div>
             <div>{timeAgo(commit.timestamp)}</div>
           </div>
-          <div className="text-xs text-muted-foreground md:self-center">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground md:text-right">
             commit
           </div>
         </div>
@@ -138,7 +138,6 @@ export function HostedRepoPage() {
         <div className="space-y-5 px-6 py-8 sm:px-8 sm:py-10">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">Hosted repo app</Badge>
-            <Badge variant="outline">BFF-owned read token</Badge>
             <Badge variant="outline">{snapshot.repo.visibility ?? "private"}</Badge>
           </div>
           <div className="space-y-2">
