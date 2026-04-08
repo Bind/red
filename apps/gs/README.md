@@ -1,53 +1,56 @@
 # Git Server
 
-Git-backed storage service and SDK in the shape of managed Git storage systems such as `code.storage`.
+Git-backed storage service with:
+
+- a native Zig smart-HTTP server
+- MinIO/S3-backed object and ref storage
+- a thin TypeScript client that talks to the running server over HTTP
+
+The current direction is explicit:
+
+- normal Git operations use standard smart HTTP against the remote git-server
+- SDK reads use git-server control-plane endpoints
+- the SDK does not shell out to local `git`
+- the SDK does not create temp worktrees or depend on local filesystem state
 
 ## Goals
 
-The SDK surface is intentionally being pulled toward `code.storage` semantics:
+Keep the client shape close to `code.storage`, but only for operations that can be satisfied by the remote git-server we already have today.
 
-- Create and discover repositories
-- Create direct commits without shelling out to local git
-- Read diffs and repository state back through the SDK
-- Produce authenticated Git remote URLs when we want standard git clients involved
-- Support normal `git clone`, `git fetch`, and `git push` against repos created by the SDK
-- Leave `redc` review/change concepts outside the storage layer
+That means:
 
-## Starting Point
+- mint authenticated remote URLs for standard Git clients
+- read repo state, branches, commits, files, and diffs through HTTP
+- avoid hidden local workflows in API or SDK code
+- keep `redc` review/change semantics above the storage layer
 
-The current scaffold includes:
+## Layout
 
-- `src/core/`: SDK interfaces, adapters, runtime helpers, and local integration tooling
-- `src/examples/`: static SDK usage examples
-- `src/manual/`: the small CLI entrypoint
-- `src/tests/`: Bun tests for examples and live integration
-- `zig/`: native Zig git-server implementation and protocol/storage code owned in-repo
+- `src/core/`: TypeScript client interfaces, auth helpers, and dev-stack helpers
+- `src/tests/`: Bun tests and live integration coverage
+- `zig/`: native Zig git-server implementation and protocol/storage code
 
 ## Commands
 
 From repo root:
 
 ```bash
-just git-server-manual list
-just git-server-manual describe
-just git-server-manual example
-just git-server-manual forked-example
-just git-server-manual integration
 just git-server-up
+just git-server-test
 just gs-integration
 ```
 
-## Interface
+## Interfaces
 
-The `git-server` package has three explicit interfaces:
+The package currently has three explicit interfaces:
 
 1. runtime configuration
 2. Git smart-HTTP transport
-3. TypeScript SDK surface
+3. TypeScript client surface
 
 ### Runtime Configuration
 
-The server process requires these environment variables on boot:
+The server process requires:
 
 - `GIT_SERVER_PUBLIC_URL`
 - `GIT_SERVER_PORT`
@@ -61,34 +64,27 @@ The server process requires these environment variables on boot:
 - `GIT_SERVER_ADMIN_PASSWORD`
 - `GIT_SERVER_AUTH_TOKEN_SECRET`
 
-Code-level defaults are intentionally not provided. Missing config is treated as a boot error.
+Local defaults should come from compose, not the server binary.
 
 ### Auth Contract
 
-The server accepts Basic Auth over HTTPS smart HTTP.
+The server accepts Basic Auth over smart HTTP and control-plane HTTP.
 
-There are two credential types:
+Supported credentials:
 
 - admin credentials
   - username = `GIT_SERVER_ADMIN_USERNAME`
   - password = `GIT_SERVER_ADMIN_PASSWORD`
-  - full access across repos
-- signed Git access tokens
+- signed repo-scoped access tokens
   - username = actor id
   - password = signed token
-  - token payload includes:
-    - `sub`
-    - `repoId`
-    - `access`
-    - `exp`
+  - token payload includes `sub`, `repoId`, `access`, and `exp`
 
-The token secret is `GIT_SERVER_AUTH_TOKEN_SECRET`.
+The signing secret is `GIT_SERVER_AUTH_TOKEN_SECRET`.
 
 ### Git HTTP Surface
 
-The Git transport surface is standard smart HTTP.
-
-Expected repo routes:
+Smart-HTTP routes:
 
 - `GET /<owner>/<repo>.git/info/refs?service=git-upload-pack`
 - `GET /<owner>/<repo>.git/info/refs?service=git-receive-pack`
@@ -99,11 +95,21 @@ Health/info route:
 
 - `GET /`
 
-That root route returns a small JSON status payload describing the running server mode and auth status.
+### Control-Plane HTTP Surface
+
+Current read routes:
+
+- `GET /api/repos/<owner>/<repo>`
+- `GET /api/repos/<owner>/<repo>/branches`
+- `GET /api/repos/<owner>/<repo>/commits?ref=<ref>&limit=<n>`
+- `GET /api/repos/<owner>/<repo>/file?path=<path>&ref=<ref>`
+- `GET /api/repos/<owner>/<repo>/compare?base=<ref>&head=<ref>[&patch=1]`
+
+These are what the API and the remote-only SDK use for reads.
 
 ### Storage Contract
 
-Git objects and refs are persisted in S3/MinIO under a repo-scoped prefix layout:
+Git objects and refs are persisted in S3/MinIO under a repo-scoped layout:
 
 - `repos/<owner>/<repo>/objects/<sha-prefix>/<sha-rest>`
 - `repos/<owner>/<repo>/refs/heads/<branch>`
@@ -116,176 +122,71 @@ The server is responsible for:
 - reading and writing Git objects
 - reading and writing refs
 
-### SDK Surface
+## SDK Surface
 
-The TypeScript SDK contract lives in [src/core/api.ts](/Users/db/workspace/redc/apps/gs/src/core/api.ts).
+The TypeScript contract lives in [src/core/api.ts](/Users/db/workspace/redc/apps/gs/src/core/api.ts).
 
-Main interfaces:
+Current client shape:
 
 - `GitStorage`
-  - `createRepo(options)`
   - `getRepo(id)`
   - `getRepoByName(owner, name)`
-  - `listRepos()`
 - `Repo`
   - `info()`
   - `getRemoteUrl(options)`
-  - `createCommit(options)`
   - `getCommitDiff(range)`
   - `readTextFile({ ref, path })`
-  - `listRefs()`
+  - `listCommits({ ref?, limit? })`
   - `listBranches()`
-  - `resolveRef(name)`
-  - `createBranch(name, fromSha)`
-  - `updateBranch(name, toSha, expectedOldSha?)`
-  - `listFiles(ref?)`
 
-Repo identity is stable and canonical:
+Important constraint:
 
-- `repo.id === ${owner}/${name}`
+- only methods backed by existing git-server endpoints are kept
+- methods that required local `git`, temp worktrees, or filesystem state were removed
 
-Behavior notes:
+Current implementation note:
 
+- [src/core/git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/git-sdk.ts) is a thin remote client for git-server
+
+## Behavior Notes
+
+- `getRemoteUrl(...)`
+  - returns authenticated smart-HTTP URLs when the client has a signing secret or credential issuer
 - `readTextFile(...)`
   - returns UTF-8 text
   - returns `null` when the file does not exist at that ref
-  - throws for real ref or process failures
 - `getCommitDiff(...)`
   - supports `includePatch?: boolean`
   - returns per-file `additions` and `deletions`
   - returns top-level `totalAdditions` and `totalDeletions`
-  - can return both per-file and top-level unified patch text
 - `listBranches()`
   - returns short branch names like `main`
-  - currently sets `protected: false`
-- `RefInfo.timestamp`
-  - commit timestamp in ISO-8601
+  - includes the branch head SHA plus message/timestamp when available
 
-Current implementation notes:
+## Integration Coverage
 
-- [src/core/git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/git-sdk.ts) is the live SDK path against the running server
-- [src/core/mock-git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/mock-git-sdk.ts) is the static/example implementation
-- `createRepo(...)` is still logical in the live SDK path and needs app-backed repo metadata integration later
+The live integration suite covers the important server behaviors directly:
 
-## Current API Shape
-
-The current experiment is organized around:
-
-- `GitStorage`
-  - `createRepo(...)`
-  - `getRepo(...)`
-  - `getRepoByName(...)`
-  - `listRepos()`
-- `Repo`
-  - `info()`
-  - `getRemoteUrl(...)`
-  - `createCommit(...)`
-  - `getCommitDiff(...)`
-  - `readTextFile(...)`
-  - `listRefs()`
-  - `listBranches()`
-  - `resolveRef(...)`
-  - `createBranch(...)`
-  - `updateBranch(...)`
-  - `listFiles(...)`
-
-That keeps the storage layer close to `code.storage`, while `redc` remains free to define its own review/change model on top.
-
-## Example
-
-There is now a concrete example in `src/examples/sdk-examples.ts` that shows:
-
-- creating a repo through `GitStorage`
-- minting a normal Git remote URL
-- creating a direct commit through the SDK
-- opening a `redc` change from `baseRef` and `headRef`
-- showing the equivalent normal Git push flow
+- first push into a new repo
+- compare endpoint over nested paths
+- control-plane repo/branch/commit/file/compare reads
+- auth parity between control-plane and smart HTTP
+- read credentials can clone/fetch
+- read-only credentials cannot push
 
 Run it with:
 
 ```bash
-just git-server-manual example
-```
-
-The example uses this shape:
-
-```ts
-const store = new MockGitSdk({
-  publicUrl: "https://git.example.redc.internal",
-  defaultOwner: "redc",
-});
-
-const repo = await store.createRepo({
-  name: "agent-scratch",
-  defaultBranch: "main",
-  visibility: "private",
-});
-
-const remote = await repo.getRemoteUrl({
-  actorId: "agent-123",
-  ttlSeconds: 3600,
-});
-
-const commit = await repo
-  .createCommit({
-    branch: "refs/heads/experiments/sdk-example",
-    message: "Seed experiment branch",
-    author: {
-      name: "redc agent",
-      email: "agent@redc.local",
-    },
-  })
-  .put("README.md", "# agent-scratch\n")
-  .put("src/index.ts", 'export const status = "draft";\n')
-  .send();
-```
-
-There is also a fork-like example for the model where `redc` has a canonical repo and agents push to their own writable repo:
-
-```bash
-just git-server-manual forked-example
-```
-
-That example shows:
-
-- a canonical base repo like `redc/app`
-- a separate writable repo like `agents/app-agent-123`
-- a normal push target minted from the agent repo
-- a `redc` change opened from `baseRepo/baseRef` to `headRepo/headRef`
-
-## Live Integration Harness
-
-There is now a live integration harness that proves the clone semantics against the native Zig Git server backed by MinIO:
-
-```bash
-just git-server-manual integration
 just gs-integration
 ```
 
-The harness does this end to end:
-
-1. boots a real Git server
-2. creates a repo through the SDK
-3. mints an HTTP remote URL
-4. uses a real local Git client to push `main` and a feature branch
-5. resolves refs through the SDK
-6. computes a diff through the SDK
-7. uses the direct `createCommit(...)` path to write another branch
-8. compares the pushed path and the SDK-written path
-
-The integration test command also proves the first auth slice:
-
-- read credentials can clone and fetch
-- write credentials can push
-- read-only credentials cannot push
-
 ## Docker Compose
 
-The root `docker-compose.yml` now includes:
+The root compose stack includes:
 
-- `minio`: object storage with a persistent Docker volume
-- `minio-init`: bucket bootstrap for the configured Git storage bucket
-- `git-server`: a native Zig HTTP server with MinIO-backed object/ref storage
+- `minio`
+- `minio-init`
+- `git-server`
 
 Run it from repo root:
 
@@ -293,18 +194,7 @@ Run it from repo root:
 just git-server-up
 ```
 
-The compose stack now defaults to the MinIO-backed path and stores repo-prefixed keys like:
-
-- `repos/<owner>/<repo>/objects/<sha-prefix>/<sha-rest>`
-- `repos/<owner>/<repo>/refs/heads/<branch>`
-
-The git server now uses a cleaner bootstrap/auth surface:
-
-- `GIT_SERVER_ADMIN_USERNAME` and `GIT_SERVER_ADMIN_PASSWORD` define an all-repos admin principal
-- `GIT_SERVER_AUTH_TOKEN_SECRET` signs repo-scoped read/write Git credentials
-- the lab SDK mints short-lived repo-scoped remote credentials from that token secret for integration tests
-
-For local MinIO development, you do not need to explicitly set every `GIT_SERVER_*` variable if you accept the compose defaults. The effective local defaults are:
+The local compose defaults are:
 
 - `GIT_SERVER_PORT=8080`
 - `GIT_SERVER_PUBLIC_URL=http://127.0.0.1:9080`
@@ -318,59 +208,33 @@ For local MinIO development, you do not need to explicitly set every `GIT_SERVER
 - `GIT_SERVER_ADMIN_PASSWORD=admin`
 - `GIT_SERVER_AUTH_TOKEN_SECRET=dev-git-server-secret`
 
-All of the `GIT_SERVER_*` variables above are now treated as required server config. The code does not provide fallback defaults for them; compose is the only place local defaults should live.
+## Fit
 
-## Gitty Fit
-
-`gitty` is treated as a candidate storage engine, not as the product model.
+`gitty` is treated as the Git-native transport and storage engine, not as the product model.
 
 That means:
 
-- `gitty` can own Git-native behavior and smart HTTP transport
-- `redc` can define its own change/review model separately
-- we preserve the option to swap the backend later if `gitty` proves too immature or too limiting
+- `gitty` owns Git protocol behavior
+- `redc` owns change/review behavior
+- standard Git clients should still be able to clone, fetch, and push against repos served by the system
 
-One explicit requirement for this experiment is that repos created through the SDK must still behave like normal Git remotes. A developer or agent should be able to mint a remote URL, add it as `origin`, and run a standard `git push` without going through a custom client.
+## App Boundary
 
-## App Integration TODO
+The intended split remains:
 
-Before this moves into the broader app, repo metadata needs to become a real control-plane concern in the app database.
-
-The intended split is:
-
-- Git server + S3/MinIO store Git objects and refs
+- git-server + S3/MinIO store Git objects and refs
 - the broader app stores repo metadata and lifecycle state
 
-That means `createRepo(...)` should eventually be backed by a durable app-level repo record rather than the current in-memory experiment behavior.
+The git-server should stay narrow:
 
-The app-level repo record should own fields like:
-
-- `id`
-- `owner`
-- `name`
-- `defaultBranch`
-- `visibility`
-- `storagePrefix`
-- `createdAt`
-- `archivedAt?`
-
-The Git server should stay narrow:
-
-- authenticate Git requests
-- map repo identity to a storage prefix
+- authenticate requests
+- map repo identity to storage prefix
 - serve push/fetch/clone
-- persist refs and objects
+- serve read-oriented control-plane endpoints
 
 The broader app should remain the source of truth for:
 
 - whether a repo exists
 - repo settings and lifecycle
-- who can access it
-- future review/change integration
-
-## Next Questions
-
-- Which `code.storage` semantics do we want to mirror exactly, and which do we intentionally omit?
-- What exact `gitty` primitives exist for repo creation, refs, trees, and commits?
-- Does `gitty` expose enough hooks for repo-scoped auth, base-repo sync, and short-lived remote credentials?
-- Where should repo metadata live: inside the git backend, in the main app database, or split across both?
+- access policy above Git transport
+- `redc` review/change integration
