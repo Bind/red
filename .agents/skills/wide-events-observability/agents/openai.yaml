@@ -1,0 +1,2 @@
+name: wide-events-observability
+description: Trace request flow and wide-events ingestion from raw events through canonical rollups.
