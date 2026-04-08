@@ -18,7 +18,9 @@ const Dir = Io.Dir;
 const File = Io.File;
 
 const p = std.debug.print;
-fn nanos() u64 { return std.c.mach_absolute_time(); }
+fn nanos() u64 {
+    return std.c.mach_absolute_time();
+}
 
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
@@ -135,7 +137,11 @@ pub fn main(init: std.process.Init) !void {
 
         if (found > 0) {
             p("  Found {d} loose objects, verified {d} hashes\n", .{ found, verified });
-            if (verified == found) { passed += 1; } else { failed += 1; }
+            if (verified == found) {
+                passed += 1;
+            } else {
+                failed += 1;
+            }
         } else {
             p("  No loose objects found (all packed)\n", .{});
             passed += 1;
@@ -219,7 +225,7 @@ pub fn main(init: std.process.Init) !void {
                         p("  FAIL: hash mismatch on object {d}\n", .{i});
                         p("    expected: {s}\n", .{&expected});
                         p("    got:      {s}\n", .{&got});
-                        p("    type: {s}, size: {d}\n", .{o.obj_type.toString(), o.data.len});
+                        p("    type: {s}, size: {d}\n", .{ o.obj_type.toString(), o.data.len });
                         failed += 1;
                     }
                 }
@@ -227,7 +233,11 @@ pub fn main(init: std.process.Init) !void {
 
             const resolve_us = (nanos() - t0) / 1000;
             p("  Resolved {d}/{d} objects, {d} hash-verified, in {d} µs\n", .{ resolved, count, hash_verified, resolve_us });
-            if (hash_verified == resolved and resolved > 0) { passed += 1; } else { failed += 1; }
+            if (hash_verified == resolved and resolved > 0) {
+                passed += 1;
+            } else {
+                failed += 1;
+            }
 
             // ── Test 5: Parse commits from pack ──
             p("\nTest 5: Parse commits from pack\n", .{});
@@ -254,7 +264,11 @@ pub fn main(init: std.process.Init) !void {
                 }
             }
             p("  Parsed {d} commits\n", .{commits_parsed});
-            if (commits_parsed > 0) { passed += 1; } else { failed += 1; }
+            if (commits_parsed > 0) {
+                passed += 1;
+            } else {
+                failed += 1;
+            }
 
             // ── Test 6: Parse trees ──
             p("\nTest 6: Parse trees from pack\n", .{});
@@ -276,7 +290,11 @@ pub fn main(init: std.process.Init) !void {
                 }
             }
             p("  Parsed {d} trees with {d} total entries\n", .{ trees_parsed, total_entries });
-            if (trees_parsed > 0) { passed += 1; } else { failed += 1; }
+            if (trees_parsed > 0) {
+                passed += 1;
+            } else {
+                failed += 1;
+            }
 
             // ── Test 7: Build + parse pack roundtrip ──
             p("\nTest 7: Pack build/parse roundtrip\n", .{});

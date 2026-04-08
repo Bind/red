@@ -82,7 +82,10 @@ pub fn unifiedDiff(
         // Count lines before hunk
         for (diff[0..ctx_start]) |d| {
             switch (d.op) {
-                .equal => { old_start += 1; new_start += 1; },
+                .equal => {
+                    old_start += 1;
+                    new_start += 1;
+                },
                 .delete => old_start += 1,
                 .insert => new_start += 1,
             }
@@ -90,7 +93,10 @@ pub fn unifiedDiff(
 
         for (diff[ctx_start..ctx_end]) |d| {
             switch (d.op) {
-                .equal => { old_count += 1; new_count += 1; },
+                .equal => {
+                    old_count += 1;
+                    new_count += 1;
+                },
                 .delete => old_count += 1,
                 .insert => new_count += 1,
             }

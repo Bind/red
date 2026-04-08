@@ -6,8 +6,6 @@ import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand } from "../core/dev-stack";
 import { GitSdk } from "../core/git-sdk";
 
-const maybeIntegrationTest = process.env.GIT_SERVER_RUN_INTEGRATION === "1" ? test : test.skip;
-
 interface CompareResponse {
   base: string;
   head: string;
@@ -23,7 +21,7 @@ interface CompareResponse {
 }
 
 describe("git server compare integration", () => {
-  maybeIntegrationTest("returns stable filenames for nested file diffs", async () => {
+  test("returns stable filenames for nested file diffs", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
     const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-compare-"));

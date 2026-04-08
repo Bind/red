@@ -280,7 +280,7 @@ pub const ControlPlane = struct {
 
         const info = try object.parseCommit(self.allocator, commit.data);
         defer self.allocator.free(info.parents);
-        std.debug.print("[control-plane] parsed tree hash={s}\n", .{ info.tree_hash });
+        std.debug.print("[control-plane] parsed tree hash={s}\n", .{info.tree_hash});
 
         return try self.readPathFromTree(info.tree_hash, path);
     }
@@ -316,7 +316,7 @@ pub const ControlPlane = struct {
     }
 
     fn loadObject(self: *ControlPlane, hash: []const u8) !?LoadedObject {
-        std.debug.print("[control-plane] loadObject hash={s}\n", .{ hash });
+        std.debug.print("[control-plane] loadObject hash={s}\n", .{hash});
         const raw = try self.storage.getObject(self.allocator, hash) orelse return null;
         defer self.allocator.free(raw);
         const decoded = try object.decodeObject(self.allocator, raw);

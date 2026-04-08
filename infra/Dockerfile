@@ -6,7 +6,7 @@ FROM base AS install
 COPY package.json bun.lock ./
 COPY apps/auth/package.json ./apps/auth/
 COPY apps/bff/package.json ./apps/bff/
-COPY apps/git-server/package.json ./apps/git-server/
+COPY apps/gs/package.json ./apps/gs/
 COPY apps/web/package.json ./apps/web/
 RUN bun install --frozen-lockfile
 
@@ -21,7 +21,7 @@ FROM base AS prod-install
 COPY package.json bun.lock ./
 COPY apps/auth/package.json ./apps/auth/
 COPY apps/bff/package.json ./apps/bff/
-COPY apps/git-server/package.json ./apps/git-server/
+COPY apps/gs/package.json ./apps/gs/
 COPY apps/web/package.json ./apps/web/
 RUN bun install --frozen-lockfile --production
 

@@ -7,8 +7,6 @@ import { startDevGitServer, runCommand, runCommandWithRetry, type StartedDevGitS
 import { GitSdk } from "../core/git-sdk";
 import { fetchJson } from "./http-test-helpers";
 
-const maybeIntegrationTest = process.env.GIT_SERVER_RUN_INTEGRATION === "1" ? test : test.skip;
-
 interface RepoPayload {
   id: string;
   owner: string;
@@ -116,7 +114,7 @@ function repoUrl(server: StartedDevGitServer, owner: string, name: string, suffi
 }
 
 describe("native control-plane integration", () => {
-  maybeIntegrationTest("serves repo, branch, commit, file, and compare endpoints with stable data", async () => {
+  test("serves repo, branch, commit, file, and compare endpoints with stable data", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
     const { repoInfo, repoDir, mainRef, featureRef } = await createRepoWithHistory(server, `cp-repo-${runId}`);
@@ -209,7 +207,7 @@ describe("native control-plane integration", () => {
     }
   }, 120_000);
 
-  maybeIntegrationTest("preserves control-plane reads across git-server restarts", async () => {
+  test("preserves control-plane reads across git-server restarts", async () => {
     let server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
     const { repoInfo, repoDir, featureRef } = await createRepoWithHistory(server, `cp-restart-${runId}`);

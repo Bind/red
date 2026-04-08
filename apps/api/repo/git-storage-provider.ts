@@ -1,4 +1,4 @@
-import type { CommitDiffFile, GitStorage } from "../../git-server/src/core/api";
+import type { CommitDiffFile, GitStorage } from "../../gs/src/core/api";
 import type { RepositoryProvider } from "./repository-provider";
 import type { BranchInfo, CommitInfo, DiffStats, FileStats, RepoRecord, RepoInfo } from "../types";
 

@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { runIntegration } from "../integration/run-integration";
 
-const maybeIntegrationTest = process.env.GIT_SERVER_RUN_INTEGRATION === "1" ? test : test.skip;
-
 describe("git-sdk live integration", () => {
-  maybeIntegrationTest("proves code.storage-style semantics on top of the live git server", async () => {
+  test("proves code.storage-style semantics on top of the live git server", async () => {
     const result = await runIntegration();
 
     expect(result.checks.mainResolved).toBe(true);

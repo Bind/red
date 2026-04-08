@@ -17,11 +17,11 @@ The SDK surface is intentionally being pulled toward `code.storage` semantics:
 
 The current scaffold includes:
 
-- `src/core/`: SDK interfaces, adapters, runtime helpers, and the MinIO-backed Bun+WASM server
+- `src/core/`: SDK interfaces, adapters, runtime helpers, and local integration tooling
 - `src/examples/`: static SDK usage examples
 - `src/manual/`: the small CLI entrypoint
 - `src/tests/`: Bun tests for examples and live integration
-- `vendor/gitty`: vendored upstream `gitty` checkout pinned for local experimentation
+- `zig/`: native Zig git-server implementation and protocol/storage code owned in-repo
 
 ## Commands
 
@@ -34,7 +34,7 @@ just git-server-manual example
 just git-server-manual forked-example
 just git-server-manual integration
 just git-server-up
-just git-server-integration-test
+just gs-integration
 ```
 
 ## Interface
@@ -118,7 +118,7 @@ The server is responsible for:
 
 ### SDK Surface
 
-The TypeScript SDK contract lives in [src/core/api.ts](/Users/db/workspace/redc/git-server/src/core/api.ts).
+The TypeScript SDK contract lives in [src/core/api.ts](/Users/db/workspace/redc/apps/gs/src/core/api.ts).
 
 Main interfaces:
 
@@ -163,8 +163,8 @@ Behavior notes:
 
 Current implementation notes:
 
-- [src/core/git-sdk.ts](/Users/db/workspace/redc/git-server/src/core/git-sdk.ts) is the live SDK path against the running server
-- [src/core/mock-git-sdk.ts](/Users/db/workspace/redc/git-server/src/core/mock-git-sdk.ts) is the static/example implementation
+- [src/core/git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/git-sdk.ts) is the live SDK path against the running server
+- [src/core/mock-git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/mock-git-sdk.ts) is the static/example implementation
 - `createRepo(...)` is still logical in the live SDK path and needs app-backed repo metadata integration later
 
 ## Current API Shape
@@ -255,11 +255,11 @@ That example shows:
 
 ## Live Integration Harness
 
-There is now a live integration harness that proves the clone semantics against the MinIO-backed Bun+WASM Git server:
+There is now a live integration harness that proves the clone semantics against the native Zig Git server backed by MinIO:
 
 ```bash
 just git-server-manual integration
-just git-server-integration-test
+just gs-integration
 ```
 
 The harness does this end to end:
@@ -285,7 +285,7 @@ The root `docker-compose.yml` now includes:
 
 - `minio`: object storage with a persistent Docker volume
 - `minio-init`: bucket bootstrap for the configured Git storage bucket
-- `git-server`: a Bun+WASM server using vendored `gitty` protocol logic with MinIO-backed object/ref storage
+- `git-server`: a native Zig HTTP server with MinIO-backed object/ref storage
 
 Run it from repo root:
 
@@ -293,7 +293,7 @@ Run it from repo root:
 just git-server-up
 ```
 
-The compose stack now defaults to the MinIO-backed path and uses vendored `gitty` WASM plus repo-prefixed keys like:
+The compose stack now defaults to the MinIO-backed path and stores repo-prefixed keys like:
 
 - `repos/<owner>/<repo>/objects/<sha-prefix>/<sha-rest>`
 - `repos/<owner>/<repo>/refs/heads/<branch>`

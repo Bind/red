@@ -16,22 +16,11 @@ RUN curl -fsSL "${ZIG_TARBALL}" -o zig.tar.xz && \
 
 ENV PATH="/opt/zig:${PATH}"
 
-COPY vendor/gitty /src/gitty
+COPY zig /src/gitty
 
 WORKDIR /src/gitty
 
 RUN if [ -e .git ]; then test "$(git rev-parse HEAD)" = "${GITTY_REF}"; fi
-
-RUN python3 - <<'PY'
-from pathlib import Path
-path = Path("/src/gitty/src/server.zig")
-text = path.read_text()
-old = '    var server = try net.IpAddress.listen(.{ .ip4 = .{ .bytes = .{ 0, 0, 0, 0 }, .port = port } }, io, .{ .reuse_address = true });'
-new = '''    const address: net.IpAddress = .{ .ip4 = net.Ip4Address.unspecified(port) };
-    var server = try address.listen(io, .{ .reuse_address = true });'''
-if old in text:
-    path.write_text(text.replace(old, new))
-PY
 
 RUN zig build server-only -Doptimize=ReleaseFast
 RUN zig build wasm -Doptimize=ReleaseSmall
@@ -45,9 +34,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY src /app/src
-RUN mkdir -p /app/vendor/gitty/zig-out/bin
+RUN mkdir -p /app/zig/zig-out/bin
 
-COPY --from=build /src/gitty/zig-out/bin/gitty.wasm /app/vendor/gitty/zig-out/bin/gitty.wasm
+COPY --from=build /src/gitty/zig-out/bin/gitty.wasm /app/zig/zig-out/bin/gitty.wasm
 
 COPY --from=build /src/gitty/zig-out/bin/server /usr/local/bin/gitty-server
 COPY docker/gitty/run-gitty.sh /usr/local/bin/run-gitty.sh

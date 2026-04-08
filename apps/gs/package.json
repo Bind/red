@@ -5,7 +5,7 @@
   "scripts": {
     "manual": "bun run src/manual/cli.ts",
     "test": "bun test",
-    "test:integration": "sh -lc 'GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts'"
+    "test:integration": "bun test ./src/tests/*.integration.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

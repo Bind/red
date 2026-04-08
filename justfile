@@ -90,32 +90,54 @@ web-build:
 # Full local verification
 verify: typecheck test
 
+# Install repo git hooks
+hooks-install:
+    ./scripts/install-githooks.sh
+
 # Run the git server/manual SDK CLI
 git-server-manual *args:
-    cd apps/git-server && bun src/manual/cli.ts {{args}}
+    cd apps/gs && bun src/manual/cli.ts {{args}}
 
 # Run tests for the git server package
 git-server-test:
-    cd apps/git-server && bun test
+    cd apps/gs && bun test
+
+# Run Zig format/build/test checks for the native git server
+git-server-zig-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    zig_bin="${ZIG_BIN:-}"
+    if [ -z "$zig_bin" ]; then
+        if command -v zig >/dev/null 2>&1; then
+            zig_bin="$(command -v zig)"
+        elif [ -x "$HOME/.local/zig/current/zig" ]; then
+            zig_bin="$HOME/.local/zig/current/zig"
+        else
+            echo "Skipping apps/gs/zig checks: local zig is not installed."
+            exit 0
+        fi
+    fi
+    zig_version="$("$zig_bin" version)"
+    case "$zig_version" in
+        0.16.*|0.16.0-dev.*) ;;
+        *)
+            echo "Skipping apps/gs/zig checks: local zig $zig_version is incompatible with apps/gs/zig (requires 0.16.x)."
+            exit 0
+            ;;
+    esac
+    cd apps/gs/zig
+    find src -name '*.zig' -print | xargs "$zig_bin" fmt build.zig
+    "$zig_bin" build test
+    "$zig_bin" build server-only -Doptimize=ReleaseFast
 
 # Run the live git-backed integration harness
 git-server-integration:
-    cd apps/git-server && bun src/manual/cli.ts integration
+    cd apps/gs && bun src/manual/cli.ts integration
 
-# Run the live git-backed integration test
-git-server-integration-test:
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
-
-# Promotion smoke for the native Zig git-server
-git-server-promotion-smoke:
+# Run the full native Zig git-server integration suite
+gs-integration:
     docker compose -f {{ DEV_COMPOSE }} build git-server
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/fresh-push-integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/auth-integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/http-auth-integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/control-plane-integration.test.ts
-    cd apps/git-server && GIT_SERVER_RUN_INTEGRATION=1 bun test src/tests/compare-integration.test.ts
+    cd apps/gs && bun test ./src/tests/*.integration.ts
 
 # Start git server dependencies and service from the root compose stack
 git-server-up:

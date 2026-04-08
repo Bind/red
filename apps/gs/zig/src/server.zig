@@ -34,7 +34,8 @@ pub fn main(init: std.process.Init) !void {
 
     p("libgitty server on :{d} ({s}) mode={s}\n", .{ port, data_dir, if (use_minio) "minio" else "disk" });
 
-    var server = try net.IpAddress.listen(.{ .ip4 = .{ .bytes = .{ 0, 0, 0, 0 }, .port = port } }, io, .{ .reuse_address = true });
+    const address: net.IpAddress = .{ .ip4 = net.Ip4Address.unspecified(port) };
+    var server = try address.listen(io, .{ .reuse_address = true });
     defer server.deinit(io);
 
     while (true) {
@@ -406,11 +407,7 @@ fn parseControlPlaneRoute(pathname: []const u8) ?ControlPlaneRoute {
     if (std.mem.indexOfScalar(u8, rest, '/')) |slash| {
         repo = rest[0..slash];
         const suffix = rest[slash + 1 ..];
-        if (std.mem.eql(u8, suffix, "branches")) resource = .branches
-        else if (std.mem.eql(u8, suffix, "commits")) resource = .commits
-        else if (std.mem.eql(u8, suffix, "file")) resource = .file
-        else if (std.mem.eql(u8, suffix, "compare")) resource = .compare
-        else return null;
+        if (std.mem.eql(u8, suffix, "branches")) resource = .branches else if (std.mem.eql(u8, suffix, "commits")) resource = .commits else if (std.mem.eql(u8, suffix, "file")) resource = .file else if (std.mem.eql(u8, suffix, "compare")) resource = .compare else return null;
     }
 
     return .{

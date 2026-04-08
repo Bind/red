@@ -2,6 +2,20 @@
 
 use the `justfile` as command runner. Run `./scripts/redc` to see available CLI commands.
 
+## Integration tests
+
+For git-server live integration coverage, use the `.integration.ts` suffix so those tests stay out of the default `bun test` run.
+
+Run the full native git-server integration suite with `just gs-integration`.
+
+## Git hooks
+
+Install repo hooks with `just hooks-install`.
+
+The repo uses `.githooks/pre-commit` for fast local checks only. Keep the heavier git-server integration suite in `just gs-integration` for explicit runs and eventual CI/CD.
+
+When `apps/gs/zig/` is staged, pre-commit also runs the native Zig format/build/test checks via `just git-server-zig-check`.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill

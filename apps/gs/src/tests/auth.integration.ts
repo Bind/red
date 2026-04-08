@@ -6,10 +6,8 @@ import { describe, expect, test } from "bun:test";
 import { startDevGitServer, runCommand } from "../core/dev-stack";
 import { GitSdk } from "../core/git-sdk";
 
-const maybeIntegrationTest = process.env.GIT_SERVER_RUN_INTEGRATION === "1" ? test : test.skip;
-
 describe("git-sdk auth integration", () => {
-  maybeIntegrationTest("allows clone with read credentials and rejects push with read-only credentials", async () => {
+  test("allows clone with read credentials and rejects push with read-only credentials", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
     const writerDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-write-"));

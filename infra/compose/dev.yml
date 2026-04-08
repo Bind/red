@@ -37,7 +37,7 @@ services:
 
   git-server:
     build:
-      context: ../../apps/git-server
+      context: ../../apps/gs
       dockerfile: docker/gitty/Dockerfile
       args:
         GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}

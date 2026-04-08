@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+echo "pre-commit: running root bun test"
+bun test
+
+if echo "$staged_files" | rg -q '^apps/auth/'; then
+  echo "pre-commit: formatting and linting apps/auth"
+  (
+    cd apps/auth
+    bun run format
+    bun run lint
+  )
+  git add apps/auth
+fi
+
+if echo "$staged_files" | rg -q '^apps/gs/zig/'; then
+  echo "pre-commit: formatting and verifying apps/gs/zig"
+  just git-server-zig-check
+  git add apps/gs/zig
+fi

@@ -37,7 +37,7 @@ import {
 } from "./claw";
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
-import { GitSdk } from "../git-server/src/core/git-sdk";
+import { GitSdk } from "../gs/src/core/git-sdk";
 import type { RepoVisibility } from "./types";
 
 export interface AppConfig {

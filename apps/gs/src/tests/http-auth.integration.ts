@@ -7,10 +7,8 @@ import { startDevGitServer, runCommand, runCommandWithRetry } from "../core/dev-
 import { GitSdk } from "../core/git-sdk";
 import { basicAuthHeader, fetchJson } from "./http-test-helpers";
 
-const maybeIntegrationTest = process.env.GIT_SERVER_RUN_INTEGRATION === "1" ? test : test.skip;
-
 describe("native HTTP auth integration", () => {
-  maybeIntegrationTest("enforces control-plane and smart-http auth parity", async () => {
+  test("enforces control-plane and smart-http auth parity", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
     const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-http-"));

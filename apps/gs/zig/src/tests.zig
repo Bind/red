@@ -406,7 +406,7 @@ test "diff: tree diff detects all change types" {
     defer a.free(new);
 
     const changes = try diff_mod.diffTrees(a, old, new);
-    defer a.free(changes);
+    defer diff_mod.freeTreeChanges(a, changes);
 
     try std.testing.expectEqual(@as(usize, 3), changes.len);
     // Sorted by name: added, deleted, modified

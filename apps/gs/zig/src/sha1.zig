@@ -312,10 +312,18 @@ const HwSha1 = struct {
         return raw;
     }
 
-    inline fn K0() V128 { return @splat(0x5A827999); }
-    inline fn K1() V128 { return @splat(0x6ED9EBA1); }
-    inline fn K2() V128 { return @splat(0x8F1BBCDC); }
-    inline fn K3() V128 { return @splat(0xCA62C1D6); }
+    inline fn K0() V128 {
+        return @splat(0x5A827999);
+    }
+    inline fn K1() V128 {
+        return @splat(0x6ED9EBA1);
+    }
+    inline fn K2() V128 {
+        return @splat(0x8F1BBCDC);
+    }
+    inline fn K3() V128 {
+        return @splat(0xCA62C1D6);
+    }
 };
 
 /// Convert digest to hex string
