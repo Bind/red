@@ -31,6 +31,7 @@ describe("replayCollectorFromRaw", () => {
 				{
 					event_id: "evt-1",
 					request_id: "req-1",
+					is_request_root: true,
 					service: "api",
 					kind: "request.received",
 					ts: "2026-04-08T14:00:00.000Z",
@@ -41,6 +42,7 @@ describe("replayCollectorFromRaw", () => {
 				{
 					event_id: "evt-2",
 					request_id: "req-1",
+					is_request_root: true,
 					service: "api",
 					kind: "request.completed",
 					ts: "2026-04-08T14:00:00.010Z",
@@ -77,5 +79,6 @@ describe("replayCollectorFromRaw", () => {
 			"rollups.ndjson",
 		);
 		expect(readFileSync(rollupPath, "utf8")).toContain('"request_id":"req-1"');
+		expect(readFileSync(rollupPath, "utf8")).toContain('"is_request_root":true');
 	});
 });

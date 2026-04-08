@@ -151,6 +151,7 @@ function validateEvent(input: unknown, index: number): EventValidationResult {
 		event: {
 			event_id: eventIdResult.value ?? eventId,
 			request_id: requestIdResult.value ?? "",
+			is_request_root: input.is_request_root === true,
 			parent_request_id: optionalString(input.parent_request_id),
 			trace_id: optionalString(input.trace_id),
 			service: serviceResult.value ?? "",
@@ -253,6 +254,10 @@ function hasTerminalEvent(event: WideCollectorEvent): boolean {
 	);
 }
 
+function isRootTerminalEvent(event: WideCollectorEvent): boolean {
+	return event.is_request_root && hasTerminalEvent(event);
+}
+
 export class InMemoryActiveRequestAggregator
 	implements ActiveRequestAggregator
 {
@@ -288,7 +293,7 @@ export class InMemoryActiveRequestAggregator
 			state.lastSeenAtMs = Math.max(state.lastSeenAtMs, Date.parse(event.ts));
 			this.states.set(event.request_id, state);
 
-			if (!hasTerminalEvent(event) || emitted.has(event.request_id)) {
+			if (!isRootTerminalEvent(event) || emitted.has(event.request_id)) {
 				continue;
 			}
 
@@ -332,6 +337,7 @@ export class InMemoryActiveRequestAggregator
 				type: event.kind,
 				service: event.service,
 				request_id: event.request_id,
+				is_request_root: event.is_request_root,
 				started_at: event.ts,
 				ended_at: event.ended_at,
 				duration_ms: event.duration_ms,

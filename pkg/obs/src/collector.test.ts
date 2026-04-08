@@ -11,6 +11,7 @@ function event(overrides: Partial<ObsEvent> = {}): ObsEvent {
     type: overrides.type ?? "request.completed",
     service: overrides.service ?? "api",
     request_id: overrides.request_id ?? "req-1",
+    is_request_root: overrides.is_request_root ?? true,
     started_at: overrides.started_at ?? "2026-04-08T10:00:00.000Z",
     ended_at: overrides.ended_at ?? "2026-04-08T10:00:00.050Z",
     duration_ms: overrides.duration_ms ?? 50,
@@ -41,6 +42,7 @@ describe("collector mapping", () => {
     expect(mapped).toEqual({
       event_id: "evt-1",
       request_id: "req-1",
+      is_request_root: true,
       service: "api",
       instance_id: "api-1",
       kind: "request.completed",
@@ -73,6 +75,7 @@ describe("FileNdjsonSink", () => {
     expect(JSON.parse(lines[0] ?? "")).toMatchObject({
       event_id: "evt-1",
       request_id: "req-1",
+      is_request_root: true,
       instance_id: "api-1",
     });
   });

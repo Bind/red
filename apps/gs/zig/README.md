@@ -53,6 +53,60 @@ git push http://localhost:8080/myrepo.git main
 
 The server handles push, clone, fetch, pull, branches, tags, and large files (10MB+ tested). Storage is a flat directory of loose objects and refs — compatible with standard git tooling.
 
+### redc Observability Contract
+
+The `redc` integration emits one JSON wide event per inbound HTTP request from [`src/obs.zig`](src/obs.zig). This behavior should stay aligned with `pkg/obs`.
+
+Expected request ID behavior:
+
+- If the incoming request already has `x-request-id`, preserve it and emit `is_request_root: false`.
+- If the incoming request does not have `x-request-id`, generate one, return it on the response, and emit `is_request_root: true`.
+- Use the same `request_id` for the full lifetime of that inbound request.
+- Requests arriving from upstream services with an existing `x-request-id` are propagated child events, not new roots.
+
+Expected top-level event fields:
+
+- `id`
+- `type = "request"`
+- `service = "gs"`
+- `request_id`
+- `is_request_root`
+- `started_at`
+- `ended_at`
+- `duration_ms`
+- `outcome`
+- `status_code`
+
+Expected nested `data` fields:
+
+- `request.method`
+- `request.path`
+- `request.host`
+- `request.scheme`
+- `client.ip`
+- `client.user_agent`
+- `http.origin`
+- `http.referer`
+- `http.content_type`
+- `route.kind`
+- `route.resource`
+- `repo.id`
+- `repo.storage_backend`
+- `git.service`
+- `auth.required_access`
+- `auth.outcome`
+- `auth.subject`
+- `response.content_type`
+- `error.name`
+- `error.message`
+
+Terminal semantics:
+
+- Emit the event once the inbound request finishes.
+- `ended_at` and `status_code` mark the request as terminal.
+- Keep `outcome = "ok"` for non-5xx responses and `outcome = "error"` for 5xx responses, matching current `pkg/obs` behavior.
+- The wide-events collector will only immediately finalize a canonical request when `is_request_root: true`; propagated request IDs remain child events unless they later age out by timeout.
+
 ### Use as a library
 
 gitty is a single Zig module. Import it in your `build.zig`:

@@ -66,6 +66,7 @@ describe("wide-events collector app", () => {
 						{
 							event_id: "evt-1",
 							request_id: "req-123",
+							is_request_root: true,
 							service: "bff",
 							kind: "request.received",
 							ts: "2026-04-08T14:00:00.100Z",
@@ -79,6 +80,7 @@ describe("wide-events collector app", () => {
 						{
 							event_id: "evt-2",
 							request_id: "req-123",
+							is_request_root: false,
 							service: "auth",
 							kind: "request.completed",
 							ts: "2026-04-08T14:00:00.180Z",
@@ -91,6 +93,23 @@ describe("wide-events collector app", () => {
 								},
 							},
 						},
+						{
+							event_id: "evt-3",
+							request_id: "req-123",
+							is_request_root: true,
+							service: "bff",
+							kind: "request.completed",
+							ts: "2026-04-08T14:00:00.200Z",
+							ended_at: "2026-04-08T14:00:00.220Z",
+							duration_ms: 120,
+							outcome: "error",
+							status_code: 500,
+							data: {
+								response: {
+									content_type: "application/json",
+								},
+							},
+						},
 					],
 				}),
 			}),
@@ -98,7 +117,7 @@ describe("wide-events collector app", () => {
 
 		expect(response.status).toBe(202);
 		expect(await response.json()).toEqual({
-			accepted: 2,
+			accepted: 3,
 			rejected: 0,
 			request_ids: ["req-123"],
 		});
@@ -150,6 +169,7 @@ describe("wide-events collector app", () => {
 						{
 							event_id: "evt-ok",
 							request_id: "req-ok",
+							is_request_root: true,
 							service: "api",
 							kind: "request.completed",
 							ts: "2026-04-08T14:00:00.100Z",
@@ -219,6 +239,7 @@ describe("wide-events collector app", () => {
 						{
 							event_id: "evt-open",
 							request_id: "req-open",
+							is_request_root: true,
 							service: "api",
 							kind: "request.received",
 							ts: "2026-04-08T14:00:00.000Z",

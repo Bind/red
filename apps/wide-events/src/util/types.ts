@@ -10,6 +10,7 @@ export interface ObsEvent {
 	type: string;
 	service: string;
 	request_id: string;
+	is_request_root: boolean;
 	started_at: string;
 	ended_at?: string;
 	duration_ms?: number;

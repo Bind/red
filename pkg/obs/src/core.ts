@@ -12,6 +12,7 @@ export interface ObsEvent {
   type: string;
   service: string;
   request_id: string;
+  is_request_root: boolean;
   started_at: string;
   ended_at?: string;
   duration_ms?: number;
@@ -102,12 +103,14 @@ export function createEventEnvelope(
 ): EventEnvelope {
   const startedAtMs = Date.now();
   const requestIdHeader = options.requestIdHeader ?? "x-request-id";
-  const requestId = request.headers.get(requestIdHeader)?.trim() || randomUUID();
+  const incomingRequestId = request.headers.get(requestIdHeader)?.trim();
+  const requestId = incomingRequestId || randomUUID();
   const event: ObsEvent = {
     id: randomUUID(),
     type: options.eventType ?? "request",
     service: options.service,
     request_id: requestId,
+    is_request_root: !incomingRequestId,
     started_at: new Date(startedAtMs).toISOString(),
     data: buildRequestFields(request),
   };

@@ -5,6 +5,7 @@ import { ConsoleJsonSink, type EventSink, type ObsEvent } from "./core";
 export interface CollectorWideEvent {
   event_id: string;
   request_id: string;
+  is_request_root: boolean;
   parent_request_id?: string;
   trace_id?: string;
   service: string;
@@ -98,6 +99,7 @@ export function toCollectorWideEvent(
   return {
     event_id: event.id,
     request_id: event.request_id,
+    is_request_root: event.is_request_root,
     service: options.service ?? event.service,
     instance_id: options.instanceId,
     kind: options.kind ?? event.type,

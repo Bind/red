@@ -263,59 +263,6 @@ git-mirror-canary-compose-down:
 git-mirror-canary-compose-e2e:
     cd experiments/git-mirror-canary && ./compose/e2e.sh
 
-# Install dependencies for the wide events lab experiment
-wide-events-lab-install:
-    cd experiments/wide-events-lab && bun install
-
-# Start the wide events lab collector locally
-wide-events-lab-serve:
-    cd experiments/wide-events-lab && bun run src/index.ts
-
-# Write the local wide events agent bootstrap config
-wide-events-lab-agent-bootstrap:
-    cd experiments/wide-events-lab && bun run src/agent/bootstrap.ts
-
-# Replay recent raw events into rollups
-wide-events-lab-replay:
-    cd experiments/wide-events-lab && bun run src/replay.ts
-
-# Sync MinIO rollups locally for the agent
-wide-events-lab-agent-sync:
-    cd experiments/wide-events-lab && bun run src/agent/sync-rollups.ts
-
-# Write DuckDB bootstrap SQL for the agent
-wide-events-lab-agent-sql:
-    cd experiments/wide-events-lab && bun run src/agent/write-duckdb-sql.ts
-
-# Run tests for the wide events lab experiment
-wide-events-lab-test:
-    cd experiments/wide-events-lab && bun test
-
-# Typecheck the wide events lab experiment
-wide-events-lab-typecheck:
-    cd experiments/wide-events-lab && bun run typecheck
-
-# Lint the wide events lab experiment
-wide-events-lab-lint:
-    cd experiments/wide-events-lab && bun run lint
-
-# Format the wide events lab experiment
-wide-events-lab-format:
-    cd experiments/wide-events-lab && bun run format
-
-# Bring up the wide events lab compose stack
-wide-events-lab-compose-up:
-    docker compose -f experiments/wide-events-lab/docker-compose.yml up --build -d
-    until curl -fsS http://127.0.0.1:$${WIDE_EVENTS_LAB_PORT:-4090}/health >/dev/null; do sleep 1; done
-
-# Tear down the wide events lab compose stack
-wide-events-lab-compose-down:
-    docker compose -f experiments/wide-events-lab/docker-compose.yml down -v --remove-orphans
-
-# Run compose E2E for the wide events lab experiment
-wide-events-lab-compose-e2e:
-    cd experiments/wide-events-lab && ./compose/e2e.sh
-
 # Install dependencies for the wide events app
 wide-events-install:
     cd apps/wide-events && bun install

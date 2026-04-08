@@ -12,6 +12,7 @@ pub const RequestObs = struct {
     started_at_ms: i64,
     started_mono: std.Io.Timestamp,
     request_id: []u8,
+    is_request_root: bool,
     event_id: [16]u8,
     method: []const u8,
     path: []const u8,
@@ -58,6 +59,7 @@ pub const RequestObs = struct {
             .started_at_ms = @intCast(@divFloor(std.Io.Clock.real.now(io).nanoseconds, std.time.ns_per_ms)),
             .started_mono = std.Io.Clock.awake.now(io),
             .request_id = request_id,
+            .is_request_root = request_id_header == null,
             .event_id = timeDerivedId(io),
             .method = method,
             .path = path,
@@ -117,7 +119,9 @@ pub const RequestObs = struct {
         writeAll(&out.writer, std.fmt.bytesToHex(self.event_id, .lower)[0..]) catch return;
         writeAll(&out.writer, "\",\"type\":\"request\",\"service\":\"gs\",\"request_id\":\"") catch return;
         writeEscaped(&out.writer, self.request_id) catch return;
-        writeAll(&out.writer, "\",\"started_at\":\"") catch return;
+        writeAll(&out.writer, "\",\"is_request_root\":") catch return;
+        writeAll(&out.writer, if (self.is_request_root) "true" else "false") catch return;
+        writeAll(&out.writer, ",\"started_at\":\"") catch return;
         writeIsoFromMs(&out.writer, self.started_at_ms) catch return;
         writeAll(&out.writer, "\",\"ended_at\":\"") catch return;
         writeIsoFromMs(&out.writer, ended_at_ms) catch return;

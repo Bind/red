@@ -6,6 +6,7 @@ export interface WideCollectorSource {
 export interface WideCollectorEvent {
 	event_id: string;
 	request_id: string;
+	is_request_root: boolean;
 	parent_request_id?: string;
 	trace_id?: string;
 	service: string;

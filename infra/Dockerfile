@@ -9,6 +9,7 @@ COPY apps/auth/package.json ./apps/auth/
 COPY apps/bff/package.json ./apps/bff/
 COPY apps/gs/package.json ./apps/gs/
 COPY apps/web/package.json ./apps/web/
+COPY apps/wide-events/package.json ./apps/wide-events/
 COPY pkg/obs/package.json ./pkg/obs/
 RUN bun install --frozen-lockfile
 
@@ -26,6 +27,7 @@ COPY apps/auth/package.json ./apps/auth/
 COPY apps/bff/package.json ./apps/bff/
 COPY apps/gs/package.json ./apps/gs/
 COPY apps/web/package.json ./apps/web/
+COPY apps/wide-events/package.json ./apps/wide-events/
 COPY pkg/obs/package.json ./pkg/obs/
 RUN bun install --frozen-lockfile --production
 

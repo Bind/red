@@ -14,6 +14,16 @@ describe("obs", () => {
 
     expect(envelope.requestId).toBe("req-123");
     expect(envelope.event.service).toBe("test-service");
+    expect(envelope.event.is_request_root).toBe(false);
+  });
+
+  test("marks generated request ids as root requests", () => {
+    const envelope = createEventEnvelope(
+      new Request("http://localhost/health"),
+      { service: "test-service" },
+    );
+
+    expect(envelope.event.is_request_root).toBe(true);
   });
 
   test("finalizes envelopes with response metadata", () => {

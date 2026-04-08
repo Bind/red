@@ -25,6 +25,7 @@ The skill has specialized workflows that produce better results than ad-hoc answ
 Key routing rules:
 - Product ideas, "is this worth building", brainstorming → invoke office-hours
 - Bugs, errors, "why is this broken", 500 errors → invoke investigate
+- Wide-events observability, request tracing, MinIO rollup/raw debugging → invoke wide-events-observability
 - Ship, deploy, push, create PR → invoke ship
 - QA, test the site, find bugs → invoke qa
 - Code review, check my diff → invoke review

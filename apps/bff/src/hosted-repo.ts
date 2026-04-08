@@ -52,7 +52,7 @@ export interface HostedRepoReader {
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-const HOSTED_REPO_OPTIONAL_TIMEOUT_MS = 3_000;
+const HOSTED_REPO_OPTIONAL_TIMEOUT_MS = 8_000;
 
 interface RepoRecord {
   owner: string;
