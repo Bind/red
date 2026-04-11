@@ -8,5 +8,8 @@ node_modules/
 apps/web/dist/
 .claw-artifacts/
 .bun-tmp/
+.wide-events-agent/
+.codex-artifacts/
+.codex-debug/
 .zig-cache/
 zig-cache/
