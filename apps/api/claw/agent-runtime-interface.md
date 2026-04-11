@@ -11,7 +11,7 @@ This is the target product-facing contract for the next runner implementation.
 
 ## Core contract
 
-The interface lives in [src/claw/runtime.ts](/Users/db/workspace/redc/src/claw/runtime.ts).
+The interface lives in [runtime.ts](/Users/db/workspace/redc/apps/api/claw/runtime.ts).
 
 Key concepts:
 
@@ -52,8 +52,8 @@ The worker should eventually depend on this interface rather than:
 
 The current action/prompt system should remain unchanged:
 
-- action ids from `src/claw/actions.ts`
-- prompt files in `src/claw/prompts/`
+- action ids from `apps/api/claw/actions.ts`
+- prompt files in `apps/api/claw/prompts/`
 - provenance metadata in summary events
 
 ## Expected cutover
@@ -61,4 +61,4 @@ The current action/prompt system should remain unchanged:
 1. Add a concrete implementation of `AgentRuntime` for the new runner.
 2. Adapt `ClawSummaryGenerator` to call `AgentRuntime` instead of `DockerClawRunner`.
 3. Map structured runtime events into existing session/log bus behavior.
-4. Remove rollout JSONL-specific plumbing listed in `docs/claw-jsonl-cutover.md`.
+4. Remove rollout JSONL-specific plumbing listed in `jsonl-cutover.md`.

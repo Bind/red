@@ -4,7 +4,7 @@ This is the current JSONL / rollout-file specific work that should be removed on
 
 ## Runner container scripts
 
-- [claw-runner/run.sh](/Users/db/workspace/redc/claw-runner/run.sh)
+- [run.sh](/Users/db/workspace/redc/apps/ocr/run.sh)
   - `ROLL_OUT_METADATA_FILE`
   - `CODEX_SESSION_ROOT`
   - `list_rollout_files()`
@@ -14,16 +14,16 @@ This is the current JSONL / rollout-file specific work that should be removed on
   - `tee "$OUTPUT_DIR/claw-events.jsonl"`
   - copying `claw-events.jsonl` into host output
 
-- [claw-runner/rollout-to-activity.cjs](/Users/db/workspace/redc/claw-runner/rollout-to-activity.cjs)
+- [rollout-to-activity.cjs](/Users/db/workspace/redc/apps/ocr/rollout-to-activity.cjs)
   - entire file
   - all event-shape parsing for `thread.started`, `item.completed`, etc.
 
-- [claw-runner/Dockerfile](/Users/db/workspace/redc/claw-runner/Dockerfile)
+- [Dockerfile](/Users/db/workspace/redc/apps/ocr/Dockerfile)
   - copy/chmod of `rollout-to-activity.cjs`
 
 ## App runner parsing
 
-- [src/claw/runner.ts](/Users/db/workspace/redc/src/claw/runner.ts)
+- [runner.ts](/Users/db/workspace/redc/apps/api/claw/runner.ts)
   - `RolloutMetadata`
   - `ClawEventEnvelope`
   - `readRolloutMetadata()`
@@ -34,32 +34,32 @@ This is the current JSONL / rollout-file specific work that should be removed on
 
 ## Tracker fields that are JSONL-specific
 
-- [src/claw/types.ts](/Users/db/workspace/redc/src/claw/types.ts)
+- [types.ts](/Users/db/workspace/redc/apps/api/claw/types.ts)
   - `rolloutPath`
 
-- [src/claw/tracker.ts](/Users/db/workspace/redc/src/claw/tracker.ts)
+- [tracker.ts](/Users/db/workspace/redc/apps/api/claw/tracker.ts)
   - `rollout_path` column
   - `attachRollout(...)` name and semantics
 
-- [src/claw/tracker.test.ts](/Users/db/workspace/redc/src/claw/tracker.test.ts)
+- [tracker.test.ts](/Users/db/workspace/redc/apps/api/claw/tracker.test.ts)
   - rollout-path fixture assertions
 
 `codexSessionId` may remain, but it should be redefined as the runtime session id, not inferred from rollout filenames.
 
 ## Artifact model tied to rollout JSONL
 
-- [src/claw/artifacts.ts](/Users/db/workspace/redc/src/claw/artifacts.ts)
+- [artifacts.ts](/Users/db/workspace/redc/apps/api/claw/artifacts.ts)
   - `eventsKey` specifically representing `claw-events.jsonl`
   - `rolloutPath` in `PersistedClawArtifacts`
   - `readTextArtifact(..., "events")` assuming JSONL event files
   - content-type handling for `.jsonl`
 
-- [src/claw/uploader.ts](/Users/db/workspace/redc/src/claw/uploader.ts)
+- [uploader.ts](/Users/db/workspace/redc/apps/api/claw/uploader.ts)
   - promotion logic driven by `rolloutPath?.startsWith("s3://")`
 
 ## API coupling
 
-- [src/index.ts](/Users/db/workspace/redc/src/index.ts)
+- [index.ts](/Users/db/workspace/redc/apps/api/index.ts)
   - `/api/claw/runs/:runId/artifacts/:kind` assuming `events` means JSONL
   - switching local vs remote reads based on `rolloutPath`
 
@@ -69,8 +69,8 @@ This is the current JSONL / rollout-file specific work that should be removed on
 
 Relevant files:
 
-- [web/src/lib/api.ts](/Users/db/workspace/redc/web/src/lib/api.ts)
-- [web/src/routes/change.tsx](/Users/db/workspace/redc/web/src/routes/change.tsx)
+- [api.ts](/Users/db/workspace/redc/apps/web/src/lib/api.ts)
+- [change.tsx](/Users/db/workspace/redc/apps/web/src/routes/change.tsx)
 
 ## What should survive cutover
 

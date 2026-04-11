@@ -1,6 +1,6 @@
 # redc
 
-`redc` is an agent-native code forge workspace. This repository contains the main API and CLI, supporting services, a web UI, infra and compose setup, and a set of experiments that are being promoted into the main product over time.
+`redc` is an agent-native code forge workspace. The repo contains the main API and CLI, supporting services, the web app, infra and compose wiring, shared packages, and a small set of experiments.
 
 ## Working from the repo root
 
@@ -19,17 +19,13 @@ just verify
 ./scripts/redc
 ```
 
-Git server commands:
+Service-specific commands:
 
 ```bash
 just git-server-up
 just git-server-test
 just gs-integration
-```
 
-Auth service commands:
-
-```bash
 just auth-install
 just auth-serve
 just auth-test
@@ -45,84 +41,69 @@ just auth-compose-e2e
 |   |-- auth/
 |   |-- bff/
 |   |-- gs/
-|   |-- observability/
-|   |-- web/
-|   `-- wide-events/
-|-- docs/
+|   |-- obs/
+|   |-- ocr/
+|   `-- web/
 |-- experiments/
 |-- infra/
 |-- pkg/
 |   `-- obs/
-|-- packages/
 |-- scripts/
-|-- tools/
-|   `-- claw-runner/
-|-- web/
 |-- justfile
 `-- package.json
 ```
 
 ### `apps/`
 
-Product and service code lives here.
+Main product and runtime surfaces live here.
 
-- `apps/api/`: main Bun/Hono backend plus the `redc` CLI entrypoint. Notable folders include:
-  - `cli/` for the terminal client exposed by `./scripts/redc`
-  - `claw/` for agent run orchestration and artifact handling
-  - `db/` for schema and query code
-  - `engine/` for review, policy, state-machine, and summary logic
-  - `ingest/` and `jobs/` for background processing
-  - `repo/` for repository-provider and git-server integration code
-- `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, compose support, and its own tests.
-- `apps/bff/`: lightweight backend-for-frontend service.
-- `apps/gs/`: git server package. This includes the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
-- `apps/observability/`: reserved app area for observability-facing code. The directory exists, but it is currently much lighter than the other apps.
-- `apps/web/`: frontend app built with Vite/React. Most UI code is under `src/routes`, `src/components`, `src/lib`, and `src/hooks`.
-- `apps/wide-events/`: dedicated wide-events collector service that stores raw events and request rollups.
+- `apps/api/`: main Bun/Hono backend plus the `redc` CLI entrypoint.
+  Important subfolders:
+  `cli/` for the terminal client, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, `ingest/` and `jobs/` for processing, and `repo/` for git-server integration.
+- `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
+- `apps/bff/`: backend-for-frontend service.
+- `apps/gs/`: git server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
+- `apps/obs/`: observability collector service for request-wide events and rollups. This is the service formerly referred to as `wide-events`.
+- `apps/ocr/`: OpenCode runner image build context used by the API to launch agent runs in Docker.
+- `apps/web/`: Vite/React frontend app.
 
-### `experiments/`
+### `pkg/`
 
-Incubation area for ideas that are not yet folded into the main product.
+Shared importable code lives here.
 
-- `experiments/ci-runner-lab/`: CI runner prototype with its own compose setup and docs.
-- `experiments/durable-workflow-lab/`: workflow durability exploration.
-- `experiments/git-mirror-canary/`: git mirror canary service.
-- `experiments/smithers-lab/`: agent orchestration lab with workflows and compose fixtures.
-- `experiments/README.md`: overview for the experiments area.
+- `pkg/obs/`: shared observability package used by multiple apps.
 
 ### `infra/`
 
-Local and deployment infrastructure support.
+Infra and local dev wiring.
 
 - `infra/compose/`: root Docker Compose stack used by `just up`, `just down`, and related commands.
 - `infra/caddy/`: local gateway/proxy configuration.
 - `infra/gateway/`: gateway-specific config and assets.
 - `infra/scripts/`: setup and deployment scripts, including the local dev bootstrap path.
 
-### `pkg/` and `packages/`
+### `experiments/`
 
-- `pkg/obs/`: shared TypeScript observability package used by multiple apps.
-- `packages/`: currently present as a top-level directory but not populated like `pkg/`.
+Self-contained labs, canaries, and technical probes that are not yet part of the main product surface.
+
+- `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
+- Current experiments live under:
+  `ci-runner-lab/`, `durable-workflow-lab/`, `git-mirror-canary/`, and `smithers-lab/`.
 
 ### `scripts/`
 
-Small repo-level helpers. The main one to know is:
+Repo-level helper scripts.
 
-- `scripts/redc`: shell wrapper that exposes the root CLI and prints available `redc` commands.
+- `scripts/redc`: shell wrapper for the root CLI.
 
-### `tools/`
+## Documentation setup
 
-Tooling that supports the main services.
+The current doc layout is workable, but it should stay opinionated:
 
-- `tools/claw-runner/`: containerized runner used for agent execution flows.
-
-### Other top-level files and folders
-
-- `justfile`: primary command entrypoint for local development.
-- `package.json`: workspace definition for the Bun monorepo.
-- `docs/`: additional project documentation.
-- `web/`: separate top-level web workspace/assets area that exists alongside `apps/web`.
-- `sst.config.ts`: SST configuration for cloud/deploy infrastructure.
+- Root `README.md` should explain the repo shape, top-level commands, and where things live.
+- App-level `README.md` files should describe runtime surface, commands, and boundaries for a single app.
+- `experiments/*/README.md` files should stay local to each experiment.
+- Design notes should usually live beside the code they describe rather than in a root-level catch-all folder.
 
 ## Notes for contributors
 
