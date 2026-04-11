@@ -121,69 +121,41 @@ pub const ControlPlane = struct {
         const head_info = try object.parseCommit(self.allocator, head_commit.data);
         defer self.allocator.free(head_info.parents);
 
-        const base_tree = try hexToDigest(base_info.tree_hash);
-        const head_tree = try hexToDigest(head_info.tree_hash);
-
-        const changes = try diff.diffTreesRecursive(
-            self.allocator,
-            .{
-                .ptr = self,
-                .loadFn = loadTreeForDiff,
-            },
-            base_tree,
-            head_tree,
-            "",
-        );
-        defer diff.freeTreeChanges(self.allocator, changes);
-
-        var files: std.ArrayList(CompareFileJson) = .empty;
-        defer freeCompareFileList(self.allocator, &files);
-
-        var additions: usize = 0;
-        var deletions: usize = 0;
-        var patch: std.ArrayList(u8) = .empty;
-        defer patch.deinit(self.allocator);
-
-        for (changes) |change| {
-            const old_blob = if (change.old_hash) |h| try self.loadBlobByDigest(h) else null;
-            defer if (old_blob) |b| self.allocator.free(b);
-            const new_blob = if (change.new_hash) |h| try self.loadBlobByDigest(h) else null;
-            defer if (new_blob) |b| self.allocator.free(b);
-
-            const old_text = if (old_blob) |b| b else "";
-            const new_text = if (new_blob) |b| b else "";
-            const stats = try lineStats(self.allocator, old_text, new_text);
-            additions += stats.additions;
-            deletions += stats.deletions;
-
-            try files.append(self.allocator, .{
-                .filename = try self.allocator.dupe(u8, change.path),
-                .additions = stats.additions,
-                .deletions = stats.deletions,
-                .status = switch (change.kind) {
-                    .added => .added,
-                    .deleted => .deleted,
-                    .modified => .modified,
-                },
-            });
-
-            if (include_patch) {
-                const old_path = if (change.kind == .added) "/dev/null" else change.path;
-                const new_path = if (change.kind == .deleted) "/dev/null" else change.path;
-                const hunk = try diff.unifiedDiff(self.allocator, old_text, new_text, old_path, new_path);
-                defer self.allocator.free(hunk);
-                try patch.appendSlice(self.allocator, hunk);
-            }
-        }
-
-        return buildCompareJson(
-            self.allocator,
+        return self.diffTreesJson(
             base_ref,
             head_ref,
-            files.items,
-            additions,
-            deletions,
-            if (include_patch) patch.items else null,
+            try hexToDigest(base_info.tree_hash),
+            try hexToDigest(head_info.tree_hash),
+            include_patch,
+        );
+    }
+
+    pub fn commitDiffJson(self: *ControlPlane, commit_ref: []const u8) ![]u8 {
+        const commit_tip = try self.resolveCommitish(commit_ref) orelse return error.NotFound;
+        defer self.allocator.free(commit_tip);
+
+        const commit = try self.loadCommit(commit_tip) orelse return error.NotFound;
+        defer self.allocator.free(commit.data);
+
+        const info = try object.parseCommit(self.allocator, commit.data);
+        defer self.allocator.free(info.parents);
+
+        const head_tree = try hexToDigest(info.tree_hash);
+        const base_tree = if (info.parents.len > 0) blk: {
+            const parent_hex = info.parents[0];
+            const parent = try self.loadCommit(parent_hex[0..]) orelse return error.NotFound;
+            defer self.allocator.free(parent.data);
+            const parent_info = try object.parseCommit(self.allocator, parent.data);
+            defer self.allocator.free(parent_info.parents);
+            break :blk try hexToDigest(parent_info.tree_hash);
+        } else try hexToDigest(empty_tree_hex);
+
+        return self.diffTreesJson(
+            if (info.parents.len > 0) info.parents[0][0..] else empty_tree_hex[0..],
+            commit_tip,
+            base_tree,
+            head_tree,
+            true,
         );
     }
 
@@ -351,12 +323,95 @@ pub const ControlPlane = struct {
         }
         return try protocol.resolveRef(self.allocator, self.storage, name);
     }
+
+    fn diffTreesJson(
+        self: *ControlPlane,
+        base_ref: []const u8,
+        head_ref: []const u8,
+        base_tree: sha1.Digest,
+        head_tree: sha1.Digest,
+        include_patch: bool,
+    ) ![]u8 {
+        const changes = try diff.diffTreesRecursive(
+            self.allocator,
+            .{
+                .ptr = self,
+                .loadFn = loadTreeForDiff,
+            },
+            base_tree,
+            head_tree,
+            "",
+        );
+        defer diff.freeTreeChanges(self.allocator, changes);
+
+        var files: std.ArrayList(CompareFileJson) = .empty;
+        defer freeCompareFileList(self.allocator, &files);
+
+        var additions: usize = 0;
+        var deletions: usize = 0;
+        var patch: std.ArrayList(u8) = .empty;
+        defer patch.deinit(self.allocator);
+
+        for (changes) |change| {
+            const old_blob = if (change.old_hash) |h| try self.loadBlobByDigest(h) else null;
+            defer if (old_blob) |b| self.allocator.free(b);
+            const new_blob = if (change.new_hash) |h| try self.loadBlobByDigest(h) else null;
+            defer if (new_blob) |b| self.allocator.free(b);
+
+            const old_text = if (old_blob) |b| b else "";
+            const new_text = if (new_blob) |b| b else "";
+            const stats = try lineStats(self.allocator, old_text, new_text);
+            additions += stats.additions;
+            deletions += stats.deletions;
+
+            try files.append(self.allocator, .{
+                .filename = try self.allocator.dupe(u8, change.path),
+                .additions = stats.additions,
+                .deletions = stats.deletions,
+                .status = switch (change.kind) {
+                    .added => .added,
+                    .deleted => .deleted,
+                    .modified => .modified,
+                },
+            });
+
+            if (include_patch) {
+                const header_old_path = if (change.kind == .added) "/dev/null" else try std.fmt.allocPrint(self.allocator, "a/{s}", .{change.path});
+                defer if (change.kind != .added) self.allocator.free(header_old_path);
+                const header_new_path = if (change.kind == .deleted) "/dev/null" else try std.fmt.allocPrint(self.allocator, "b/{s}", .{change.path});
+                defer if (change.kind != .deleted) self.allocator.free(header_new_path);
+                const hunk = try diff.unifiedDiff(
+                    self.allocator,
+                    old_text,
+                    new_text,
+                    change.path,
+                    change.path,
+                    header_old_path,
+                    header_new_path,
+                );
+                defer self.allocator.free(hunk);
+                try patch.appendSlice(self.allocator, hunk);
+            }
+        }
+
+        return buildCompareJson(
+            self.allocator,
+            base_ref,
+            head_ref,
+            files.items,
+            additions,
+            deletions,
+            if (include_patch) patch.items else null,
+        );
+    }
 };
 
 const LoadedObject = struct {
     obj_type: object.ObjectType,
     data: []u8,
 };
+
+const empty_tree_hex: [40]u8 = "4b825dc642cb6eb9a060e54bf8d69288fbee4904".*;
 
 const CommitJson = struct {
     sha: []u8,

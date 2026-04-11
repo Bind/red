@@ -36,8 +36,10 @@ pub fn unifiedDiff(
     allocator: std.mem.Allocator,
     a: []const u8,
     b: []const u8,
-    path_a: []const u8,
-    path_b: []const u8,
+    diff_path_a: []const u8,
+    diff_path_b: []const u8,
+    header_path_a: []const u8,
+    header_path_b: []const u8,
 ) ![]u8 {
     const diff = try diffLines(allocator, a, b);
     defer allocator.free(diff);
@@ -45,9 +47,15 @@ pub fn unifiedDiff(
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
 
-    // Header
-    try appendFmt(allocator, &out, "--- {s}\n", .{path_a});
-    try appendFmt(allocator, &out, "+++ {s}\n", .{path_b});
+    const git_path_a = try gitDiffPath(allocator, diff_path_a, .old);
+    defer allocator.free(git_path_a);
+    const git_path_b = try gitDiffPath(allocator, diff_path_b, .new);
+    defer allocator.free(git_path_b);
+
+    // Git-style file header so downstream consumers can split patches by file.
+    try appendFmt(allocator, &out, "diff --git {s} {s}\n", .{ git_path_a, git_path_b });
+    try appendFmt(allocator, &out, "--- {s}\n", .{header_path_a});
+    try appendFmt(allocator, &out, "+++ {s}\n", .{header_path_b});
 
     // Generate hunks
     var i: usize = 0;
@@ -121,6 +129,23 @@ pub fn unifiedDiff(
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+const GitPathKind = enum {
+    old,
+    new,
+};
+
+fn gitDiffPath(allocator: std.mem.Allocator, path: []const u8, kind: GitPathKind) ![]u8 {
+    if (std.mem.eql(u8, path, "/dev/null")) {
+        return allocator.dupe(u8, path);
+    }
+
+    const prefix = switch (kind) {
+        .old => "a/",
+        .new => "b/",
+    };
+    return std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, path });
 }
 
 fn appendFmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
@@ -665,11 +690,22 @@ test "unified diff" {
     const allocator = std.testing.allocator;
     const a = "line1\nline2\nline3\n";
     const b = "line1\nchanged\nline3\n";
-    const diff = try unifiedDiff(allocator, a, b, "a/file.txt", "b/file.txt");
+    const diff = try unifiedDiff(allocator, a, b, "file.txt", "file.txt", "a/file.txt", "b/file.txt");
     defer allocator.free(diff);
 
+    try std.testing.expect(std.mem.indexOf(u8, diff, "diff --git a/file.txt b/file.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, diff, "--- a/file.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, diff, "+++ b/file.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, diff, "-line2") != null);
     try std.testing.expect(std.mem.indexOf(u8, diff, "+changed") != null);
+}
+
+test "unified diff uses git paths for added files" {
+    const allocator = std.testing.allocator;
+    const diff = try unifiedDiff(allocator, "", "new\n", "new.txt", "new.txt", "/dev/null", "b/new.txt");
+    defer allocator.free(diff);
+
+    try std.testing.expect(std.mem.indexOf(u8, diff, "diff --git a/new.txt b/new.txt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diff, "--- /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diff, "+++ b/new.txt") != null);
 }

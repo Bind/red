@@ -40,6 +40,13 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     return result.patch ?? "";
   }
 
+  async getCommitDiff(owner: string, repo: string, sha: string): Promise<string> {
+    const result = await this.readJson<{ patch?: string }>(
+      this.repoUrl(owner, repo, `/commits/${encodeURIComponent(sha)}/diff`)
+    );
+    return result.patch ?? "";
+  }
+
   async getFileContent(owner: string, repo: string, filepath: string, ref: string): Promise<string | null> {
     const payload = await this.readJson<{ content: string | null }>(
       this.repoUrl(owner, repo, `/file?${new URLSearchParams({ path: filepath, ref }).toString()}`)

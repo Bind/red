@@ -1,0 +1,23 @@
+services:
+  ci-runner-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${CI_RUNNER_LAB_PUBLISHED_PORT:-4091}:4091"
+    environment:
+      CI_RUNNER_LAB_MODE: compose
+      CI_RUNNER_LAB_HOST: 0.0.0.0
+      CI_RUNNER_LAB_PORT: 4091
+      CI_RUNNER_LAB_DATA_DIR: /data
+      CI_RUNNER_LAB_RUNS_FILE: /data/runs.json
+      CI_RUNNER_LAB_WORK_DIR: /data/work
+      CI_RUNNER_LAB_MAX_CONCURRENT_RUNS: "${CI_RUNNER_LAB_MAX_CONCURRENT_RUNS:?set CI_RUNNER_LAB_MAX_CONCURRENT_RUNS}"
+      CI_RUNNER_LAB_STEP_TIMEOUT_MS: "${CI_RUNNER_LAB_STEP_TIMEOUT_MS:?set CI_RUNNER_LAB_STEP_TIMEOUT_MS}"
+    volumes:
+      - "${CI_RUNNER_LAB_HOST_DATA_DIR:?set CI_RUNNER_LAB_HOST_DATA_DIR}:/data"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

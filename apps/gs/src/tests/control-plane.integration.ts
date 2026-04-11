@@ -51,6 +51,7 @@ interface ComparePayload {
     deletions: number;
     status: "added" | "modified" | "deleted" | "renamed";
   }>;
+  patch?: string;
 }
 
 async function createRepoWithHistory(server: StartedDevGitServer, repoName: string) {
@@ -177,6 +178,17 @@ describe("native control-plane integration", () => {
       expect(compareResult.json?.files.map((file) => file.filename).sort()).toEqual(["docs/guide.md", "src/feature.ts"]);
       expect(compareResult.json?.files.every((file) => !file.filename.includes("\n"))).toBe(true);
       expect(compareResult.json?.additions).toBeGreaterThan(0);
+
+      const commitDiffResult = await fetchJson<ComparePayload>(
+        repoUrl(server, repoInfo.owner, repoInfo.name, `/commits/${featureRef.sha}/diff`),
+        auth,
+      );
+      expect(commitDiffResult.response.status).toBe(200);
+      expect(commitDiffResult.json?.base).toBe(mainRef.sha);
+      expect(commitDiffResult.json?.head).toBe(featureRef.sha);
+      expect(commitDiffResult.json?.patch).toContain("diff --git");
+      expect(commitDiffResult.json?.patch).toContain("+++ b/docs/guide.md");
+      expect(commitDiffResult.json?.patch).toContain("+++ b/src/feature.ts");
 
       const badRefResult = await fetchJson<{ error: string }>(
         repoUrl(

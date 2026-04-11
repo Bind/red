@@ -1,0 +1,2 @@
+name: experiment-bootstrap
+description: Start or standardize an experiment under experiments/ using the repo's conventions.

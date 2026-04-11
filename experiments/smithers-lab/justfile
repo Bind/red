@@ -1,0 +1,35 @@
+set dotenv-load
+
+default:
+    @just --list --unsorted
+
+install:
+    bun install
+
+serve:
+    bun run src/index.ts
+
+run topic="Summarize what Smithers is good at":
+    bun run src/cli.ts "{{ topic }}"
+
+test:
+    bun test
+
+typecheck:
+    bunx tsc --noEmit
+
+lint:
+    bun run lint
+
+format:
+    bun run format
+
+compose-up:
+    docker compose up --build -d
+    until curl -fsS http://127.0.0.1:${SMITHERS_LAB_PUBLISHED_PORT:-4090}/health >/dev/null; do sleep 1; done
+
+compose-down:
+    docker compose down -v --remove-orphans
+
+compose-e2e:
+    ./compose/e2e.sh

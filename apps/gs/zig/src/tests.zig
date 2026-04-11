@@ -374,9 +374,10 @@ test "diff: modify + add + delete" {
 
 test "diff: unified format has correct markers" {
     const a = std.testing.allocator;
-    const u = try diff_mod.unifiedDiff(a, "old\n", "new\n", "a/f.txt", "b/f.txt");
+    const u = try diff_mod.unifiedDiff(a, "old\n", "new\n", "f.txt", "f.txt", "a/f.txt", "b/f.txt");
     defer a.free(u);
 
+    try std.testing.expect(std.mem.indexOf(u8, u, "diff --git a/f.txt b/f.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, u, "--- a/f.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, u, "+++ b/f.txt") != null);
     try std.testing.expect(std.mem.indexOf(u8, u, "-old") != null);

@@ -317,10 +317,16 @@ export function createApp(config: BffConfig) {
       if (!config.hostedRepo) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
+      const envelope = getEnvelope(c);
       const { owner, name } = splitHostedRepoId(config.hostedRepo.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
       const response = await fetchImpl(
         new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
+        {
+          headers: {
+            "x-request-id": envelope.requestId,
+          },
+        },
       );
       if (!response.ok) {
         return c.text(await response.text().catch(() => "Unable to load commit diff"), response.status as any);

@@ -40,6 +40,8 @@ describe("BFF app", () => {
   });
 
   test("proxies JSON and text routes through RPC", async () => {
+    let hostedRepoCommitDiffRequestId: string | null = null;
+
     const app = createApp({
       port: 3001,
       apiBaseUrl: "http://api.test",
@@ -67,6 +69,7 @@ describe("BFF app", () => {
           });
         }
         if (url.pathname === "/api/repos/redc/redc/commits/abc123/diff") {
+          hostedRepoCommitDiffRequestId = request.headers.get("x-request-id");
           return new Response("diff --git a/src/app.ts b/src/app.ts\n", {
             headers: { "Content-Type": "text/plain; charset=utf-8" },
           });
@@ -88,9 +91,14 @@ describe("BFF app", () => {
     expect(diff.status).toBe(200);
     expect(await diff.text()).toContain("diff --git");
 
-    const commitDiff = await app.request("http://bff.test/rpc/app/hosted-repo/commits/abc123/diff");
+    const commitDiff = await app.request("http://bff.test/rpc/app/hosted-repo/commits/abc123/diff", {
+      headers: {
+        "x-request-id": "hosted-repo-commit-diff-1",
+      },
+    });
     expect(commitDiff.status).toBe(200);
     expect(await commitDiff.text()).toContain("diff --git");
+    expect(hostedRepoCommitDiffRequestId).toBe("hosted-repo-commit-diff-1");
   });
 
   test("exposes the auth session through /rpc/me", async () => {

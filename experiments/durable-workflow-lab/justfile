@@ -1,0 +1,16 @@
+set dotenv-load
+
+default:
+    @just --list --unsorted
+
+install:
+    bun install
+
+lint:
+    bun run lint
+
+format:
+    bun run format
+
+typecheck:
+    bunx tsc --noEmit

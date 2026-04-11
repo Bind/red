@@ -1,0 +1,22 @@
+services:
+  smithers-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${SMITHERS_LAB_PUBLISHED_PORT:-4090}:4090"
+    environment:
+      SMITHERS_LAB_MODE: compose
+      SMITHERS_LAB_HOST: 0.0.0.0
+      SMITHERS_LAB_PORT: 4090
+      SMITHERS_LAB_DB_PATH: /data/smithers-lab.sqlite
+      SMITHERS_LAB_OPENAI_MODEL: "${SMITHERS_LAB_OPENAI_MODEL:?set SMITHERS_LAB_OPENAI_MODEL}"
+      SMITHERS_LAB_ALLOW_NETWORK: "${SMITHERS_LAB_ALLOW_NETWORK:-false}"
+      OPENAI_API_KEY: "${SMITHERS_LAB_OPENAI_API_KEY:?set SMITHERS_LAB_OPENAI_API_KEY}"
+    volumes:
+      - "${SMITHERS_LAB_HOST_DATA_DIR:?set SMITHERS_LAB_HOST_DATA_DIR}:/data"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

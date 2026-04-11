@@ -33,6 +33,11 @@ describe("GitServerHttpRepositoryProvider", () => {
         ]);
       }
       if (url.includes("/api/repos/redc/redc/commits")) {
+        if (url.includes("/diff")) {
+          return Response.json({
+            patch: "diff --git a/src/app.ts b/src/app.ts",
+          });
+        }
         return Response.json([
           {
             sha: "abc",
@@ -98,6 +103,7 @@ describe("GitServerHttpRepositoryProvider", () => {
       });
       expect(await provider.listBranches?.("redc", "redc")).toHaveLength(1);
       expect(await provider.listCommits?.("redc", "redc", "main", 10)).toHaveLength(1);
+      expect(await provider.getCommitDiff?.("redc", "redc", "abc")).toContain("diff --git");
       expect(await provider.getFileContent("redc", "redc", "README.md", "main")).toContain("redc");
       expect(await provider.compareDiff("redc", "redc", "main", "feature/demo")).toMatchObject({
         files_changed: 1,

@@ -353,6 +353,7 @@ fn handleControlPlaneRequest(
             const include_patch = patch != null and std.mem.eql(u8, patch.?, "1");
             break :blk cp.compareJson(base_value, head_value, include_patch);
         },
+        .commit_diff => cp.commitDiffJson(route.commit_sha orelse return sendJsonError(alloc, io, conn, obs, "Missing commit sha", keep_alive)),
     } catch |err| {
         const message = errorMessage(err);
         p("[control-plane] error={s}\n", .{message});
@@ -477,26 +478,43 @@ fn parseControlPlaneRoute(pathname: []const u8) ?ControlPlaneRoute {
     rest = rest[owner_end + 1 ..];
 
     var resource: ControlPlaneResource = .repo;
+    var commit_sha: ?[]const u8 = null;
     var repo = rest;
     if (std.mem.indexOfScalar(u8, rest, '/')) |slash| {
         repo = rest[0..slash];
         const suffix = rest[slash + 1 ..];
-        if (std.mem.eql(u8, suffix, "branches")) resource = .branches else if (std.mem.eql(u8, suffix, "commits")) resource = .commits else if (std.mem.eql(u8, suffix, "file")) resource = .file else if (std.mem.eql(u8, suffix, "compare")) resource = .compare else return null;
+        if (std.mem.eql(u8, suffix, "branches")) {
+            resource = .branches;
+        } else if (std.mem.eql(u8, suffix, "commits")) {
+            resource = .commits;
+        } else if (std.mem.eql(u8, suffix, "file")) {
+            resource = .file;
+        } else if (std.mem.eql(u8, suffix, "compare")) {
+            resource = .compare;
+        } else if (std.mem.startsWith(u8, suffix, "commits/") and std.mem.endsWith(u8, suffix, "/diff")) {
+            const value = suffix["commits/".len .. suffix.len - "/diff".len];
+            if (value.len == 0) return null;
+            if (std.mem.indexOfScalar(u8, value, '/')) |_| return null;
+            resource = .commit_diff;
+            commit_sha = value;
+        } else return null;
     }
 
     return .{
         .owner = owner,
         .repo = repo,
         .resource = resource,
+        .commit_sha = commit_sha,
     };
 }
 
-const ControlPlaneResource = enum { repo, branches, commits, file, compare };
+const ControlPlaneResource = enum { repo, branches, commits, file, compare, commit_diff };
 
 const ControlPlaneRoute = struct {
     owner: []const u8,
     repo: []const u8,
     resource: ControlPlaneResource,
+    commit_sha: ?[]const u8 = null,
 };
 
 const RepoStorage = struct {
@@ -688,6 +706,7 @@ fn controlPlaneResourceName(resource: ControlPlaneResource) []const u8 {
         .commits => "commits",
         .file => "file",
         .compare => "compare",
+        .commit_diff => "commit_diff",
     };
 }
 

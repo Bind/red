@@ -1,0 +1,16 @@
+{
+  "name": "@redc/durable-workflow-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "@types/bun": "latest",
+    "typescript": "^5.9.3",
+    "zod": "^4.1.12"
+  }
+}

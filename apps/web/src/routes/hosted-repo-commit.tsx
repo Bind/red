@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { PatchDiff } from "@pierre/diffs/react";
+import { FileTree } from "@pierre/trees/react";
+import type { GitStatusEntry } from "@pierre/trees";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +27,18 @@ const diffOptions = {
       --diffs-header-font-family: 'Geist Variable', sans-serif;
       border-radius: 0.25rem;
       overflow: hidden;
+    }
+  `,
+};
+
+const treeOptions = {
+  flattenEmptyDirectories: true,
+  unsafeCSS: `
+    :host {
+      --trees-bg-override: #0d0d0d;
+      --trees-fg-override: #fbfbfb;
+      --trees-accent-override: #e85450;
+      --trees-font-size-override: 13px;
     }
   `,
 };
@@ -58,11 +72,36 @@ function splitPatchFiles(diff: string): string[] {
   return diff.split(/(?=^diff --git )/m).filter(Boolean);
 }
 
+function parseDiffFiles(diff: string): { files: string[]; gitStatus: GitStatusEntry[] } {
+  const files: string[] = [];
+  const gitStatus: GitStatusEntry[] = [];
+
+  for (const chunk of splitPatchFiles(diff)) {
+    const header = chunk.match(/^diff --git (?:a\/|\/dev\/null)(.+?) (?:b\/)(.+)$/m);
+    if (!header) continue;
+    const path = header[2];
+    files.push(path);
+
+    let status: GitStatusEntry["status"] = "modified";
+    if (/^new file mode/m.test(chunk) || /^--- \/dev\/null/m.test(chunk)) status = "added";
+    else if (/^deleted file mode/m.test(chunk) || /^\+\+\+ \/dev\/null/m.test(chunk)) status = "deleted";
+    gitStatus.push({ path, status });
+  }
+
+  return { files, gitStatus };
+}
+
+function scrollToDiffFile(filename: string) {
+  const el = document.querySelector(`[data-diff-file="${filename}"]`);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export function HostedRepoCommitPage() {
   const { sha = "" } = useParams();
   const [commit, setCommit] = useState<HostedRepoCommit | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +125,14 @@ export function HostedRepoCommitPage() {
   }, [sha]);
 
   const patches = useMemo(() => (diff ? splitPatchFiles(diff) : []), [diff]);
+  const { files, gitStatus } = useMemo(
+    () => (diff ? parseDiffFiles(diff) : { files: [], gitStatus: [] }),
+    [diff],
+  );
+
+  useEffect(() => {
+    setSelectedFile(files[0] ?? null);
+  }, [files]);
 
   if (!diff && !error) {
     return (
@@ -138,9 +185,49 @@ export function HostedRepoCommitPage() {
             {patches.length} file{patches.length === 1 ? "" : "s"} changed
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           {patches.length > 0 ? (
-            patches.map((patch, index) => <PatchDiff key={`${sha}-${index}`} patch={patch} options={diffOptions} />)
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+              <div className="lg:sticky lg:top-4 lg:w-72 lg:shrink-0">
+                <div className="overflow-hidden rounded-xl border border-border bg-card/50">
+                  <div className="border-b border-border px-4 py-3">
+                    <p className="text-sm font-medium text-foreground">Files</p>
+                    <p className="text-xs text-muted-foreground">
+                      Jump through this commit using the diffs viewer file tree.
+                    </p>
+                  </div>
+                  <FileTree
+                    options={treeOptions}
+                    files={files}
+                    gitStatus={gitStatus}
+                    selectedItems={selectedFile ? [selectedFile] : []}
+                    onSelection={(items) => {
+                      const next = items.find((item) => !item.isFolder)?.path ?? null;
+                      if (!next) return;
+                      setSelectedFile(next);
+                      scrollToDiffFile(next);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="min-w-0 flex-1 space-y-4">
+                {patches.map((patch, index) => (
+                  <div
+                    key={`${sha}-${index}`}
+                    data-diff-file={files[index]}
+                    className={
+                      `overflow-hidden rounded-xl border bg-card/40 transition-colors ${
+                        files[index] === selectedFile
+                          ? "border-primary/60"
+                          : "border-border/60"
+                      }`
+                    }
+                  >
+                    <PatchDiff patch={patch} options={diffOptions} />
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">This commit does not include a patch.</p>
           )}
