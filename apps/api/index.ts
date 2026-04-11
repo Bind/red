@@ -633,7 +633,6 @@ export function createApp(config: AppConfig) {
   const openaiKey = process.env.OPENAI_API_KEY ?? null;
   const clawImage =
     process.env.OPENCODE_RUNNER_IMAGE ??
-    process.env.CLAW_RUNNER_IMAGE ??
     process.env.CODEX_RUNNER_IMAGE ??
     "redc-claw-runner";
   const hasClawAuth = existsSync(join(homedir(), ".local", "share", "opencode", "auth.json"));
