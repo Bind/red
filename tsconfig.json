@@ -12,9 +12,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "paths": {
-      "@/*": ["./apps/api/*"]
+      "@/*": ["./apps/ctl/*"]
     }
   },
-  "include": ["apps/api/**/*.ts"],
+  "include": ["apps/ctl/**/*.ts"],
   "exclude": [".sst/**/*"]
 }

@@ -11,7 +11,7 @@ This is the target product-facing contract for the next runner implementation.
 
 ## Core contract
 
-The interface lives in [runtime.ts](/Users/db/workspace/redc/apps/api/claw/runtime.ts).
+The interface lives in [runtime.ts](/Users/db/workspace/redc/apps/ctl/claw/runtime.ts).
 
 Key concepts:
 
@@ -52,8 +52,8 @@ The worker should eventually depend on this interface rather than:
 
 The current action/prompt system should remain unchanged:
 
-- action ids from `apps/api/claw/actions.ts`
-- prompt files in `apps/api/claw/prompts/`
+- action ids from `apps/ctl/claw/actions.ts`
+- prompt files in `apps/ctl/claw/prompts/`
 - provenance metadata in summary events
 
 ## Expected cutover

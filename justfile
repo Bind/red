@@ -26,10 +26,10 @@ up-build:
 down:
     just infra down
 
-# Rebuild app containers and the Claw runner image
+# Rebuild app containers and the OpenCode runner image
 build:
     docker compose -f {{ DEV_COMPOSE }} build
-    docker build -t redc-claw-runner tools/claw-runner/
+    docker build -t redc-claw-runner apps/ocr/
 
 # Show local service status
 ps:
@@ -77,11 +77,11 @@ exec service="" *cmd:
 
 # Run backend tests inside Docker
 test:
-    docker compose -f {{ DEV_COMPOSE }} exec api bun test
+    docker compose -f {{ DEV_COMPOSE }} exec ctl bun test
 
 # Run type checking inside Docker
 typecheck:
-    docker compose -f {{ DEV_COMPOSE }} exec api bunx tsc --noEmit
+    docker compose -f {{ DEV_COMPOSE }} exec ctl bunx tsc --noEmit
 
 # Run repository formatters
 fmt:
@@ -106,7 +106,7 @@ hooks-install:
 
 # Run tests for the git server package
 git-server-test:
-    cd apps/gs && bun test
+    cd apps/grs && bun test
 
 # Run Zig format/build/test checks for the native git server
 git-server-zig-check:
@@ -119,7 +119,7 @@ git-server-zig-check:
         elif [ -x "$HOME/.local/zig/current/zig" ]; then
             zig_bin="$HOME/.local/zig/current/zig"
         else
-            echo "Skipping apps/gs/zig checks: local zig is not installed."
+            echo "Skipping apps/grs/zig checks: local zig is not installed."
             exit 0
         fi
     fi
@@ -127,27 +127,27 @@ git-server-zig-check:
     case "$zig_version" in
         0.16.*|0.16.0-dev.*) ;;
         *)
-            echo "Skipping apps/gs/zig checks: local zig $zig_version is incompatible with apps/gs/zig (requires 0.16.x)."
+            echo "Skipping apps/grs/zig checks: local zig $zig_version is incompatible with apps/grs/zig (requires 0.16.x)."
             exit 0
             ;;
     esac
-    cd apps/gs/zig
+    cd apps/grs/zig
     find src -name '*.zig' -print | xargs "$zig_bin" fmt build.zig
     "$zig_bin" build test
     "$zig_bin" build server-only -Doptimize=ReleaseFast
 
 # Run the full native Zig git-server integration suite
 gs-integration:
-    docker compose -f {{ DEV_COMPOSE }} build git-server
-    cd apps/gs && bun test ./src/tests/*.integration.ts
+    docker compose -f {{ DEV_COMPOSE }} build grs
+    cd apps/grs && bun test ./src/tests/*.integration.ts
 
 # Start git server dependencies and service from the root compose stack
 git-server-up:
-    docker compose -f {{ DEV_COMPOSE }} up --build git-server minio minio-init
+    docker compose -f {{ DEV_COMPOSE }} up --build grs s3 init
 
 # Stop the git server service from the root compose stack
 git-server-down:
-    docker compose -f {{ DEV_COMPOSE }} rm -sf git-server minio-init
+    docker compose -f {{ DEV_COMPOSE }} rm -sf grs init
 
 # Install dependencies for the auth service
 auth-install:
@@ -213,11 +213,11 @@ auth-compose-e2e:
 
 # Show merge velocity and review queue
 status:
-    docker compose -f {{ DEV_COMPOSE }} exec api bun run apps/api/cli/index.ts status
+    docker compose -f {{ DEV_COMPOSE }} exec ctl bun run apps/ctl/cli/index.ts status
 
 # Browse known repos with fzf
 repos:
-    @docker compose -f {{ DEV_COMPOSE }} exec -T api bun run apps/api/cli/index.ts status --format json \
+    @docker compose -f {{ DEV_COMPOSE }} exec -T ctl bun run apps/ctl/cli/index.ts status --format json \
         | bun -e 'const input=await Bun.stdin.json(); const rows=Object.entries(input.by_repo ?? {}); for (const [name, count] of rows) console.log(`${name}\t${count}`)' \
         | fzf --delimiter='\t' --with-nth=1 --preview='echo "Queued changes: {2}"' \
         | cut -f1
@@ -255,30 +255,30 @@ git-mirror-canary-compose-down:
 git-mirror-canary-compose-e2e:
     cd experiments/git-mirror-canary && ./compose/e2e.sh
 
-# Install dependencies for the wide events app
-wide-events-install:
-    cd apps/wide-events && bun install
+# Install dependencies for the obs app
+obs-install:
+    cd apps/obs && bun install
 
-# Start the wide events app locally
-wide-events-serve:
-    cd apps/wide-events && bun run src/index.ts
+# Start the obs app locally
+obs-serve:
+    cd apps/obs && bun run src/index.ts
 
-# Replay recent raw events into rollups for the wide events app
-wide-events-replay:
-    cd apps/wide-events && bun run src/replay.ts
+# Replay recent raw events into rollups for the obs app
+obs-replay:
+    cd apps/obs && bun run src/replay.ts
 
-# Run tests for the wide events app
-wide-events-test:
-    cd apps/wide-events && bun test
+# Run tests for the obs app
+obs-test:
+    cd apps/obs && bun test
 
-# Typecheck the wide events app
-wide-events-typecheck:
-    cd apps/wide-events && bun run typecheck
+# Typecheck the obs app
+obs-typecheck:
+    cd apps/obs && bun run typecheck
 
-# Lint the wide events app
-wide-events-lint:
-    cd apps/wide-events && bun run lint
+# Lint the obs app
+obs-lint:
+    cd apps/obs && bun run lint
 
-# Format the wide events app
-wide-events-format:
-    cd apps/wide-events && bun run format
+# Format the obs app
+obs-format:
+    cd apps/obs && bun run format

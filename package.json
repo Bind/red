@@ -4,13 +4,13 @@
   "type": "module",
   "workspaces": ["apps/*", "pkg/*"],
   "bin": {
-    "redc": "apps/api/cli/index.ts"
+    "redc": "apps/ctl/cli/index.ts"
   },
   "scripts": {
-    "dev": "bun run --watch apps/api/index.ts",
-    "start": "bun run apps/api/index.ts",
-    "cli": "bun run apps/api/cli/index.ts",
-    "claw:manual": "bun run apps/api/claw/manual.ts",
+    "dev": "bun run --watch apps/ctl/index.ts",
+    "start": "bun run apps/ctl/index.ts",
+    "cli": "bun run apps/ctl/cli/index.ts",
+    "claw:manual": "bun run apps/ctl/claw/manual.ts",
     "test": "bun test",
     "deploy": "./infra/scripts/deploy.sh"
   },

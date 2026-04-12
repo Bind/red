@@ -21,15 +21,15 @@ export async function startDevGitServer(): Promise<StartedDevGitServer> {
     "GIT_SERVER_ADMIN_PASSWORD",
     "GIT_SERVER_AUTH_TOKEN_SECRET",
   ]);
-  await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
-  await composeUpWithRetry(composeFile, ["minio", "minio-init", "git-server"], process.env.GIT_SERVER_BUILD_ON_START === "1");
+  await removeComposeServicesBestEffort(composeFile, ["grs", "init"]);
+  await composeUpWithRetry(composeFile, ["s3", "init", "grs"], process.env.GIT_SERVER_BUILD_ON_START === "1");
 
   const publicUrl = composeEnv.GIT_SERVER_PUBLIC_URL;
   try {
     await waitForHttpServer(publicUrl);
     await waitForGitSmartHttpRoute(publicUrl, composeEnv.GIT_SERVER_ADMIN_USERNAME, composeEnv.GIT_SERVER_ADMIN_PASSWORD);
   } catch (error) {
-    await runCommand("docker", ["compose", "-f", composeFile, "logs", "--no-color", "git-server"]);
+    await runCommand("docker", ["compose", "-f", composeFile, "logs", "--no-color", "grs"]);
     throw error;
   }
 
@@ -39,7 +39,7 @@ export async function startDevGitServer(): Promise<StartedDevGitServer> {
     adminPassword: composeEnv.GIT_SERVER_ADMIN_PASSWORD,
     authTokenSecret: composeEnv.GIT_SERVER_AUTH_TOKEN_SECRET,
     async stop() {
-      await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
+      await removeComposeServicesBestEffort(composeFile, ["grs", "init"]);
     },
   };
 }
@@ -59,7 +59,7 @@ async function composeUpWithRetry(composeFile: string, services: string[], build
         throw error;
       }
       await Bun.sleep(500 * (attempt + 1));
-      await removeComposeServicesBestEffort(composeFile, ["git-server", "minio-init"]);
+      await removeComposeServicesBestEffort(composeFile, ["grs", "init"]);
     }
   }
   throw lastError instanceof Error ? lastError : new Error("timed out starting git server compose stack");

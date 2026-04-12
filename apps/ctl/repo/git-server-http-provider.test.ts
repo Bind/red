@@ -92,7 +92,7 @@ describe("GitServerHttpRepositoryProvider", () => {
 
     try {
       const provider = new GitServerHttpRepositoryProvider({
-        baseUrl: "http://git-server:8080",
+        baseUrl: "http://grs:8080",
         username: "admin",
         password: "admin",
       });

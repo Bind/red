@@ -3,7 +3,7 @@ set -euo pipefail
 
 REDC_PORT="${REDC_PORT:-3000}"
 REDC_DB_PATH="${REDC_DB_PATH:-/data/redc-dev.db}"
-MINIO_ENDPOINT="${MINIO_ENDPOINT:-minio}"
+MINIO_ENDPOINT="${MINIO_ENDPOINT:-s3}"
 MINIO_PORT="${MINIO_PORT:-9000}"
 MINIO_USE_SSL="${MINIO_USE_SSL:-false}"
 MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-minioadmin}"
@@ -18,7 +18,7 @@ WIDE_EVENTS_STORAGE_BACKEND="${WIDE_EVENTS_STORAGE_BACKEND:-minio}"
 WIDE_EVENTS_DATA_DIR="${WIDE_EVENTS_DATA_DIR:-/data/wide-events}"
 WIDE_EVENTS_RAW_EVENTS_DIR="${WIDE_EVENTS_RAW_EVENTS_DIR:-/data/wide-events/raw}"
 WIDE_EVENTS_ROLLUP_DIR="${WIDE_EVENTS_ROLLUP_DIR:-/data/wide-events/rollup}"
-WIDE_EVENTS_S3_ENDPOINT="${WIDE_EVENTS_S3_ENDPOINT:-http://minio:9000}"
+WIDE_EVENTS_S3_ENDPOINT="${WIDE_EVENTS_S3_ENDPOINT:-http://s3:9000}"
 WIDE_EVENTS_S3_REGION="${WIDE_EVENTS_S3_REGION:-us-east-1}"
 WIDE_EVENTS_S3_ACCESS_KEY_ID="${WIDE_EVENTS_S3_ACCESS_KEY_ID:-$MINIO_ACCESS_KEY}"
 WIDE_EVENTS_S3_SECRET_ACCESS_KEY="${WIDE_EVENTS_S3_SECRET_ACCESS_KEY:-$MINIO_SECRET_KEY}"
@@ -30,8 +30,8 @@ WIDE_EVENTS_SWEEP_INTERVAL_MS="${WIDE_EVENTS_SWEEP_INTERVAL_MS:-5000}"
 WIDE_EVENTS_INCOMPLETE_GRACE_MS="${WIDE_EVENTS_INCOMPLETE_GRACE_MS:-60000}"
 WIDE_EVENTS_REPLAY_WINDOW_MS="${WIDE_EVENTS_REPLAY_WINDOW_MS:-600000}"
 OBS_SINK_MODE="${OBS_SINK_MODE:-collector}"
-WIDE_EVENTS_COLLECTOR_URL="${WIDE_EVENTS_COLLECTOR_URL:-http://wide-events:4090}"
-GIT_STORAGE_PUBLIC_URL="${GIT_STORAGE_PUBLIC_URL:-http://git-server:8080}"
+WIDE_EVENTS_COLLECTOR_URL="${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}"
+GIT_STORAGE_PUBLIC_URL="${GIT_STORAGE_PUBLIC_URL:-http://grs:8080}"
 GIT_STORAGE_DEFAULT_OWNER="${GIT_STORAGE_DEFAULT_OWNER:-redc}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
@@ -84,24 +84,24 @@ EOF
 
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
   echo "Building Claw runner image..."
-  docker build -t redc-claw-runner tools/claw-runner/
+  docker build -t redc-claw-runner apps/ocr/
 
   echo "Building Docker-backed dev services..."
-  docker compose --env-file .env -f "$COMPOSE_FILE" build git-server api
+  docker compose --env-file .env -f "$COMPOSE_FILE" build grs ctl
 else
   echo "Skipping image builds (SKIP_IMAGE_BUILD=true)"
 fi
 
 echo "Starting dev stack..."
-docker compose --env-file .env -f "$COMPOSE_FILE" up -d minio minio-init wide-events git-server auth-db auth api bff web
+docker compose --env-file .env -f "$COMPOSE_FILE" up -d s3 init obs grs db-auth auth ctl bff web
 
 echo ""
 echo "=== Setup complete ==="
 echo "UI:      http://localhost:5173"
-echo "API:     http://localhost:3000"
+echo "CTL:     http://localhost:3000"
 echo "BFF:     http://localhost:3001"
 echo "Auth:    http://localhost:4020"
-echo "Wide:    http://localhost:$WIDE_EVENTS_PORT"
+echo "OBS:     http://localhost:$WIDE_EVENTS_PORT"
 echo "Git:     http://localhost:9080"
 echo "MinIO:   http://localhost:$MINIO_CONSOLE_PORT"
 echo "S3 API:  http://localhost:$MINIO_API_PORT"

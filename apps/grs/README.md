@@ -8,14 +8,14 @@ Git-backed storage service with:
 
 The current direction is explicit:
 
-- normal Git operations use standard smart HTTP against the remote git-server
-- SDK reads use git-server control-plane endpoints
+- normal Git operations use standard smart HTTP against the remote `grs` service
+- SDK reads use `grs` control-plane endpoints
 - the SDK does not shell out to local `git`
 - the SDK does not create temp worktrees or depend on local filesystem state
 
 ## Goals
 
-Keep the client shape close to `code.storage`, but only for operations that can be satisfied by the remote git-server we already have today.
+Keep the client shape close to `code.storage`, but only for operations that can be satisfied by the remote `grs` service we already have today.
 
 That means:
 
@@ -28,7 +28,7 @@ That means:
 
 - `src/core/`: TypeScript client interfaces, auth helpers, and dev-stack helpers
 - `src/tests/`: Bun tests and live integration coverage
-- `zig/`: native Zig git-server implementation and protocol/storage code
+- `zig/`: native Zig grs implementation and protocol/storage code
 
 ## Commands
 
@@ -124,7 +124,7 @@ The server is responsible for:
 
 ## SDK Surface
 
-The TypeScript contract lives in [src/core/api.ts](/Users/db/workspace/redc/apps/gs/src/core/api.ts).
+The TypeScript contract lives in [src/core/api.ts](/Users/db/workspace/redc/apps/grs/src/core/api.ts).
 
 Current client shape:
 
@@ -141,12 +141,12 @@ Current client shape:
 
 Important constraint:
 
-- only methods backed by existing git-server endpoints are kept
+- only methods backed by existing `grs` endpoints are kept
 - methods that required local `git`, temp worktrees, or filesystem state were removed
 
 Current implementation note:
 
-- [src/core/git-sdk.ts](/Users/db/workspace/redc/apps/gs/src/core/git-sdk.ts) is a thin remote client for git-server
+- [src/core/git-sdk.ts](/Users/db/workspace/redc/apps/grs/src/core/git-sdk.ts) is a thin remote client for `grs`
 
 ## Behavior Notes
 
@@ -184,9 +184,9 @@ just gs-integration
 
 The root compose stack includes:
 
-- `minio`
-- `minio-init`
-- `git-server`
+- `s3`
+- `init`
+- `grs`
 
 Run it from repo root:
 
@@ -198,9 +198,9 @@ The local compose defaults are:
 
 - `GIT_SERVER_PORT=8080`
 - `GIT_SERVER_PUBLIC_URL=http://127.0.0.1:9080`
-- `GIT_SERVER_S3_ENDPOINT=http://minio:9000`
+- `GIT_SERVER_S3_ENDPOINT=http://s3:9000`
 - `GIT_SERVER_S3_REGION=us-east-1`
-- `GIT_SERVER_S3_BUCKET=git-server-repos`
+- `GIT_SERVER_S3_BUCKET=grs-repos`
 - `GIT_SERVER_S3_PREFIX=repos`
 - `GIT_SERVER_S3_ACCESS_KEY_ID=minioadmin`
 - `GIT_SERVER_S3_SECRET_ACCESS_KEY=minioadmin`
@@ -222,10 +222,10 @@ That means:
 
 The intended split remains:
 
-- git-server + S3/MinIO store Git objects and refs
+- grs + S3/MinIO store Git objects and refs
 - the broader app stores repo metadata and lifecycle state
 
-The git-server should stay narrow:
+The grs service should stay narrow:
 
 - authenticate requests
 - map repo identity to storage prefix

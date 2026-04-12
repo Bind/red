@@ -49,7 +49,7 @@ describe("pollWideEvent500Candidates", () => {
               occurrenceCount: 3,
               windowMinutes: 15,
               severity: "high",
-              repo: "apps/api",
+              repo: "apps/ctl",
             },
           ];
         },

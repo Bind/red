@@ -32,15 +32,30 @@ just auth-test
 just auth-compose-e2e
 ```
 
+## Container glossary
+
+The local compose stack uses short container names:
+
+- `ctl`: control plane API and CLI backend.
+- `grs`: git repository server.
+- `obs`: observability collector and rollup service.
+- `ocr`: OpenCode runner image name used by `ctl` for agent jobs. This is not a standalone compose service in the dev stack.
+- `bff`: backend-for-frontend service.
+- `web`: frontend app.
+- `auth`: authentication service.
+- `db-auth`: auth service Postgres database.
+- `s3`: MinIO-based object store used as the local S3 endpoint.
+- `init`: system-wide initialization container. Put shared stack bootstrap logic here, such as bucket creation or other one-time infra setup.
+
 ## Project structure
 
 ```text
 .
 |-- apps/
-|   |-- api/
+|   |-- ctl/
 |   |-- auth/
 |   |-- bff/
-|   |-- gs/
+|   |-- grs/
 |   |-- obs/
 |   |-- ocr/
 |   `-- web/
@@ -57,13 +72,13 @@ just auth-compose-e2e
 
 Main product and runtime surfaces live here.
 
-- `apps/api/`: main Bun/Hono backend plus the `redc` CLI entrypoint.
+- `apps/ctl/`: main Bun/Hono backend plus the `redc` CLI entrypoint.
   Important subfolders:
-  `cli/` for the terminal client, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, `ingest/` and `jobs/` for processing, and `repo/` for git-server integration.
+  `cli/` for the terminal client, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, `ingest/` and `jobs/` for processing, and `repo/` for grs integration.
 - `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
 - `apps/bff/`: backend-for-frontend service.
-- `apps/gs/`: git server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
-- `apps/obs/`: observability collector service for request-wide events and rollups. This is the service formerly referred to as `wide-events`.
+- `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
+- `apps/obs/`: observability collector service for request-wide events and rollups.
 - `apps/ocr/`: OpenCode runner image build context used by the API to launch agent runs in Docker.
 - `apps/web/`: Vite/React frontend app.
 

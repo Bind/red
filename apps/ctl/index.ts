@@ -89,13 +89,13 @@ function loadConfig(): AppConfig {
     dbPath: process.env.REDC_DB_PATH ?? ".local/state/redc.db",
     repoBackend: {
       kind: "git_storage",
-      publicUrl: process.env.GIT_STORAGE_PUBLIC_URL ?? "http://git-server:8080",
+      publicUrl: process.env.GIT_STORAGE_PUBLIC_URL ?? "http://grs:8080",
       defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
       defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
       controlPlane: {
         baseUrl: process.env.GIT_STORAGE_CONTROL_PLANE_URL
           ?? process.env.GIT_STORAGE_PUBLIC_URL
-          ?? "http://git-server:8080",
+          ?? "http://grs:8080",
         username: process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME
           ?? process.env.GIT_SERVER_ADMIN_USERNAME,
         password: process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD

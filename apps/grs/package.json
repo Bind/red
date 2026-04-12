@@ -1,5 +1,5 @@
 {
-  "name": "@redc/git-server",
+  "name": "@redc/grs",
   "private": true,
   "type": "module",
   "scripts": {

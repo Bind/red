@@ -1,7 +1,7 @@
 INSTALL httpfs;
 LOAD httpfs;
 
-SET s3_endpoint='http://minio:9000';
+SET s3_endpoint='http://s3:9000';
 SET s3_region='us-east-1';
 SET s3_access_key_id='minioadmin';
 SET s3_secret_access_key='minioadmin';

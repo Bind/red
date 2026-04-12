@@ -5,7 +5,7 @@ Starter experiment for evaluating the [smithers.sh](https://smithers.sh/) orches
 ## What It Does
 
 - runs a small two-step Smithers workflow with OpenAI
-- includes a diagnosis-only Smithers workflow for recurring root `>=500` wide-events failures
+- includes a diagnosis-only Smithers workflow for recurring root `>=500` obs failures
 - exposes a thin Hono HTTP surface for health and workflow execution
 - persists Smithers runs to SQLite
 - keeps local tooling self-contained with Bun, Biome, and `just`
@@ -45,7 +45,7 @@ curl -X POST http://127.0.0.1:4090/triggers/wide-events/500 \
     "occurrenceCount":3,
     "windowMinutes":15,
     "severity":"high",
-    "repo":"apps/api"
+    "repo":"apps/ctl"
   }'
 ```
 
@@ -80,7 +80,7 @@ This is the intended direction for the listener:
 - gate on recurrence or critical severity
 - start diagnosis workflows only for accepted candidates
 
-The current experiment defines the query contract and polling endpoint, but it still needs a real wide-events reader implementation against the canonical rollup store.
+The current experiment defines the query contract and polling endpoint, but it still needs a real obs reader implementation against the canonical rollup store.
 
 ## Config
 
@@ -134,4 +134,4 @@ just compose-e2e
 
 ## Workflow Specs
 
-- [wide-event-500-autofix](./workflows/wide-event-500-autofix.md): first-pass design for a wide-events-triggered Smithers diagnosis and red-forge PR workflow
+- [wide-event-500-autofix](./workflows/wide-event-500-autofix.md): first-pass design for an obs-triggered Smithers diagnosis and red-forge PR workflow

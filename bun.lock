@@ -13,8 +13,8 @@
         "sst": "^3",
       },
     },
-    "apps/api": {
-      "name": "@redc/api",
+    "apps/ctl": {
+      "name": "@redc/ctl",
       "dependencies": {
         "@redc/obs": "workspace:*",
         "hono": "^4.7.0",
@@ -50,8 +50,8 @@
         "hono": "^4.7.0",
       },
     },
-    "apps/gs": {
-      "name": "@redc/git-server",
+    "apps/grs": {
+      "name": "@redc/grs",
       "devDependencies": {
         "@types/bun": "latest",
       },
@@ -512,11 +512,11 @@
 
     "@react-grab/cli": ["@react-grab/cli@0.1.29", "", { "dependencies": { "@antfu/ni": "^0.23.0", "commander": "^14.0.0", "ignore": "^7.0.5", "jsonc-parser": "^3.3.1", "ora": "^8.2.0", "picocolors": "^1.1.1", "prompts": "^2.4.2", "smol-toml": "^1.6.0" }, "bin": { "react-grab": "dist/cli.js" } }, "sha512-idgTec/ganPsag5BvbR3srF42UNNoUwHY+p94YORk5sCBl9ZaGJOXcDO93F8M4wruzTqIZgf1MUeY0+sTo0fVA=="],
 
-    "@redc/api": ["@redc/api@workspace:apps/api"],
+    "@redc/ctl": ["@redc/ctl@workspace:apps/ctl"],
 
     "@redc/auth": ["@redc/auth@workspace:apps/auth"],
 
-    "@redc/git-server": ["@redc/git-server@workspace:apps/gs"],
+    "@redc/grs": ["@redc/grs@workspace:apps/grs"],
 
     "@redc/obs": ["@redc/obs@workspace:pkg/obs"],
 

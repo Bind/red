@@ -59,9 +59,9 @@ The `redc` integration emits one JSON wide event per inbound HTTP request from [
 
 Sink behavior:
 
-- `OBS_SINK_MODE=collector` with `WIDE_EVENTS_COLLECTOR_URL=http://wide-events:4090` posts collector batches to `/v1/events`.
+- `OBS_SINK_MODE=collector` with `WIDE_EVENTS_COLLECTOR_URL=http://obs:4090` posts collector batches to `/v1/events`.
 - Any other sink mode falls back to the local stdout JSON line for debugging.
-- The collector payload uses the canonical wide-events contract (`event_id`, `kind`, `ts`, `route_name`, `data`), while stdout keeps the legacy debug shape.
+- The collector payload uses the canonical obs contract (`event_id`, `kind`, `ts`, `route_name`, `data`), while stdout keeps the legacy debug shape.
 
 Expected request ID behavior:
 
@@ -111,7 +111,7 @@ Terminal semantics:
 - Emit the event once the inbound request finishes.
 - `ended_at` and `status_code` mark the request as terminal.
 - Keep `outcome = "ok"` for non-5xx responses and `outcome = "error"` for 5xx responses, matching current `pkg/obs` behavior.
-- The wide-events collector will only immediately finalize a canonical request when `is_request_root: true`; propagated request IDs remain child events unless they later age out by timeout.
+- The obs collector will only immediately finalize a canonical request when `is_request_root: true`; propagated request IDs remain child events unless they later age out by timeout.
 
 ### Use as a library
 

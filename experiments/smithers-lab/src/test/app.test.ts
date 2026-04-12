@@ -129,7 +129,7 @@ describe("createApp", () => {
         occurrenceCount: 3,
         windowMinutes: 15,
         severity: "high",
-        repo: "apps/api",
+        repo: "apps/ctl",
       }),
     });
 
@@ -164,7 +164,7 @@ describe("createApp", () => {
               occurrenceCount: 4,
               windowMinutes: 15,
               severity: "high",
-              repo: "apps/api",
+              repo: "apps/ctl",
             },
           ];
         },

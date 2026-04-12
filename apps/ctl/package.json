@@ -1,5 +1,5 @@
 {
-  "name": "@redc/api",
+  "name": "@redc/ctl",
   "private": true,
   "type": "module",
   "scripts": {
