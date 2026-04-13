@@ -20,6 +20,24 @@ function normalizeEnv(input: unknown): Record<string, string> {
   return env;
 }
 
+function normalizeHashes(input: unknown): Record<string, string> {
+  if (input === undefined) {
+    return {};
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("dependencyHashes must be an object");
+  }
+
+  const hashes: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== "string") {
+      throw new Error(`dependencyHashes ${key} must be a string`);
+    }
+    hashes[key] = value;
+  }
+  return hashes;
+}
+
 function parseExecuteRequest(body: unknown): ExecuteRunRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error("request body must be an object");
@@ -28,8 +46,6 @@ function parseExecuteRequest(body: unknown): ExecuteRunRequest {
   const input = body as Record<string, unknown>;
   const runId = typeof input.runId === "string" ? input.runId.trim() : "";
   const script = typeof input.script === "string" ? input.script : "";
-  const interruptAfterChunk =
-    typeof input.interruptAfterChunk === "string" ? input.interruptAfterChunk.trim() : undefined;
 
   if (!runId) {
     throw new Error("runId is required");
@@ -42,7 +58,7 @@ function parseExecuteRequest(body: unknown): ExecuteRunRequest {
     runId,
     script,
     env: normalizeEnv(input.env),
-    interruptAfterChunk: interruptAfterChunk || undefined,
+    dependencyHashes: normalizeHashes(input.dependencyHashes),
   };
 }
 

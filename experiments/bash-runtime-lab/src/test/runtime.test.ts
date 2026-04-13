@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { FilesystemRunStore } from "../store/filesystem-run-store";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { BashRuntimeService } from "../service/runtime";
+import { FilesystemRunStore } from "../store/filesystem-run-store";
 import type { BashRuntimeConfig } from "../util/types";
 import { makeTempDir } from "./helpers/tmp";
 
@@ -22,71 +24,128 @@ async function makeRuntime() {
 }
 
 describe("BashRuntimeService", () => {
-  test("replays completed durable chunks on rerun", async () => {
+  test("journals command execution with filesystem mutations", async () => {
     const { runtime } = await makeRuntime();
-    const script = [
-      "echo start > marker.txt",
-      "# @durable build",
-      "count=$(cat marker.txt | wc -l | tr -d ' ')",
-      "printf '%s' \"$count\" | durable_set line_count",
-      "printf 'build:%s\\n' \"$(durable_get line_count)\"",
-      "# @enddurable",
-      "# @durable publish",
-      "printf 'publish:%s\\n' \"$(durable_get line_count)\"",
-      "# @enddurable",
-    ].join("\n");
+    const script = ["echo first > note.txt", "cat note.txt", "printf 'second\\n' >> note.txt"].join(
+      "\n",
+    );
+
+    const result = await runtime.execute({
+      runId: "demo",
+      script,
+      env: {},
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.commandCount).toBe(3);
+    expect(result.stdout).toContain("first");
+
+    const afterEvents = result.journal.filter((event) => event.phase === "after");
+    expect(afterEvents).toHaveLength(3);
+    expect(afterEvents[0]?.commandText).toBe("echo first >note.txt");
+    expect(afterEvents[0]?.fileMutations?.[0]?.path).toBe("note.txt");
+    expect(afterEvents[2]?.fileMutations?.[0]?.kind).toBe("updated");
+  });
+
+  test("supports external binaries inside pipelines", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await runtime.execute({
+      runId: "pipeline-demo",
+      script: "printf 'abc' | wc -c\n",
+      env: {},
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.stdout.trim()).toBe("3");
+    expect(result.commandCount).toBe(2);
+  });
+
+  test("distinguishes repeated visits to the same command node", async () => {
+    const { runtime } = await makeRuntime();
+    const script = ["for item in a b; do", '  echo "$item" >> loop.txt', "done"].join("\n");
+
+    const result = await runtime.execute({
+      runId: "loop-demo",
+      script,
+      env: {},
+    });
+
+    const afterEvents = result.journal.filter(
+      (event) => event.phase === "after" && event.commandText.includes("echo"),
+    );
+
+    expect(afterEvents).toHaveLength(2);
+    expect(afterEvents.map((event) => event.visit)).toEqual([1, 2]);
+  });
+
+  test("persists the transformed script and command metadata", async () => {
+    const { runtime } = await makeRuntime();
+    await runtime.execute({
+      runId: "inspect-demo",
+      script: "echo hello\n",
+      env: {},
+    });
+
+    const run = await runtime.getRun("inspect-demo");
+    expect(run?.transformedScript).toContain("__redc_before");
+    expect(run?.commandNodes["script.stmt0.pipe0.cmd0"]?.commandName).toBe("echo");
+  });
+
+  test("replays prior command visits on an identical rerun", async () => {
+    const { runtime, config } = await makeRuntime();
+    const workspaceDir = join(config.workspacesDir, "replay-demo");
+    await mkdir(workspaceDir, { recursive: true });
+    await Bun.write(join(workspaceDir, "replay.txt"), "cached\n");
+    const script = "cat replay.txt";
 
     const first = await runtime.execute({
-      runId: "demo",
+      runId: "replay-demo",
+      script,
+      env: {},
+    });
+    const second = await runtime.execute({
+      runId: "replay-demo",
       script,
       env: {},
     });
 
     expect(first.status).toBe("completed");
-    expect(first.executions.map((entry) => entry.cached)).toEqual([false, false, false]);
-
-    const second = await runtime.execute({
-      runId: "demo",
-      script,
-      env: {},
-    });
-
     expect(second.status).toBe("completed");
-    expect(second.executions.map((entry) => entry.cached)).toEqual([false, true, true]);
-    expect(second.executions[1]?.stdout).toBe(first.executions[1]?.stdout);
+
+    const secondAfter = second.journal.filter((event) => event.phase === "after");
+    expect(secondAfter).toHaveLength(1);
+    expect(secondAfter.every((event) => event.cached)).toBe(true);
+    expect(second.stdout).toBe(first.stdout);
+    expect(second.stderr).toBe(first.stderr);
+
+    const run = await runtime.getRun("replay-demo");
+    expect(run?.workspaceDir).toContain("replay-demo");
   });
 
-  test("supports interruption after a durable chunk and resumes later", async () => {
+  test("breaks cache when manual dependency hashes change", async () => {
     const { runtime } = await makeRuntime();
-    const script = [
-      "# @durable one",
-      "printf '%s' 'ready' | durable_set artifact",
-      "printf 'one\\n'",
-      "# @enddurable",
-      "# @durable two",
-      "printf 'two:%s\\n' \"$(durable_get artifact)\"",
-      "# @enddurable",
-    ].join("\n");
+    const script = ["echo dep > dep.txt", "cat dep.txt"].join("\n");
 
-    const interrupted = await runtime.execute({
-      runId: "resume-demo",
+    await runtime.execute({
+      runId: "dependency-demo",
       script,
       env: {},
-      interruptAfterChunk: "one",
+      dependencyHashes: {
+        upstream: "hash-a",
+      },
     });
 
-    expect(interrupted.status).toBe("interrupted");
-    expect(interrupted.executions).toHaveLength(1);
-    expect(interrupted.executions[0]?.stdout).toContain("one");
-
-    const resumed = await runtime.execute({
-      runId: "resume-demo",
+    const second = await runtime.execute({
+      runId: "dependency-demo",
       script,
       env: {},
+      dependencyHashes: {
+        upstream: "hash-b",
+      },
     });
 
-    expect(resumed.status).toBe("completed");
-    expect(resumed.executions.map((entry) => entry.cached)).toEqual([true, false]);
-    expect(resumed.executions[1]?.stdout).toContain("two:ready");
+    const afterEvents = second.journal.filter((event) => event.phase === "after");
+    expect(afterEvents).toHaveLength(2);
+    expect(afterEvents.some((event) => !event.cached)).toBe(true);
   });
 });

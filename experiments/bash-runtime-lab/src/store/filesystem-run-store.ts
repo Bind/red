@@ -9,13 +9,17 @@ function runPath(runsDir: string, runId: string) {
 export class FilesystemRunStore implements RunStore {
   constructor(private readonly runsDir: string) {}
 
-  async ensureRun(runId: string, script: string, workspaceDir: string): Promise<RunRecord> {
+  async ensureRun(
+    runId: string,
+    script: string,
+    workspaceDir: string,
+    dependencyHashes: Record<string, string>,
+  ): Promise<RunRecord> {
     const existing = await this.getRun(runId);
     if (existing) {
-      if (existing.script !== script) {
-        existing.script = script;
-      }
+      existing.script = script;
       existing.workspaceDir = workspaceDir;
+      existing.dependencyHashes = dependencyHashes;
       return existing;
     }
 
@@ -23,11 +27,12 @@ export class FilesystemRunStore implements RunStore {
     const created: RunRecord = {
       runId,
       script,
+      dependencyHashes,
       createdAt: now,
       updatedAt: now,
       workspaceDir,
-      kv: {},
-      chunks: {},
+      journal: [],
+      commandNodes: {},
     };
     await this.saveRun(created);
     return created;

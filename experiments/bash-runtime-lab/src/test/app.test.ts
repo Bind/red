@@ -40,12 +40,7 @@ describe("createApp", () => {
     const { app } = await makeHarness();
     const body = {
       runId: "app-demo",
-      script: [
-        "# @durable build",
-        "printf '%s' 'built' | durable_set artifact",
-        "printf 'build\\n'",
-        "# @enddurable",
-      ].join("\n"),
+      script: ["echo first > note.txt", "cat note.txt"].join("\n"),
     };
 
     const executeResponse = await app.request("/runs/execute", {
@@ -58,18 +53,22 @@ describe("createApp", () => {
 
     expect(executeResponse.status).toBe(200);
     const executeJson = (await executeResponse.json()) as {
-      result: { status: string; executions: Array<{ segmentId: string }> };
+      result: { status: string; commandCount: number; stdout: string };
     };
     expect(executeJson.result.status).toBe("completed");
-    expect(executeJson.result.executions).toHaveLength(1);
-    expect(executeJson.result.executions[0]?.segmentId).toBe("build");
+    expect(executeJson.result.commandCount).toBe(2);
+    expect(executeJson.result.stdout).toContain("first");
 
     const runResponse = await app.request("/runs/app-demo");
     expect(runResponse.status).toBe(200);
     const runJson = (await runResponse.json()) as {
-      run: { kv: Record<string, string> };
+      run: {
+        journal: Array<{ phase: string }>;
+        commandNodes: Record<string, { commandName: string }>;
+      };
     };
-    expect(runJson.run.kv).toEqual({ artifact: "built" });
+    expect(runJson.run.journal.some((event) => event.phase === "after")).toBe(true);
+    expect(runJson.run.commandNodes["script.stmt0.pipe0.cmd0"]?.commandName).toBe("echo");
   });
 
   test("validates execute requests", async () => {

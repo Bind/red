@@ -1,57 +1,64 @@
 export type AppMode = "dev" | "compose";
+export type RunStatus = "completed" | "failed";
+export type CommandPhase = "before" | "after";
 
-export type SegmentType = "ephemeral" | "durable";
-export type RunStatus = "completed" | "failed" | "interrupted";
-
-export type ScriptSegment = {
-  type: SegmentType;
-  id: string;
-  script: string;
-  startLine: number;
-  endLine: number;
+export type FileMutation = {
+  path: string;
+  kind: "created" | "updated" | "deleted";
+  beforeHash?: string;
+  afterHash?: string;
 };
 
-export type ChunkExecution = {
-  segmentId: string;
-  type: SegmentType;
+export type EnvDelta = {
+  set: Record<string, string>;
+  unset: string[];
+};
+
+export type CommandNodeMetadata = {
+  nodeId: string;
+  commandName: string;
+  commandText: string;
+  line: number;
+};
+
+export type CommandJournalEvent = {
+  seq: number;
+  phase: CommandPhase;
   cached: boolean;
-  status: "completed" | "failed" | "skipped";
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  hash: string;
-  startedAt: string;
-  completedAt: string;
-  startLine: number;
-  endLine: number;
-};
-
-export type ChunkRecord = {
-  chunkId: string;
-  hash: string;
-  status: "completed" | "failed";
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  startedAt: string;
-  completedAt: string;
+  nodeId: string;
+  visit: number;
+  commandName: string;
+  commandText: string;
+  line: number;
+  cwd: string;
+  env: Record<string, string>;
+  envDelta?: EnvDelta;
+  exitCode?: number;
+  fileMutations?: FileMutation[];
+  at: string;
 };
 
 export type RunRecord = {
   runId: string;
   script: string;
+  dependencyHashes: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   workspaceDir: string;
-  kv: Record<string, string>;
-  chunks: Record<string, ChunkRecord>;
+  journal: CommandJournalEvent[];
+  transformedScript?: string;
+  commandNodes: Record<string, CommandNodeMetadata>;
   lastResult?: RunResult;
 };
 
 export type RunResult = {
   runId: string;
   status: RunStatus;
-  executions: ChunkExecution[];
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  journal: CommandJournalEvent[];
+  commandCount: number;
   startedAt: string;
   completedAt: string;
 };
@@ -60,7 +67,7 @@ export type ExecuteRunRequest = {
   runId: string;
   script: string;
   env: Record<string, string>;
-  interruptAfterChunk?: string;
+  dependencyHashes?: Record<string, string>;
 };
 
 export type ExecuteRunResponse = {
@@ -78,7 +85,12 @@ export type BashRuntimeConfig = {
 };
 
 export interface RunStore {
-  ensureRun(runId: string, script: string, workspaceDir: string): Promise<RunRecord>;
+  ensureRun(
+    runId: string,
+    script: string,
+    workspaceDir: string,
+    dependencyHashes: Record<string, string>,
+  ): Promise<RunRecord>;
   saveRun(record: RunRecord): Promise<void>;
   getRun(runId: string): Promise<RunRecord | null>;
 }

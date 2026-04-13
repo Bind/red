@@ -11,7 +11,7 @@ just compose-up
 cat >"${tmp_dir}/request.json" <<'JSON'
 {
   "runId": "compose-smoke",
-  "script": "echo setup > setup.txt\n# @durable build\ncount=$(cat \"$BASH_RUNTIME_WORKSPACE/setup.txt\" | wc -l | tr -d ' ')\nprintf '%s' \"$count\" | durable_set line_count\nprintf 'build:%s\\n' \"$(durable_get line_count)\"\n# @enddurable\n# @durable publish\nprintf 'publish:%s\\n' \"$(durable_get line_count)\"\n# @enddurable\n"
+  "script": "echo setup > setup.txt\ncat setup.txt\nprintf 'done\\n' >> setup.txt\n"
 }
 JSON
 
@@ -20,10 +20,12 @@ first_response="$(curl -fsS -X POST "${base_url}/runs/execute" \
   --data @"${tmp_dir}/request.json")"
 
 echo "${first_response}" | grep '"status":"completed"' >/dev/null
-echo "${first_response}" | grep '"cached":false' >/dev/null
+echo "${first_response}" | grep '"commandCount":3' >/dev/null
+echo "${first_response}" | grep '"phase":"after"' >/dev/null
 
 second_response="$(curl -fsS -X POST "${base_url}/runs/execute" \
   -H 'content-type: application/json' \
   --data @"${tmp_dir}/request.json")"
 
+echo "${second_response}" | grep '"status":"completed"' >/dev/null
 echo "${second_response}" | grep '"cached":true' >/dev/null

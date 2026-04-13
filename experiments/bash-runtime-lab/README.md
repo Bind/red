@@ -1,101 +1,104 @@
 # Bash Runtime Lab
 
-Experiment for a durable Bash runtime with implicit cache and resume boundaries.
+Experiment for a durable Bash runtime aimed at CI/CD workflows and pipeline
+definitions.
 
 ## Direction
 
-The current repo contains an initial directive-based prototype, but that is no
-longer the target UX.
+The current design target is:
 
-The intended direction is:
+- parse Bash into an AST
+- treat command invocation boundaries as the default implicit durability units
+- execute real host binaries inside an explicit tracked workspace
+- journal the workspace and process state after each command
+- make replay and caching layer-oriented, similar to container image layers
 
-- start from a full Bash interpreter substrate, closer to
-  [`vercel-labs/just-bash`](https://github.com/vercel-labs/just-bash)
-- treat command invocation boundaries as the default durable/cacheable unit
-- journal command output and state transitions between invocations
-- keep explicit chunk boundaries as an optional escape hatch, not the main model
+This is not a line-level cache and it is not primarily a comment-directive DSL.
+The runtime should understand real Bash structure first, then attach durability
+semantics to the command graph the interpreter already sees.
 
-This is a better fit for Bash authoring because durability should attach to the
-script structure the interpreter already understands, not to a second DSL layered
-on top with comment directives.
+## Working Model
 
-## Why This Direction
+The easiest way to think about durability right now is:
 
-`just-bash` already proves several pieces we want in the base runtime:
+- each command visit produces a new workspace layer
+- the layer is defined by the command identity plus the resulting workspace delta
+- replay means restoring or reusing that layer instead of re-running the command
+- callers can add manual dependency hashes to force invalidation when upstream
+  inputs change
 
-- a TypeScript Bash interpreter
-- AST parsing and transform support
-- isolated execution semantics
-- a filesystem abstraction we can instrument
+That is close to how Docker image layers feel, with two important differences:
 
-The important difference for this lab is the durability layer. We do not want to
-cache by source line. We want the runtime to reason over executable Bash nodes:
+- our boundary is an executable Bash node, not a Dockerfile instruction
+- our cache key must include dynamic execution context such as loop iterations,
+  branch path, cwd, env, and command inputs
 
-- simple commands
-- pipelines
-- boolean lists (`&&`, `||`)
-- compound bodies when needed for control-flow safety
+So the analogy is useful, but only if we remember that this runtime is
+interpreter-driven rather than build-file-driven.
 
-That points toward AST-node journaling with runtime hooks around command
-dispatch.
+## Why This Shape
 
-## Current Hypothesis
+For CI/CD, simulated commands are not enough. We need real tools like:
 
-Default durable boundaries should be implicit and command-oriented:
+- `make`
+- `prettier`
+- `docker`
+- language-specific build and test tools
 
-- each command invocation gets a stable node identity from the parsed script
-- each runtime visit gets a dynamic execution path
-- the runtime records stdout, stderr, exit status, env changes, cwd changes, and
-  filesystem writes
-- resumability replays prior results when the invocation identity and inputs are
-  compatible
+That means the runtime needs two things at once:
 
-Examples of dynamic execution path components:
+- interpreter ownership of Bash structure and command boundaries
+- host execution of real binaries inside a controlled workspace
 
-- function stack
-- loop iteration index
-- branch path
-- subshell nesting
+`just-bash` is still useful here, mainly as the parsing and interpreter substrate.
+It gives us AST structure and instrumentation points. But the long-term product
+value is not in simulating every Unix tool in JS. It is in journaling and
+replaying real workflow commands safely enough to be useful.
 
-That is the minimum needed to distinguish:
+## Runtime Shape
 
-- the same `echo` inside two different branches
-- the same `curl` inside separate loop iterations
-- a function body called from two call sites
+1. Parse the script into an AST.
+2. Assign stable ids to executable command nodes.
+3. Track dynamic visit context during execution.
+4. Before each command:
+   capture workspace and process pre-state.
+5. Execute the real command in the tracked workspace.
+6. After each command:
+   capture stdout, stderr, exit code, env/cwd changes, and workspace diff.
+7. Persist a journal entry and resulting workspace layer metadata.
+
+The initial assumption for the experiment is intentionally naive:
+
+- everything meaningful happens inside the tracked workspace
+- if we can diff the workspace before and after a command, we have enough signal
+  to build a useful first durability model
+
+That assumption is incomplete, but good enough for the first serious prototype.
 
 ## Explicit Boundaries
 
-Explicit boundaries are still useful, but as hints or overrides:
+Explicit boundaries may still exist later, but only as overrides:
 
-- group several commands into one durable transaction
-- mark a region as always rerun
-- attach stronger invalidation rules
+- group several commands into one cacheable unit
+- force reruns
+- attach stronger invalidation policy
 
-They should refine the implicit model, not replace it.
-
-## Implementation Stages
-
-1. Interpreter-first
-   Use a full Bash interpreter and expose hooks before and after command
-   invocation.
-2. Journal-first durability
-   Persist command journals, state snapshots, and replay metadata.
-3. Policy layer
-   Add cacheability rules, explicit durability hints, and invalidation controls.
+They should refine the implicit command model, not replace it.
 
 ## Repo Status
 
-What exists today:
+What this experiment should now optimize for:
 
-- a Bun/Hono experiment package under `experiments/bash-runtime-lab`
-- tests and HTTP surface for run execution and inspection
-- a first-pass explicit durable-block prototype
+- interpreter-backed command journaling
+- real host binary execution in a tracked workspace
+- layer-like workspace diffs after each command
+- replay keys based on node identity plus dynamic execution context
 
-What should happen next:
+What is no longer the main product direction:
 
-- replace the directive-driven runtime core with an interpreter-backed one
-- move caching from explicit blocks to executable AST nodes
-- instrument command dispatch and filesystem mutation tracking
+- required comment-based durable block syntax
+- line-level caching
+- JS-only command simulation as the primary execution mode
 
 ## Run
 
@@ -116,4 +119,6 @@ BASH_RUNTIME_LAB_HOST_DATA_DIR="$(pwd)/.tmp-compose-data" just compose-e2e
 
 ## Design Notes
 
-- [Implicit durability architecture](./docs/implicit-durability-architecture.md)
+- [Runtime architecture](./docs/runtime-architecture.md)
+- [Implementation plan](./docs/implementation-plan.md)
+- [V2 trade-offs](./docs/V2.md)
