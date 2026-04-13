@@ -24,6 +24,22 @@ just install
 just serve
 ```
 
+Submit a job:
+
+```bash
+curl -fsS http://127.0.0.1:4091/jobs \
+  -H 'content-type: application/json' \
+  -d '{
+    "repoId": "redc/example",
+    "commitSha": "0123456789abcdef0123456789abcdef01234567",
+    "jobName": "test",
+    "env": {
+      "JOB_SAMPLE": "local"
+    },
+    "gitCredentialGrant": "grant-1"
+  }'
+```
+
 ## Compose
 
 ```bash

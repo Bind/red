@@ -1,17 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { RunStore, WorkflowRun } from "../util/types";
+import type { AttemptRecord, JobRecord, JobSpec, JobStore } from "../util/types";
 
-interface RunStoreData {
-  runs: WorkflowRun[];
+interface StateFile {
+  jobs: JobRecord[];
 }
 
-function cloneRun(run: WorkflowRun): WorkflowRun {
-  return JSON.parse(JSON.stringify(run)) as WorkflowRun;
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export class FileRunStore implements RunStore {
-  private data: RunStoreData;
+export class FileJobStore implements JobStore {
+  private data: StateFile;
 
   constructor(private readonly filePath: string) {
     mkdirSync(dirname(filePath), { recursive: true });
@@ -19,51 +19,85 @@ export class FileRunStore implements RunStore {
     this.flush();
   }
 
-  listRuns(): WorkflowRun[] {
-    return this.data.runs.map((run) => cloneRun(run));
+  listJobs(): JobRecord[] {
+    return this.data.jobs.map((job) => clone(job));
   }
 
-  getRun(id: string): WorkflowRun | undefined {
-    const run = this.data.runs.find((entry) => entry.id === id);
-    return run ? cloneRun(run) : undefined;
+  getJob(jobId: string): JobRecord | undefined {
+    const record = this.data.jobs.find((entry) => entry.job.jobId === jobId);
+    return record ? clone(record) : undefined;
   }
 
-  createRun(run: WorkflowRun): WorkflowRun {
-    this.data.runs.unshift(cloneRun(run));
+  getAttempt(attemptId: string): { job: JobSpec; attempt: AttemptRecord } | undefined {
+    for (const record of this.data.jobs) {
+      const attempt = record.attempts.find((entry) => entry.attemptId === attemptId);
+      if (attempt) {
+        return {
+          job: clone(record.job),
+          attempt: clone(attempt),
+        };
+      }
+    }
+    return undefined;
+  }
+
+  createJob(job: JobSpec, attempt: AttemptRecord): JobRecord {
+    const record: JobRecord = {
+      job: clone(job),
+      attempts: [clone(attempt)],
+    };
+    this.data.jobs.unshift(record);
     this.flush();
-    return cloneRun(run);
+    return clone(record);
   }
 
-  updateRun(id: string, updater: (run: WorkflowRun) => WorkflowRun): WorkflowRun {
-    const index = this.data.runs.findIndex((entry) => entry.id === id);
-    if (index === -1) {
-      throw new Error(`run ${id} not found`);
+  createRetryAttempt(jobId: string, attempt: AttemptRecord): JobRecord {
+    const record = this.data.jobs.find((entry) => entry.job.jobId === jobId);
+    if (!record) {
+      throw new Error(`job ${jobId} not found`);
+    }
+    record.attempts.push(clone(attempt));
+    this.flush();
+    return clone(record);
+  }
+
+  updateAttempt(
+    attemptId: string,
+    updater: (attempt: AttemptRecord, job: JobSpec) => AttemptRecord,
+  ): AttemptRecord {
+    for (const record of this.data.jobs) {
+      const index = record.attempts.findIndex((entry) => entry.attemptId === attemptId);
+      if (index === -1) {
+        continue;
+      }
+
+      const current = record.attempts[index];
+      if (!current) {
+        break;
+      }
+
+      const next = updater(clone(current), clone(record.job));
+      record.attempts[index] = clone(next);
+      this.flush();
+      return clone(next);
     }
 
-    const current = this.data.runs[index];
-    if (!current) {
-      throw new Error(`run ${id} not found`);
-    }
-
-    const updated = updater(cloneRun(current));
-    this.data.runs[index] = cloneRun(updated);
-    this.flush();
-    return cloneRun(updated);
+    throw new Error(`attempt ${attemptId} not found`);
   }
 
-  private load(): RunStoreData {
+  private load(): StateFile {
     if (!existsSync(this.filePath)) {
-      return { runs: [] };
+      return { jobs: [] };
     }
 
     const raw = readFileSync(this.filePath, "utf8").trim();
     if (!raw) {
-      return { runs: [] };
+      return { jobs: [] };
     }
 
-    const parsed = JSON.parse(raw) as Partial<RunStoreData>;
+    const parsed = JSON.parse(raw) as Partial<StateFile>;
     return {
-      runs: Array.isArray(parsed.runs) ? parsed.runs.map((run) => cloneRun(run)) : [],
+      jobs: Array.isArray(parsed.jobs) ? parsed.jobs.map((job) => clone(job)) : [],
     };
   }
 

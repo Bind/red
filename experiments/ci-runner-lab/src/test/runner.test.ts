@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LocalRunnerService } from "../service/runner";
-import { FileRunStore } from "../store/run-store";
-import type { RunnerConfig } from "../util/types";
+import { InlineShellExecutorBackend } from "../service/executor-backend";
+import { LocalAttemptQueue, LocalJobsService, LocalWorker } from "../service/runner";
+import { FileJobStore } from "../store/run-store";
+import type { JobRecord, RunnerConfig } from "../util/types";
 
-function createRunner() {
+function createServices() {
   const root = mkdtempSync(join(tmpdir(), "ci-runner-lab-runner-"));
   const config: RunnerConfig = {
     mode: "dev",
@@ -18,63 +19,65 @@ function createRunner() {
     maxConcurrentRuns: 1,
     stepTimeoutMs: 10000,
   };
-  const store = new FileRunStore(config.runsFile);
-  const runner = new LocalRunnerService(config, store);
-  return { runner, store };
+  const store = new FileJobStore(config.runsFile);
+  const queue = new LocalAttemptQueue(store);
+  const backend = new InlineShellExecutorBackend();
+  const worker = new LocalWorker("worker-test", config, store, queue, backend);
+  const jobs = new LocalJobsService(store, queue, worker);
+  return { jobs };
 }
 
-async function waitForCompletion(
-  lookup: () =>
-    | {
-        status: string;
-        stepResults: Array<{ stdout: string; status: string; exitCode?: number }>;
-      }
-    | undefined,
-) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const run = lookup();
-    if (run && (run.status === "success" || run.status === "failed")) {
-      return run;
+async function waitForTerminalState(lookup: () => JobRecord | undefined) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const record = lookup();
+    const latest = record?.attempts[record.attempts.length - 1];
+    if (latest && (latest.status === "success" || latest.status === "failed")) {
+      return latest;
     }
     await Bun.sleep(25);
   }
-  throw new Error("run did not complete");
+  throw new Error("attempt did not reach terminal state");
 }
 
-describe("LocalRunnerService", () => {
-  test("executes queued steps in order", async () => {
-    const { runner, store } = createRunner();
-    const queued = runner.queueRun({
-      workflowName: "smoke",
-      repository: "redc/example",
-      ref: "refs/heads/main",
-      steps: [
-        { name: "first", run: "echo alpha" },
-        { name: "second", run: "echo beta" },
-      ],
+describe("LocalJobsService", () => {
+  test("creates a queued job and runs it through the worker", async () => {
+    const { jobs } = createServices();
+    const created = jobs.createJob({
+      repoId: "redc/example",
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      jobName: "test",
+      gitCredentialGrant: "grant-1",
+      env: {
+        JOB_SAMPLE: "value",
+      },
     });
 
-    const completed = await waitForCompletion(() => store.getRun(queued.id));
+    expect(created.attempts[0]?.status).toBe("queued");
 
-    expect(completed.status).toBe("success");
-    expect(completed.stepResults).toHaveLength(2);
-    expect(completed.stepResults[0]?.stdout).toContain("alpha");
-    expect(completed.stepResults[1]?.stdout).toContain("beta");
+    void jobs.tickWorker();
+    const terminal = await waitForTerminalState(() => jobs.getJob(created.job.jobId));
+
+    expect(terminal.status).toBe("success");
+    expect(terminal.logs.some((chunk) => chunk.stream === "display")).toBe(true);
   });
 
-  test("marks the run failed when a step exits non-zero", async () => {
-    const { runner, store } = createRunner();
-    const queued = runner.queueRun({
-      workflowName: "failure",
-      repository: "redc/example",
-      ref: "refs/heads/main",
-      steps: [{ name: "fail", run: "echo nope >&2 && exit 7" }],
+  test("creates a retry attempt on the same job", async () => {
+    const { jobs } = createServices();
+    const created = jobs.createJob({
+      repoId: "redc/example",
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      jobName: "test",
+      gitCredentialGrant: "grant-1",
+      env: {
+        JOB_SAMPLE: "value",
+      },
     });
 
-    const completed = await waitForCompletion(() => store.getRun(queued.id));
+    const retried = jobs.retryJob(created.job.jobId, {
+      gitCredentialGrant: "grant-2",
+    });
 
-    expect(completed.status).toBe("failed");
-    expect(completed.stepResults[0]?.status).toBe("failed");
-    expect(completed.stepResults[0]?.exitCode).toBe(7);
+    expect(retried.attempts).toHaveLength(2);
+    expect(retried.attempts[1]?.attemptNumber).toBe(2);
   });
 });

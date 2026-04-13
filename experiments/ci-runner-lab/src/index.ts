@@ -1,12 +1,16 @@
 import { createApp } from "./service/app";
-import { LocalRunnerService } from "./service/runner";
-import { FileRunStore } from "./store/run-store";
+import { InlineShellExecutorBackend } from "./service/executor-backend";
+import { LocalAttemptQueue, LocalJobsService, LocalWorker } from "./service/runner";
+import { FileJobStore } from "./store/run-store";
 import { loadConfig } from "./util/config";
 
 const config = loadConfig();
-const store = new FileRunStore(config.runsFile);
-const runner = new LocalRunnerService(config, store);
-const app = createApp(config, runner);
+const store = new FileJobStore(config.runsFile);
+const queue = new LocalAttemptQueue(store);
+const backend = new InlineShellExecutorBackend();
+const worker = new LocalWorker("worker-default", config, store, queue, backend);
+const jobs = new LocalJobsService(store, queue, worker);
+const app = createApp(config, jobs);
 
 console.log(
   JSON.stringify({
@@ -14,9 +18,9 @@ console.log(
     mode: config.mode,
     host: config.hostname,
     port: config.port,
-    runsFile: config.runsFile,
+    stateFile: config.runsFile,
     workDir: config.workDir,
-    maxConcurrentRuns: config.maxConcurrentRuns,
+    workerId: "worker-default",
   }),
 );
 

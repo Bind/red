@@ -1,35 +1,12 @@
 import { Hono } from "hono";
-import type { RunnerConfig, RunnerService, RunRequest, RunStepInput } from "../util/types";
-
-function normalizeSteps(value: unknown): RunStepInput[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error("steps must be a non-empty array");
-  }
-
-  return value.map((entry, index) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error(`step ${index + 1} must be an object`);
-    }
-
-    const step = entry as Record<string, unknown>;
-    const command = typeof step.run === "string" ? step.run.trim() : "";
-    const name = typeof step.name === "string" && step.name.trim() ? step.name.trim() : "";
-    if (!command) {
-      throw new Error(`step ${index + 1} is missing run`);
-    }
-
-    return {
-      name: name || `step-${index + 1}`,
-      run: command,
-    };
-  });
-}
+import type { CreateJobRequest, JobsService, RetryJobRequest, RunnerConfig } from "../util/types";
+import { summarizeJob } from "./runner";
 
 function normalizeEnv(value: unknown): Record<string, string> {
   if (!value) {
     return {};
   }
-  if (typeof value !== "object" || Array.isArray(value)) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("env must be an object");
   }
 
@@ -43,39 +20,35 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function parseRunRequest(body: unknown): RunRequest {
+function parseCreateJobRequest(body: unknown): CreateJobRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error("request body must be an object");
   }
 
   const input = body as Record<string, unknown>;
-  const workflowName =
-    typeof input.workflowName === "string" && input.workflowName.trim()
-      ? input.workflowName.trim()
-      : "default";
-  const repository =
-    typeof input.repository === "string" && input.repository.trim() ? input.repository.trim() : "";
-  const ref = typeof input.ref === "string" && input.ref.trim() ? input.ref.trim() : "";
-  const sha = typeof input.sha === "string" && input.sha.trim() ? input.sha.trim() : undefined;
-
-  if (!repository) {
-    throw new Error("repository is required");
-  }
-  if (!ref) {
-    throw new Error("ref is required");
-  }
-
   return {
-    workflowName,
-    repository,
-    ref,
-    sha,
+    repoId: typeof input.repoId === "string" ? input.repoId.trim() : "",
+    commitSha: typeof input.commitSha === "string" ? input.commitSha.trim() : "",
+    jobName: typeof input.jobName === "string" ? input.jobName.trim() : "",
     env: normalizeEnv(input.env),
-    steps: normalizeSteps(input.steps),
+    gitCredentialGrant:
+      typeof input.gitCredentialGrant === "string" ? input.gitCredentialGrant.trim() : "",
   };
 }
 
-export function createApp(config: RunnerConfig, runner: RunnerService) {
+function parseRetryJobRequest(body: unknown): RetryJobRequest {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("request body must be an object");
+  }
+
+  const input = body as Record<string, unknown>;
+  return {
+    gitCredentialGrant:
+      typeof input.gitCredentialGrant === "string" ? input.gitCredentialGrant.trim() : "",
+  };
+}
+
+export function createApp(config: RunnerConfig, jobs: JobsService) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -84,34 +57,84 @@ export function createApp(config: RunnerConfig, runner: RunnerService) {
     c.json({
       service: "ci-runner-lab",
       mode: config.mode,
-      runner: runner.getState(),
-      recentRuns: runner.listRuns().slice(0, 20),
+      queue: jobs.getState(),
+      recentJobs: jobs
+        .listJobs()
+        .slice(0, 20)
+        .map((record) => summarizeJob(record)),
     }),
   );
 
-  app.get("/runs", (c) =>
+  app.get("/jobs", (c) =>
     c.json({
-      runs: runner.listRuns(),
+      jobs: jobs.listJobs().map((record) => summarizeJob(record)),
     }),
   );
 
-  app.get("/runs/:runId", (c) => {
-    const run = runner.getRun(c.req.param("runId"));
-    if (!run) {
-      return c.json({ error: "run not found" }, 404);
+  app.get("/jobs/:jobId", (c) => {
+    const record = jobs.getJob(c.req.param("jobId"));
+    if (!record) {
+      return c.json({ error: "job not found" }, 404);
     }
-    return c.json({ run });
+
+    return c.json({
+      job: {
+        ...record.job,
+        attempts: record.attempts,
+      },
+    });
   });
 
-  app.post("/runs", async (c) => {
+  app.post("/jobs", async (c) => {
     try {
       const body = await c.req.json();
-      const run = runner.queueRun(parseRunRequest(body));
-      return c.json({ queued: true, run }, 202);
+      const record = jobs.createJob(parseCreateJobRequest(body));
+      void jobs.tickWorker();
+      return c.json(
+        {
+          queued: true,
+          job: summarizeJob(record),
+        },
+        202,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "invalid request";
       return c.json({ error: message }, 400);
     }
+  });
+
+  app.post("/jobs/:jobId/retry", async (c) => {
+    try {
+      const body = await c.req.json();
+      const record = jobs.retryJob(c.req.param("jobId"), parseRetryJobRequest(body));
+      void jobs.tickWorker();
+      return c.json(
+        {
+          queued: true,
+          job: summarizeJob(record),
+        },
+        202,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "invalid request";
+      const status = message === "job not found" ? 404 : 400;
+      return c.json({ error: message }, status);
+    }
+  });
+
+  app.get("/jobs/:jobId/attempts/:attemptNumber/logs", (c) => {
+    const attemptNumber = Number.parseInt(c.req.param("attemptNumber"), 10);
+    const afterSequence = Number.parseInt(c.req.query("after_seq") ?? "0", 10);
+    if (!Number.isFinite(attemptNumber) || attemptNumber <= 0) {
+      return c.json({ error: "attemptNumber must be a positive integer" }, 400);
+    }
+    if (!Number.isFinite(afterSequence) || afterSequence < 0) {
+      return c.json({ error: "after_seq must be a non-negative integer" }, 400);
+    }
+
+    return c.json({
+      chunks: jobs.getAttemptLogChunks(c.req.param("jobId"), attemptNumber, afterSequence),
+    });
   });
 
   return app;

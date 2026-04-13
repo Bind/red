@@ -1,0 +1,18 @@
+services:
+  bash-runtime-lab:
+    build:
+      context: .
+    environment:
+      BASH_RUNTIME_LAB_MODE: compose
+      BASH_RUNTIME_LAB_HOST: 0.0.0.0
+      BASH_RUNTIME_LAB_PORT: "4093"
+      BASH_RUNTIME_LAB_DATA_DIR: /var/lib/bash-runtime-lab
+    volumes:
+      - ${BASH_RUNTIME_LAB_HOST_DATA_DIR:?set BASH_RUNTIME_LAB_HOST_DATA_DIR}:/var/lib/bash-runtime-lab
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:4093/health').then((r)=>{if(!r.ok)throw new Error('bad')})"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "${BASH_RUNTIME_LAB_PUBLISHED_PORT:-4093}:4093"

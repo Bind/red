@@ -1,0 +1,82 @@
+{
+  "runId": "compose-smoke",
+  "script": "echo setup > setup.txt\n# @durable build\ncount=$(cat \"$BASH_RUNTIME_WORKSPACE/setup.txt\" | wc -l | tr -d ' ')\nprintf '%s' \"$count\" | durable_set line_count\nprintf 'build:%s\\n' \"$(durable_get line_count)\"\n# @enddurable\n# @durable publish\nprintf 'publish:%s\\n' \"$(durable_get line_count)\"\n# @enddurable\n",
+  "createdAt": "2026-04-13T01:38:34.448Z",
+  "updatedAt": "2026-04-13T01:38:34.512Z",
+  "workspaceDir": "/var/lib/bash-runtime-lab/workspaces/compose-smoke",
+  "kv": {
+    "line_count": "1"
+  },
+  "chunks": {
+    "build": {
+      "chunkId": "build",
+      "hash": "a16df8fb549d6f8172d10fbc815c6064dc3e54410dc7d9485b2977bb1e674415",
+      "status": "completed",
+      "exitCode": 0,
+      "stdout": "build:1\n",
+      "stderr": "",
+      "startedAt": "2026-04-13T01:38:34.463Z",
+      "completedAt": "2026-04-13T01:38:34.476Z"
+    },
+    "publish": {
+      "chunkId": "publish",
+      "hash": "a15ba313450fae72469461326f8ea99ebbecd9312d503a19a2f8aadd5ce2ddf9",
+      "status": "completed",
+      "exitCode": 0,
+      "stdout": "publish:1\n",
+      "stderr": "",
+      "startedAt": "2026-04-13T01:38:34.477Z",
+      "completedAt": "2026-04-13T01:38:34.483Z"
+    }
+  },
+  "lastResult": {
+    "runId": "compose-smoke",
+    "status": "completed",
+    "executions": [
+      {
+        "segmentId": "ephemeral-1",
+        "type": "ephemeral",
+        "cached": false,
+        "status": "completed",
+        "exitCode": 0,
+        "stdout": "",
+        "stderr": "",
+        "hash": "5e6bc58c061313d0495373c96166c9fdefbbaa2fdf91b0084a3aa6db4b30e681",
+        "startedAt": "2026-04-13T01:38:34.503Z",
+        "completedAt": "2026-04-13T01:38:34.511Z",
+        "startLine": 1,
+        "endLine": 1
+      },
+      {
+        "segmentId": "build",
+        "type": "durable",
+        "cached": true,
+        "status": "completed",
+        "exitCode": 0,
+        "stdout": "build:1\n",
+        "stderr": "",
+        "hash": "a16df8fb549d6f8172d10fbc815c6064dc3e54410dc7d9485b2977bb1e674415",
+        "startedAt": "2026-04-13T01:38:34.463Z",
+        "completedAt": "2026-04-13T01:38:34.476Z",
+        "startLine": 3,
+        "endLine": 5
+      },
+      {
+        "segmentId": "publish",
+        "type": "durable",
+        "cached": true,
+        "status": "completed",
+        "exitCode": 0,
+        "stdout": "publish:1\n",
+        "stderr": "",
+        "hash": "a15ba313450fae72469461326f8ea99ebbecd9312d503a19a2f8aadd5ce2ddf9",
+        "startedAt": "2026-04-13T01:38:34.477Z",
+        "completedAt": "2026-04-13T01:38:34.483Z",
+        "startLine": 8,
+        "endLine": 8
+      }
+    ],
+    "startedAt": "2026-04-13T01:38:34.503Z",
+    "completedAt": "2026-04-13T01:38:34.512Z"
+  }
+}

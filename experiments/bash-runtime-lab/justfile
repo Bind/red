@@ -1,0 +1,32 @@
+set dotenv-load
+
+default:
+    @just --list --unsorted
+
+install:
+    bun install
+
+serve:
+    bun run src/index.ts
+
+test:
+    bun test
+
+typecheck:
+    bunx tsc --noEmit
+
+lint:
+    bun run lint
+
+format:
+    bun run format
+
+compose-up:
+    docker compose up --build -d
+    until curl -fsS http://127.0.0.1:${BASH_RUNTIME_LAB_PUBLISHED_PORT:-4093}/health >/dev/null; do sleep 1; done
+
+compose-down:
+    docker compose down -v --remove-orphans
+
+compose-e2e:
+    ./compose/e2e.sh

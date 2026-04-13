@@ -6,8 +6,9 @@ experiment_dir="$repo_root/experiments/ci-runner-lab"
 compose_file="$experiment_dir/docker-compose.yml"
 tmp_dir="$(mktemp -d)"
 data_dir="$tmp_dir/data"
-run_file="$tmp_dir/run.json"
+job_file="$tmp_dir/job.json"
 result_file="$tmp_dir/result.json"
+logs_file="$tmp_dir/logs.json"
 
 cleanup() {
   docker compose -f "$compose_file" down -v --remove-orphans >/dev/null 2>&1 || true
@@ -31,33 +32,37 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-cat > "$run_file" <<'EOF'
+cat > "$job_file" <<'EOF'
 {
-  "workflowName": "compose-e2e",
-  "repository": "redc/example",
-  "ref": "refs/heads/main",
-  "steps": [
-    { "name": "seed", "run": "echo warmup" },
-    { "name": "artifact", "run": "echo ready > artifact.txt && cat artifact.txt" }
-  ]
+  "repoId": "redc/example",
+  "commitSha": "0123456789abcdef0123456789abcdef01234567",
+  "jobName": "test",
+  "env": {
+    "JOB_SAMPLE": "compose-e2e"
+  },
+  "gitCredentialGrant": "compose-grant"
 }
 EOF
 
-run_id="$(
-  curl -fsS http://127.0.0.1:4091/runs \
+job_id="$(
+  curl -fsS http://127.0.0.1:4091/jobs \
     -H 'content-type: application/json' \
-    --data @"$run_file" \
-    | jq -r '.run.id'
+    --data @"$job_file" \
+    | jq -r '.job.jobId'
 )"
 
 for _ in $(seq 1 60); do
-  curl -fsS "http://127.0.0.1:4091/runs/$run_id" > "$result_file"
-  if jq -e '.run.status == "success"' "$result_file" >/dev/null 2>&1; then
+  curl -fsS "http://127.0.0.1:4091/jobs/$job_id" > "$result_file"
+  if jq -e '.job.attempts[-1].status == "success"' "$result_file" >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
-jq -e '.run.workflowName == "compose-e2e"' "$result_file" >/dev/null
-jq -e '.run.stepResults | length == 2' "$result_file" >/dev/null
-jq -e '.run.stepResults[1].stdout | contains("ready")' "$result_file" >/dev/null
+jq -e '.job.repoId == "redc/example"' "$result_file" >/dev/null
+jq -e '.job.attempts | length == 1' "$result_file" >/dev/null
+jq -e '.job.attempts[0].artifacts[0] | contains("artifacts/result.txt")' "$result_file" >/dev/null
+
+curl -fsS "http://127.0.0.1:4091/jobs/$job_id/attempts/1/logs?after_seq=0" > "$logs_file"
+jq -e '.chunks | length > 0' "$logs_file" >/dev/null
+jq -e '[.chunks[].text] | join("") | contains("ready")' "$logs_file" >/dev/null
