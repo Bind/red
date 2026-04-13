@@ -20,3 +20,5 @@ apps/web/dist/
 .codex-debug/
 .zig-cache/
 zig-cache/
+experiments/bash-runtime-lab/.tmp-compose-data/
+experiments/bash-runtime-lab/data/

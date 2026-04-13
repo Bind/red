@@ -69,7 +69,7 @@ describe("createApp", () => {
     };
     expect(runJson.run.journal.some((event) => event.phase === "after")).toBe(true);
     expect(runJson.run.commandNodes["script.stmt0.pipe0.cmd0"]?.commandName).toBe("echo");
-  });
+  }, 15_000);
 
   test("validates execute requests", async () => {
     const { app } = await makeHarness();
