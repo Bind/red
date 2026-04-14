@@ -87,3 +87,27 @@ write_json "${tmp_dir}/dependency-second.json" '
 post_run "${tmp_dir}/dependency-first.json" "${tmp_dir}/dependency-first-response.json"
 post_run "${tmp_dir}/dependency-second.json" "${tmp_dir}/dependency-second-response.json"
 assert_json "${tmp_dir}/dependency-second-response.json" "data.result.journal.filter((event) => event.phase === 'after').some((event) => event.cached === false)"
+
+mkdir -p "${BASH_RUNTIME_LAB_HOST_DATA_DIR}/workspaces/compose-make"
+cat >"${BASH_RUNTIME_LAB_HOST_DATA_DIR}/workspaces/compose-make/Makefile" <<'MAKEFILE'
+render-dockerfile:
+	printf 'FROM busybox:1.36\n' > Dockerfile
+	printf 'LABEL ci.pipeline=compose-make\n' >> Dockerfile
+	printf 'RUN echo hello-from-make > /artifact.txt\n' >> Dockerfile
+MAKEFILE
+
+write_json "${tmp_dir}/make-request.json" '
+{
+  "runId": "compose-make",
+  "script": "make render-dockerfile\ngrep '\''^FROM '\'' Dockerfile\ngrep '\''^RUN '\'' Dockerfile\nrm Dockerfile\n"
+}
+'
+
+post_run "${tmp_dir}/make-request.json" "${tmp_dir}/make-first-response.json"
+post_run "${tmp_dir}/make-request.json" "${tmp_dir}/make-second-response.json"
+assert_json "${tmp_dir}/make-first-response.json" "data.result.status === 'completed'"
+assert_json "${tmp_dir}/make-first-response.json" "data.result.commandCount === 4"
+assert_json "${tmp_dir}/make-first-response.json" "data.result.stdout.includes('FROM busybox:1.36')"
+assert_json "${tmp_dir}/make-first-response.json" "data.result.stdout.includes('RUN echo hello-from-make > /artifact.txt')"
+assert_json "${tmp_dir}/make-second-response.json" "data.result.journal.filter((event) => event.phase === 'after').every((event) => event.cached)"
+assert_json "${tmp_dir}/make-second-response.json" "data.result.stdout.includes('FROM busybox:1.36')"
