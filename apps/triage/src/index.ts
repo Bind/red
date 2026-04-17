@@ -8,10 +8,18 @@ import type { TriageWorkflowRunner } from "./workflows/runner";
 interface TriageConfig {
 	port: number;
 	workflowMode: "stub" | "smithers";
-	smithersBin?: string;
+	smithersCommand: string[];
 	investigateWorkflowPath?: string;
 	proposeWorkflowPath?: string;
 	smithersDbPath?: string;
+}
+
+function parseCommand(raw: string | undefined, fallback: string[]): string[] {
+	if (!raw || raw.trim().length === 0) return fallback;
+	return raw
+		.trim()
+		.split(/\s+/)
+		.filter((part) => part.length > 0);
 }
 
 function loadConfig(): TriageConfig {
@@ -24,7 +32,10 @@ function loadConfig(): TriageConfig {
 	return {
 		port: Number.parseInt(process.env.TRIAGE_PORT ?? "7000", 10),
 		workflowMode: mode as "stub" | "smithers",
-		smithersBin: process.env.TRIAGE_SMITHERS_BIN,
+		smithersCommand: parseCommand(process.env.TRIAGE_SMITHERS_CMD, [
+			"bunx",
+			"smithers-orchestrator",
+		]),
 		investigateWorkflowPath: process.env.TRIAGE_INVESTIGATE_WORKFLOW,
 		proposeWorkflowPath: process.env.TRIAGE_PROPOSE_WORKFLOW,
 		smithersDbPath: process.env.TRIAGE_SMITHERS_DB_PATH,
@@ -35,19 +46,15 @@ function createRunner(config: TriageConfig): TriageWorkflowRunner {
 	if (config.workflowMode === "stub") {
 		return new StubTriageWorkflowRunner();
 	}
-	const {
-		smithersBin,
-		investigateWorkflowPath,
-		proposeWorkflowPath,
-		smithersDbPath,
-	} = config;
-	if (!smithersBin || !investigateWorkflowPath || !proposeWorkflowPath || !smithersDbPath) {
+	const { investigateWorkflowPath, proposeWorkflowPath, smithersDbPath } =
+		config;
+	if (!investigateWorkflowPath || !proposeWorkflowPath || !smithersDbPath) {
 		throw new Error(
-			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_SMITHERS_BIN, TRIAGE_INVESTIGATE_WORKFLOW, TRIAGE_PROPOSE_WORKFLOW, TRIAGE_SMITHERS_DB_PATH",
+			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_INVESTIGATE_WORKFLOW, TRIAGE_PROPOSE_WORKFLOW, TRIAGE_SMITHERS_DB_PATH",
 		);
 	}
 	return new SmithersTriageRunner({
-		smithersBin,
+		smithersCommand: config.smithersCommand,
 		investigateWorkflowPath,
 		proposeWorkflowPath,
 		smithersDbPath,

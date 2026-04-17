@@ -305,22 +305,25 @@ services:
     environment:
       TRIAGE_PORT: ${TRIAGE_PORT:-7000}
       TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
-      TRIAGE_SMITHERS_BIN: ${TRIAGE_SMITHERS_BIN:-}
+      TRIAGE_SMITHERS_CMD: ${TRIAGE_SMITHERS_CMD:-bunx smithers-orchestrator}
       TRIAGE_INVESTIGATE_WORKFLOW: ${TRIAGE_INVESTIGATE_WORKFLOW:-/app/apps/triage/src/workflows/investigate.tsx}
       TRIAGE_PROPOSE_WORKFLOW: ${TRIAGE_PROPOSE_WORKFLOW:-/app/apps/triage/src/workflows/propose.tsx}
-      TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/app/apps/triage/smithers.db}
-      TRIAGE_MODEL: ${TRIAGE_MODEL:-}
+      TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/smithers-data/smithers.db}
+      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
     ports:
       - "${TRIAGE_PORT:-7000}:7000"
     command: >
-      sh -lc "cd /app &&
+      sh -lc "apk add --no-cache git ca-certificates &&
+      cd /app &&
       bun install --frozen-lockfile &&
       cd /app/apps/triage &&
       bun run --watch src/index.ts"
     volumes:
       - ../..:/app
       - redc-node-modules:/app/node_modules
+      - smithers-data:/smithers-data
     healthcheck:
       test:
         [
@@ -340,3 +343,4 @@ volumes:
   redc-node-modules:
   web-node-modules:
   auth-node-modules:
+  smithers-data:

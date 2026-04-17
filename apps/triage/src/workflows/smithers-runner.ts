@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -14,7 +14,7 @@ import {
 import type { TriageWorkflowRunner } from "./runner";
 
 export interface SmithersRunnerOptions {
-	smithersBin: string;
+	smithersCommand: string[];
 	investigateWorkflowPath: string;
 	proposeWorkflowPath: string;
 	smithersDbPath: string;
@@ -28,8 +28,11 @@ export class SmithersTriageRunner implements TriageWorkflowRunner {
 	};
 
 	constructor(options: SmithersRunnerOptions) {
+		if (options.smithersCommand.length === 0) {
+			throw new Error("smithersCommand must have at least one element");
+		}
 		this.opts = {
-			smithersBin: options.smithersBin,
+			smithersCommand: options.smithersCommand,
 			investigateWorkflowPath: options.investigateWorkflowPath,
 			proposeWorkflowPath: options.proposeWorkflowPath,
 			smithersDbPath: options.smithersDbPath,
@@ -40,8 +43,10 @@ export class SmithersTriageRunner implements TriageWorkflowRunner {
 
 	async investigate(rollup: WideRollupRecord): Promise<TriagePlan> {
 		const runId = `triage-investigate-${randomUUID()}`;
-		await this.runSmithersUp(this.opts.investigateWorkflowPath, runId, { rollup });
-		const row = await this.readLatestRow(runId, "triage_plan", "draft");
+		await this.runSmithersUp(this.opts.investigateWorkflowPath, runId, {
+			rollup,
+		});
+		const row = this.readLatestRow(runId, "triage_plan", "draft");
 		return TriagePlanSchema.parse(row);
 	}
 
@@ -51,7 +56,7 @@ export class SmithersTriageRunner implements TriageWorkflowRunner {
 	}): Promise<TriageProposal> {
 		const runId = `triage-propose-${randomUUID()}`;
 		await this.runSmithersUp(this.opts.proposeWorkflowPath, runId, input);
-		const row = await this.readLatestRow(runId, "triage_proposal", "implement");
+		const row = this.readLatestRow(runId, "triage_proposal", "implement");
 		return TriageProposalSchema.parse(row);
 	}
 
@@ -64,27 +69,31 @@ export class SmithersTriageRunner implements TriageWorkflowRunner {
 		const inputPath = join(scratch, "input.json");
 		await Bun.write(inputPath, JSON.stringify(payload));
 
+		const [bin, ...baseArgs] = this.opts.smithersCommand;
+		const args = [
+			...baseArgs,
+			"up",
+			workflowPath,
+			"--run-id",
+			runId,
+			"--input",
+			`@${inputPath}`,
+		];
+
 		try {
 			await new Promise<void>((resolve, reject) => {
-				const child = spawn(
-					this.opts.smithersBin,
-					[
-						"up",
-						workflowPath,
-						"--run-id",
-						runId,
-						"--input",
-						`@${inputPath}`,
-					],
-					{
-						cwd: this.opts.workingDir,
-						stdio: "inherit",
-						env: process.env,
-					},
-				);
+				const child = spawn(bin, args, {
+					cwd: this.opts.workingDir,
+					stdio: "inherit",
+					env: process.env,
+				});
 				const timer = setTimeout(() => {
 					child.kill("SIGKILL");
-					reject(new Error(`smithers workflow timed out after ${this.opts.timeoutMs}ms`));
+					reject(
+						new Error(
+							`smithers workflow timed out after ${this.opts.timeoutMs}ms`,
+						),
+					);
 				}, this.opts.timeoutMs);
 				child.once("error", (error) => {
 					clearTimeout(timer);
@@ -101,11 +110,11 @@ export class SmithersTriageRunner implements TriageWorkflowRunner {
 		}
 	}
 
-	private async readLatestRow(
+	private readLatestRow(
 		runId: string,
 		tableName: string,
 		nodeId: string,
-	): Promise<unknown> {
+	): unknown {
 		const db = new Database(this.opts.smithersDbPath, { readonly: true });
 		try {
 			const row = db

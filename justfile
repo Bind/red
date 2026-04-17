@@ -273,6 +273,21 @@ triage-logs:
 triage-test:
     cd apps/triage && bun test
 
+# Restart triage in real-smithers mode (requires ANTHROPIC_API_KEY in .env)
+triage-smithers-mode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! grep -q '^ANTHROPIC_API_KEY=..' .env 2>/dev/null; then
+        echo "error: set ANTHROPIC_API_KEY in .env before enabling smithers mode" >&2
+        exit 1
+    fi
+    TRIAGE_WORKFLOW_MODE=smithers docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage
+    echo "triage now running in smithers mode"
+
+# Switch triage back to the stub workflow runner
+triage-stub-mode:
+    TRIAGE_WORKFLOW_MODE=stub docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage
+
 # Demo: POST the failing star endpoint and list triage runs it created
 triage-demo owner="redc" repo="demo":
     #!/usr/bin/env bash

@@ -15,7 +15,7 @@
  */
 
 import {
-	ClaudeCodeAgent,
+	AnthropicAgent,
 	createSmithers,
 	Loop,
 	Sequence,
@@ -40,10 +40,8 @@ const { Workflow, Task, smithers, tables, outputs, useCtx } = createSmithers({
 	reviewFix: ReviewFixSchema,
 });
 
-const claude = new ClaudeCodeAgent({
-	permissionMode: "acceptEdits",
-	allowedTools: ["Read", "Edit", "Write", "Grep", "Glob", "Bash"],
-	model: process.env.TRIAGE_MODEL ?? undefined,
+const claude = new AnthropicAgent({
+	model: process.env.TRIAGE_MODEL ?? "claude-sonnet-4-6",
 });
 
 function Implement() {
