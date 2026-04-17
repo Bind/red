@@ -6,6 +6,9 @@ on:
   push:
     branches: [main]
 
+env:
+  JUST_UNSTABLE: "1"
+
 jobs:
   contract:
     name: Health contract (in-process)
@@ -16,18 +19,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
+      - uses: extractions/setup-just@v2
       - name: Install
         run: bun install --frozen-lockfile
-
       - name: Health-contract tests
-        env:
-          GIT_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: bun test pkg/health
+        run: just ci-health-contract "${{ github.event.pull_request.head.sha || github.sha }}"
 
   compose-smoke:
     name: Compose smoke (docker --wait)
@@ -38,86 +37,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Install (for keygen)
-        run: bun install --frozen-lockfile
-
-      - name: Seed .env
-        env:
-          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          cat > .env <<EOF
-          GIT_COMMIT=${SHA}
-          WIDE_EVENTS_HOST=0.0.0.0
-          WIDE_EVENTS_PORT=4090
-          WIDE_EVENTS_STORAGE_BACKEND=file
-          WIDE_EVENTS_DATA_DIR=/data/wide-events
-          WIDE_EVENTS_RAW_EVENTS_DIR=/data/wide-events/raw
-          WIDE_EVENTS_ROLLUP_DIR=/data/wide-events/rollup
-          WIDE_EVENTS_RAW_BUCKET=wide-events-raw
-          WIDE_EVENTS_RAW_PREFIX=raw
-          WIDE_EVENTS_ROLLUP_BUCKET=wide-events-rollup
-          WIDE_EVENTS_ROLLUP_PREFIX=rollup
-          WIDE_EVENTS_SWEEP_INTERVAL_MS=5000
-          WIDE_EVENTS_INCOMPLETE_GRACE_MS=60000
-          WIDE_EVENTS_REPLAY_WINDOW_MS=600000
-          WIDE_EVENTS_S3_ENDPOINT=http://s3:9000
-          WIDE_EVENTS_S3_REGION=us-east-1
-          WIDE_EVENTS_S3_ACCESS_KEY_ID=minioadmin
-          WIDE_EVENTS_S3_SECRET_ACCESS_KEY=minioadmin
-          EOF
-
-      - name: Generate dev-only auth key
-        run: |
-          mkdir -p apps/auth/compose
-          if [ ! -f apps/auth/compose/signing-key.private.jwk ]; then
-            cd apps/auth && bun --eval '
-              import { writeFileSync } from "node:fs";
-              import { generateKeyPairSync } from "node:crypto";
-              import { exportJWK } from "jose";
-              const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-              const jwk = await exportJWK(privateKey);
-              writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);
-            '
-          fi
-
+      - uses: extractions/setup-just@v2
+      - name: Prep CI env
+        run: just ci-prep "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Build and start stack
-        run: |
-          docker compose -f infra/compose/dev.yml --env-file .env \
-            up -d --build --wait --wait-timeout 600 \
-            s3 init obs grs db-auth auth ctl bff
-
-      - name: Probe each /health and assert contract
-        run: |
-          set -euo pipefail
-          declare -A endpoints=(
-            [ctl]="http://localhost:3000/health"
-            [bff]="http://localhost:3001/health"
-            [auth]="http://localhost:4020/health"
-            [obs]="http://localhost:4090/health"
-            [grs]="http://localhost:9080/health"
-          )
-          for service in "${!endpoints[@]}"; do
-            url="${endpoints[$service]}"
-            echo "==> $service $url"
-            body=$(curl -fsSL "$url")
-            echo "$body" | jq .
-            got_service=$(echo "$body" | jq -r .service)
-            got_status=$(echo "$body" | jq -r .status)
-            got_commit=$(echo "$body" | jq -r .commit)
-            [ "$got_service" = "$service" ] || { echo "want service=$service got=$got_service"; exit 1; }
-            case "$got_status" in ok|degraded|error) ;; *) echo "bad status=$got_status"; exit 1;; esac
-            [ -n "$got_commit" ] && [ "$got_commit" != "null" ] || { echo "missing commit"; exit 1; }
-          done
-
+        run: just ci-health-compose-up
+      - name: Probe each /health
+        run: just ci-health-probe
       - name: Dump logs on failure
         if: failure()
         run: docker compose -f infra/compose/dev.yml logs --tail=200
-
       - name: Teardown
         if: always()
         run: docker compose -f infra/compose/dev.yml down -v --remove-orphans
