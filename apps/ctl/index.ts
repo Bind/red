@@ -350,15 +350,6 @@ export function createApp(config: AppConfig) {
     return c.json(record);
   });
 
-  app.post("/api/repos/:owner/:repo/star", (c) => {
-    const owner = c.req.param("owner");
-    const repo = c.req.param("repo");
-    getEnvelope(c).set({ owner, repo, action: "star" });
-    throw new Error(
-      `star endpoint not implemented (owner=${owner} repo=${repo})`,
-    );
-  });
-
   app.get("/api/repos/:owner/:repo/file", async (c) => {
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");

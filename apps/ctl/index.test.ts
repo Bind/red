@@ -231,14 +231,4 @@ describe("App integration", () => {
     expect(json.status).toBe("accepted");
     expect(changes.getById(json.change_id)?.branch).toBe("feature/local");
   });
-
-  test("star repo endpoint throws a 500 so triage picks it up", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(
-      new Request("http://localhost/api/repos/redc/demo/star", {
-        method: "POST",
-      }),
-    );
-    expect(res.status).toBe(500);
-  });
 });
