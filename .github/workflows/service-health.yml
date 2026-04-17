@@ -39,6 +39,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install (for keygen)
+        run: bun install --frozen-lockfile
+
       - name: Seed .env
         env:
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -65,7 +72,18 @@ jobs:
           EOF
 
       - name: Generate dev-only auth key
-        run: just auth-compose-keygen
+        run: |
+          mkdir -p apps/auth/compose
+          if [ ! -f apps/auth/compose/signing-key.private.jwk ]; then
+            cd apps/auth && bun --eval '
+              import { writeFileSync } from "node:fs";
+              import { generateKeyPairSync } from "node:crypto";
+              import { exportJWK } from "jose";
+              const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+              const jwk = await exportJWK(privateKey);
+              writeFileSync("compose/signing-key.private.jwk", `${JSON.stringify(jwk, null, 2)}\n`);
+            '
+          fi
 
       - name: Build and start stack
         run: |
