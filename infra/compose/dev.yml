@@ -67,6 +67,10 @@ services:
       WIDE_EVENTS_RAW_PREFIX: ${WIDE_EVENTS_RAW_PREFIX}
       WIDE_EVENTS_ROLLUP_BUCKET: ${WIDE_EVENTS_ROLLUP_BUCKET}
       WIDE_EVENTS_ROLLUP_PREFIX: ${WIDE_EVENTS_ROLLUP_PREFIX}
+      TRIAGE_ENABLED: ${TRIAGE_ENABLED:-false}
+      TRIAGE_ENDPOINT_URL: ${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}
+      TRIAGE_MIN_STATUS_CODE: ${TRIAGE_MIN_STATUS_CODE:-500}
+      TRIAGE_DEDUP_TTL_MS: ${TRIAGE_DEDUP_TTL_MS:-900000}
     ports:
       - "${WIDE_EVENTS_PORT}:4090"
     command: >
@@ -292,6 +296,42 @@ services:
       - ../..:/app
       - redc-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
+
+  triage:
+    container_name: triage
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    working_dir: /app/apps/triage
+    environment:
+      TRIAGE_PORT: ${TRIAGE_PORT:-7000}
+      TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
+      TRIAGE_SMITHERS_BIN: ${TRIAGE_SMITHERS_BIN:-}
+      TRIAGE_INVESTIGATE_WORKFLOW: ${TRIAGE_INVESTIGATE_WORKFLOW:-/app/apps/triage/src/workflows/investigate.tsx}
+      TRIAGE_PROPOSE_WORKFLOW: ${TRIAGE_PROPOSE_WORKFLOW:-/app/apps/triage/src/workflows/propose.tsx}
+      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-code}
+      REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
+    ports:
+      - "${TRIAGE_PORT:-7000}:7000"
+    command: >
+      sh -lc "cd /app &&
+      bun install --frozen-lockfile &&
+      cd /app/apps/triage &&
+      bun run --watch src/index.ts"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:7000/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles: ["triage"]
 
 volumes:
   minio-data:

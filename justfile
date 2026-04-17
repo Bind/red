@@ -255,6 +255,26 @@ git-mirror-canary-compose-down:
 git-mirror-canary-compose-e2e:
     cd experiments/git-mirror-canary && ./compose/e2e.sh
 
+# ── Triage ──────────────────────────────────────────────
+
+# Start the triage service (stub workflow) alongside the dev stack
+triage-up:
+    docker compose -f {{ DEV_COMPOSE }} --profile triage up -d triage
+
+# Tear down the triage service
+triage-down:
+    docker compose -f {{ DEV_COMPOSE }} rm -sf triage
+
+# Tail triage logs
+triage-logs:
+    docker compose -f {{ DEV_COMPOSE }} logs -f triage
+
+# Run triage tests
+triage-test:
+    cd apps/triage && bun test
+
+# ── Obs ─────────────────────────────────────────────────
+
 # Install dependencies for the obs app
 obs-install:
     cd apps/obs && bun install
