@@ -38,9 +38,12 @@ TRIAGE_ENDPOINT_URL="${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}"
 TRIAGE_MIN_STATUS_CODE="${TRIAGE_MIN_STATUS_CODE:-500}"
 TRIAGE_DEDUP_TTL_MS="${TRIAGE_DEDUP_TTL_MS:-900000}"
 TRIAGE_WORKFLOW_MODE="${TRIAGE_WORKFLOW_MODE:-stub}"
-TRIAGE_SMITHERS_CMD="${TRIAGE_SMITHERS_CMD:-bunx smithers-orchestrator}"
+TRIAGE_SMITHERS_BASE_URL="${TRIAGE_SMITHERS_BASE_URL:-http://triage-smithers:7331}"
+TRIAGE_WORKFLOW_PATH="${TRIAGE_WORKFLOW_PATH:-/app/apps/triage/src/workflows/triage.tsx}"
 TRIAGE_SMITHERS_DB_PATH="${TRIAGE_SMITHERS_DB_PATH:-/smithers-data/smithers.db}"
 TRIAGE_MODEL="${TRIAGE_MODEL:-claude-sonnet-4-6}"
+SMITHERS_API_KEY="${SMITHERS_API_KEY:-}"
+SMITHERS_SERVER_PORT="${SMITHERS_SERVER_PORT:-7331}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
@@ -94,9 +97,12 @@ TRIAGE_ENDPOINT_URL=$TRIAGE_ENDPOINT_URL
 TRIAGE_MIN_STATUS_CODE=$TRIAGE_MIN_STATUS_CODE
 TRIAGE_DEDUP_TTL_MS=$TRIAGE_DEDUP_TTL_MS
 TRIAGE_WORKFLOW_MODE=$TRIAGE_WORKFLOW_MODE
-TRIAGE_SMITHERS_CMD=$TRIAGE_SMITHERS_CMD
+TRIAGE_SMITHERS_BASE_URL=$TRIAGE_SMITHERS_BASE_URL
+TRIAGE_WORKFLOW_PATH=$TRIAGE_WORKFLOW_PATH
 TRIAGE_SMITHERS_DB_PATH=$TRIAGE_SMITHERS_DB_PATH
 TRIAGE_MODEL=$TRIAGE_MODEL
+SMITHERS_API_KEY=$SMITHERS_API_KEY
+SMITHERS_SERVER_PORT=$SMITHERS_SERVER_PORT
 ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 EOF
 
@@ -111,7 +117,8 @@ else
 fi
 
 echo "Starting dev stack..."
-docker compose --env-file .env -f "$COMPOSE_FILE" --profile triage up -d s3 init obs grs db-auth auth ctl bff web triage
+docker compose --env-file .env -f "$COMPOSE_FILE" --profile triage up -d \
+  s3 init obs grs db-auth auth ctl bff web triage-smithers triage
 
 echo ""
 echo "=== Setup complete ==="
@@ -122,5 +129,6 @@ echo "Auth:    http://localhost:4020"
 echo "OBS:     http://localhost:$WIDE_EVENTS_PORT"
 echo "Git:     http://localhost:9080"
 echo "Triage:  http://localhost:7000"
+echo "Smithers: http://localhost:$SMITHERS_SERVER_PORT"
 echo "MinIO:   http://localhost:$MINIO_CONSOLE_PORT"
 echo "S3 API:  http://localhost:$MINIO_API_PORT"

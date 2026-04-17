@@ -41,9 +41,9 @@ export function createApp(deps: TriageAppDeps): Hono {
 		}
 	});
 
-	app.post("/v1/runs/:id/reject", (c) => {
+	app.post("/v1/runs/:id/reject", async (c) => {
 		try {
-			const run = deps.orchestrator.reject(c.req.param("id"));
+			const run = await deps.orchestrator.reject(c.req.param("id"));
 			return c.json(run);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

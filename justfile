@@ -257,17 +257,17 @@ git-mirror-canary-compose-e2e:
 
 # ── Triage ──────────────────────────────────────────────
 
-# Start the triage service (stub workflow) alongside the dev stack
+# Start the triage service and its Smithers server alongside the dev stack
 triage-up:
-    docker compose -f {{ DEV_COMPOSE }} --profile triage up -d triage
+    docker compose -f {{ DEV_COMPOSE }} --profile triage up -d triage-smithers triage
 
-# Tear down the triage service
+# Tear down the triage service + smithers server
 triage-down:
-    docker compose -f {{ DEV_COMPOSE }} rm -sf triage
+    docker compose -f {{ DEV_COMPOSE }} rm -sf triage triage-smithers
 
-# Tail triage logs
-triage-logs:
-    docker compose -f {{ DEV_COMPOSE }} logs -f triage
+# Tail triage logs (pass service=smithers for the smithers server)
+triage-logs service="triage":
+    docker compose -f {{ DEV_COMPOSE }} logs -f {{ if service == "smithers" { "triage-smithers" } else { "triage" } }}
 
 # Run triage tests
 triage-test:
@@ -281,10 +281,10 @@ triage-smithers-mode:
         echo "error: set ANTHROPIC_API_KEY in .env before enabling smithers mode" >&2
         exit 1
     fi
-    TRIAGE_WORKFLOW_MODE=smithers docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage
+    TRIAGE_WORKFLOW_MODE=smithers docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage-smithers triage
     echo "triage now running in smithers mode"
 
-# Switch triage back to the stub workflow runner
+# Switch triage back to the stub workflow runner (smithers server stays running)
 triage-stub-mode:
     TRIAGE_WORKFLOW_MODE=stub docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage
 

@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { RunStore } from "./runs/store";
 import type { TriageRun, WideRollupRecord } from "./types";
-import type { TriageWorkflowRunner } from "./workflows/runner";
+import type {
+	TriageWorkflowHandle,
+	TriageWorkflowRunner,
+} from "./workflows/runner";
 
 export interface TriageOrchestratorOptions {
 	store: RunStore;
@@ -15,6 +18,7 @@ export class TriageOrchestrator {
 	private readonly runner: TriageWorkflowRunner;
 	private readonly now: () => Date;
 	private readonly onRunUpdate: (run: TriageRun) => void;
+	private readonly handles = new Map<string, TriageWorkflowHandle>();
 
 	constructor(options: TriageOrchestratorOptions) {
 		this.store = options.store;
@@ -33,71 +37,68 @@ export class TriageOrchestrator {
 			updated_at: nowIso,
 			rollup,
 		});
-		void this.runInvestigation(run.id);
-		return run;
+
+		const handle = await this.runner.start(rollup, (event) => {
+			try {
+				if (event.kind === "plan_ready") {
+					this.publish(id, {
+						status: "plan_ready",
+						plan: event.plan,
+					});
+				} else if (event.kind === "proposal_ready") {
+					this.publish(id, {
+						status: "proposal_ready",
+						proposal: event.proposal,
+					});
+				} else if (event.kind === "failed") {
+					this.publish(id, {
+						status: "failed",
+						error: event.error,
+					});
+				}
+			} catch (error) {
+				console.error(`orchestrator event handler failed for ${id}:`, error);
+			}
+		});
+
+		this.handles.set(id, handle);
+		this.publish(id, { status: "investigating" });
+		return this.store.get(id) ?? run;
 	}
 
 	async approve(id: string): Promise<TriageRun> {
 		const run = this.requireRun(id);
 		if (run.status !== "plan_ready") {
-			throw new Error(`run ${id} is not ready for approval (status=${run.status})`);
+			throw new Error(
+				`run ${id} is not ready for approval (status=${run.status})`,
+			);
 		}
-		const approved = this.store.update(id, { status: "approved" });
-		this.onRunUpdate(approved);
-		void this.runProposal(id);
-		return approved;
+		const handle = this.handles.get(id);
+		if (!handle) throw new Error(`run ${id} has no active handle`);
+		this.publish(id, { status: "approved" });
+		await handle.approve();
+		this.publish(id, { status: "proposing" });
+		return this.requireRun(id);
 	}
 
-	reject(id: string): TriageRun {
+	async reject(id: string): Promise<TriageRun> {
 		const run = this.requireRun(id);
-		const updated = this.store.update(id, { status: "rejected" });
+		const handle = this.handles.get(id);
+		if (handle) await handle.reject().catch(() => {});
+		this.handles.delete(id);
+		this.publish(id, { status: "rejected" });
+		return this.requireRun(id);
+	}
+
+	private publish(id: string, patch: Partial<TriageRun>): TriageRun {
+		const updated = this.store.update(id, patch);
 		this.onRunUpdate(updated);
 		return updated;
 	}
 
-	private async runInvestigation(id: string): Promise<void> {
-		try {
-			const inFlight = this.store.update(id, { status: "investigating" });
-			this.onRunUpdate(inFlight);
-			const plan = await this.runner.investigate(inFlight.rollup);
-			const done = this.store.update(id, { status: "plan_ready", plan });
-			this.onRunUpdate(done);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const failed = this.store.update(id, { status: "failed", error: message });
-			this.onRunUpdate(failed);
-		}
-	}
-
-	private async runProposal(id: string): Promise<void> {
-		const run = this.requireRun(id);
-		if (!run.plan) {
-			throw new Error(`run ${id} has no plan`);
-		}
-		try {
-			const inFlight = this.store.update(id, { status: "proposing" });
-			this.onRunUpdate(inFlight);
-			const proposal = await this.runner.propose({
-				rollup: run.rollup,
-				plan: run.plan,
-			});
-			const done = this.store.update(id, {
-				status: "proposal_ready",
-				proposal,
-			});
-			this.onRunUpdate(done);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const failed = this.store.update(id, { status: "failed", error: message });
-			this.onRunUpdate(failed);
-		}
-	}
-
 	private requireRun(id: string): TriageRun {
 		const run = this.store.get(id);
-		if (!run) {
-			throw new Error(`run ${id} not found`);
-		}
+		if (!run) throw new Error(`run ${id} not found`);
 		return run;
 	}
 }

@@ -3,7 +3,11 @@ import { createApp } from "./app";
 import { TriageOrchestrator } from "./orchestrator";
 import { InMemoryRunStore } from "./runs/store";
 import type { TriagePlan, TriageProposal, WideRollupRecord } from "./types";
-import type { TriageWorkflowRunner } from "./workflows/runner";
+import type {
+	TriageWorkflowEvent,
+	TriageWorkflowHandle,
+	TriageWorkflowRunner,
+} from "./workflows/runner";
 
 function sampleRollup(): WideRollupRecord {
 	return {
@@ -22,23 +26,31 @@ function sampleRollup(): WideRollupRecord {
 }
 
 class DeferredRunner implements TriageWorkflowRunner {
-	investigateResolver: ((plan: TriagePlan) => void) | null = null;
-	proposeResolver: ((proposal: TriageProposal) => void) | null = null;
+	onEvent: ((event: TriageWorkflowEvent) => void) | null = null;
+	approveCalls = 0;
+	rejectCalls = 0;
 
-	investigate(): Promise<TriagePlan> {
-		return new Promise((resolve) => {
-			this.investigateResolver = resolve;
-		});
-	}
-
-	propose(): Promise<TriageProposal> {
-		return new Promise((resolve) => {
-			this.proposeResolver = resolve;
-		});
+	async start(
+		_rollup: WideRollupRecord,
+		onEvent: (event: TriageWorkflowEvent) => void,
+	): Promise<TriageWorkflowHandle> {
+		this.onEvent = onEvent;
+		return {
+			runId: "mock-run-1",
+			approve: async () => {
+				this.approveCalls += 1;
+			},
+			reject: async () => {
+				this.rejectCalls += 1;
+			},
+		};
 	}
 }
 
-async function waitFor<T>(predicate: () => T | undefined, timeoutMs = 1000): Promise<T> {
+async function waitFor<T>(
+	predicate: () => T | undefined,
+	timeoutMs = 1000,
+): Promise<T> {
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
 		const result = predicate();
@@ -49,7 +61,7 @@ async function waitFor<T>(predicate: () => T | undefined, timeoutMs = 1000): Pro
 }
 
 describe("triage app lifecycle", () => {
-	test("receives rollup, blocks on plan_ready, resumes after approve", async () => {
+	test("receive → plan_ready → approve → proposing → proposal_ready", async () => {
 		const store = new InMemoryRunStore();
 		const runner = new DeferredRunner();
 		const orchestrator = new TriageOrchestrator({ store, runner });
@@ -69,12 +81,12 @@ describe("triage app lifecycle", () => {
 
 		const plan: TriagePlan = {
 			hypothesis: "bad query",
-			suspected_files: ["apps/ctl/src/jobs.ts"],
+			suspected_files: ["apps/ctl/index.ts"],
 			reproduction_steps: ["POST /v1/jobs"],
 			proposed_change_summary: "add null check",
 			confidence: "medium",
 		};
-		runner.investigateResolver?.(plan);
+		runner.onEvent?.({ kind: "plan_ready", plan });
 
 		await waitFor(() =>
 			store.get(id)?.status === "plan_ready" ? true : undefined,
@@ -84,16 +96,18 @@ describe("triage app lifecycle", () => {
 			method: "POST",
 		});
 		expect(approveRes.status).toBe(200);
+		expect(runner.approveCalls).toBe(1);
 
 		await waitFor(() =>
 			store.get(id)?.status === "proposing" ? true : undefined,
 		);
 
-		runner.proposeResolver?.({
+		const proposal: TriageProposal = {
 			repo_id: "ctl",
 			branch: "triage/req-1",
 			summary: "fix null check",
-		});
+		};
+		runner.onEvent?.({ kind: "proposal_ready", proposal });
 
 		const ready = await waitFor(() => {
 			const run = store.get(id);
@@ -102,7 +116,7 @@ describe("triage app lifecycle", () => {
 		expect(ready.proposal?.branch).toBe("triage/req-1");
 	});
 
-	test("approving a run that is not plan_ready returns 409", async () => {
+	test("approving before plan_ready returns 409", async () => {
 		const store = new InMemoryRunStore();
 		const runner = new DeferredRunner();
 		const orchestrator = new TriageOrchestrator({ store, runner });
@@ -119,6 +133,28 @@ describe("triage app lifecycle", () => {
 			method: "POST",
 		});
 		expect(approveRes.status).toBe(409);
+		expect(runner.approveCalls).toBe(0);
+	});
+
+	test("reject cancels the run", async () => {
+		const store = new InMemoryRunStore();
+		const runner = new DeferredRunner();
+		const orchestrator = new TriageOrchestrator({ store, runner });
+		const app = createApp({ store, orchestrator });
+
+		const createRes = await app.request("/v1/runs", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ rollup: sampleRollup() }),
+		});
+		const { id } = (await createRes.json()) as { id: string };
+
+		const rejectRes = await app.request(`/v1/runs/${id}/reject`, {
+			method: "POST",
+		});
+		expect(rejectRes.status).toBe(200);
+		expect(runner.rejectCalls).toBe(1);
+		expect(store.get(id)?.status).toBe("rejected");
 	});
 
 	test("rejects malformed payloads with 400", async () => {

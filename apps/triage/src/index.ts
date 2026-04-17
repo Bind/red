@@ -1,25 +1,20 @@
 import { createApp } from "./app";
 import { TriageOrchestrator } from "./orchestrator";
 import { InMemoryRunStore } from "./runs/store";
-import { StubTriageWorkflowRunner } from "./workflows/runner";
+import {
+	StubTriageWorkflowRunner,
+	type TriageWorkflowRunner,
+} from "./workflows/runner";
+import { SmithersHttpClient } from "./workflows/smithers-client";
 import { SmithersTriageRunner } from "./workflows/smithers-runner";
-import type { TriageWorkflowRunner } from "./workflows/runner";
 
 interface TriageConfig {
 	port: number;
 	workflowMode: "stub" | "smithers";
-	smithersCommand: string[];
-	investigateWorkflowPath?: string;
-	proposeWorkflowPath?: string;
+	smithersBaseUrl?: string;
+	smithersAuthToken?: string;
 	smithersDbPath?: string;
-}
-
-function parseCommand(raw: string | undefined, fallback: string[]): string[] {
-	if (!raw || raw.trim().length === 0) return fallback;
-	return raw
-		.trim()
-		.split(/\s+/)
-		.filter((part) => part.length > 0);
+	workflowPath?: string;
 }
 
 function loadConfig(): TriageConfig {
@@ -32,13 +27,10 @@ function loadConfig(): TriageConfig {
 	return {
 		port: Number.parseInt(process.env.TRIAGE_PORT ?? "7000", 10),
 		workflowMode: mode as "stub" | "smithers",
-		smithersCommand: parseCommand(process.env.TRIAGE_SMITHERS_CMD, [
-			"bunx",
-			"smithers-orchestrator",
-		]),
-		investigateWorkflowPath: process.env.TRIAGE_INVESTIGATE_WORKFLOW,
-		proposeWorkflowPath: process.env.TRIAGE_PROPOSE_WORKFLOW,
+		smithersBaseUrl: process.env.TRIAGE_SMITHERS_BASE_URL,
+		smithersAuthToken: process.env.SMITHERS_API_KEY,
 		smithersDbPath: process.env.TRIAGE_SMITHERS_DB_PATH,
+		workflowPath: process.env.TRIAGE_WORKFLOW_PATH,
 	};
 }
 
@@ -46,19 +38,18 @@ function createRunner(config: TriageConfig): TriageWorkflowRunner {
 	if (config.workflowMode === "stub") {
 		return new StubTriageWorkflowRunner();
 	}
-	const { investigateWorkflowPath, proposeWorkflowPath, smithersDbPath } =
-		config;
-	if (!investigateWorkflowPath || !proposeWorkflowPath || !smithersDbPath) {
+	const { smithersBaseUrl, smithersDbPath, workflowPath } = config;
+	if (!smithersBaseUrl || !smithersDbPath || !workflowPath) {
 		throw new Error(
-			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_INVESTIGATE_WORKFLOW, TRIAGE_PROPOSE_WORKFLOW, TRIAGE_SMITHERS_DB_PATH",
+			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_SMITHERS_BASE_URL, TRIAGE_SMITHERS_DB_PATH, TRIAGE_WORKFLOW_PATH",
 		);
 	}
-	return new SmithersTriageRunner({
-		smithersCommand: config.smithersCommand,
-		investigateWorkflowPath,
-		proposeWorkflowPath,
+	const client = new SmithersHttpClient({
+		baseUrl: smithersBaseUrl,
+		authToken: config.smithersAuthToken,
 		smithersDbPath,
 	});
+	return new SmithersTriageRunner({ client, workflowPath });
 }
 
 const config = loadConfig();

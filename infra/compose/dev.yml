@@ -301,15 +301,17 @@ services:
     container_name: triage
     image: oven/bun:1-alpine
     restart: unless-stopped
+    depends_on:
+      - triage-smithers
     working_dir: /app/apps/triage
     environment:
       TRIAGE_PORT: ${TRIAGE_PORT:-7000}
       TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
-      TRIAGE_SMITHERS_CMD: ${TRIAGE_SMITHERS_CMD:-bunx smithers-orchestrator}
-      TRIAGE_INVESTIGATE_WORKFLOW: ${TRIAGE_INVESTIGATE_WORKFLOW:-/app/apps/triage/src/workflows/investigate.tsx}
-      TRIAGE_PROPOSE_WORKFLOW: ${TRIAGE_PROPOSE_WORKFLOW:-/app/apps/triage/src/workflows/propose.tsx}
+      TRIAGE_SMITHERS_BASE_URL: ${TRIAGE_SMITHERS_BASE_URL:-http://triage-smithers:7331}
+      TRIAGE_WORKFLOW_PATH: ${TRIAGE_WORKFLOW_PATH:-/app/apps/triage/src/workflows/triage.tsx}
       TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/smithers-data/smithers.db}
       TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-sonnet-4-6}
+      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
     ports:
@@ -331,6 +333,44 @@ services:
           "bun",
           "--eval",
           "const response = await fetch('http://127.0.0.1:7000/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles: ["triage"]
+
+  triage-smithers:
+    container_name: triage-smithers
+    image: oven/bun:1-alpine
+    restart: unless-stopped
+    working_dir: /app/apps/triage
+    environment:
+      SMITHERS_SERVER_PORT: 7331
+      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
+      SMITHERS_DB_PATH: /smithers-data/smithers.db
+      SMITHERS_ROOT_DIR: /app
+      SMITHERS_ALLOW_NETWORK: ${SMITHERS_ALLOW_NETWORK:-true}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-sonnet-4-6}
+    ports:
+      - "${SMITHERS_SERVER_PORT:-7331}:7331"
+    command: >
+      sh -lc "apk add --no-cache git ca-certificates &&
+      cd /app &&
+      bun install --frozen-lockfile &&
+      cd /app/apps/triage &&
+      bun run src/smithers-server.ts"
+    volumes:
+      - ../..:/app
+      - redc-node-modules:/app/node_modules
+      - smithers-data:/smithers-data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:7331/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
         ]
       interval: 5s
       timeout: 5s
