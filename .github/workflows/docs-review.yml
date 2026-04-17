@@ -36,4 +36,4 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO_ROOT: ${{ github.workspace }}
-        run: bun run apps/docs-review/src/main.ts
+        run: bun run workflows/docs-review/src/main.ts

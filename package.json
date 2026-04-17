@@ -2,7 +2,7 @@
   "name": "redc",
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["apps/*", "pkg/*"],
+  "workspaces": ["apps/*", "pkg/*", "workflows/*"],
   "bin": {
     "redc": "apps/ctl/cli/index.ts"
   },
