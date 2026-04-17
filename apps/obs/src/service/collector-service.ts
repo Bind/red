@@ -7,6 +7,7 @@ import type {
 	WideCollectorRejectedEvent,
 	WideRollupRecord,
 } from "./collector-contract";
+import type { TriageDispatcher } from "./triage-dispatcher";
 
 export interface AcceptedCollectorBatch {
 	sent_at: string;
@@ -34,6 +35,7 @@ export interface CollectorDependencies {
 	rawEventStore: RawEventStore;
 	rollupStore: RollupStore;
 	activeRequests: ActiveRequestAggregator;
+	triageDispatcher?: TriageDispatcher;
 }
 
 interface EventValidationResult {
@@ -393,6 +395,7 @@ export async function acceptCollectorBatch(
 		const rollups = await deps.activeRequests.acceptBatch(batch);
 		if (rollups.length > 0) {
 			await deps.rollupStore.appendRollups(rollups);
+			await dispatchRollupsForTriage(deps, rollups);
 		}
 		return {
 			status: errors.length > 0 ? 207 : 202,
@@ -425,7 +428,18 @@ export async function flushExpiredCollectorRequests(
 		return 0;
 	}
 	await deps.rollupStore.appendRollups(rollups);
+	await dispatchRollupsForTriage(deps, rollups);
 	return rollups.length;
+}
+
+async function dispatchRollupsForTriage(
+	deps: CollectorDependencies,
+	rollups: WideRollupRecord[],
+): Promise<void> {
+	if (!deps.triageDispatcher) return;
+	for (const rollup of rollups) {
+		await deps.triageDispatcher.dispatch(rollup);
+	}
 }
 
 export async function replayCollectorFromRaw(

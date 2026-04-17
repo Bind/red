@@ -1,0 +1,21 @@
+{
+  "name": "redc-triage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@redc/obs": "workspace:*",
+    "hono": "^4.7.0",
+    "react": "^19.2.0",
+    "smithers-orchestrator": "^0.15.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0"
+  }
+}

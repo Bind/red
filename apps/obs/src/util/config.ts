@@ -4,12 +4,23 @@ import {
 	type CollectorDependencies,
 	InMemoryActiveRequestAggregator,
 } from "../service/collector-service";
+import {
+	DedupingTriageDispatcher,
+	HttpTriageDispatcher,
+	type TriageDispatcher,
+} from "../service/triage-dispatcher";
 import { MinioRawEventStore, MinioRollupStore } from "../store/minio-store";
 import { FileRawEventStore } from "../store/raw-event-store";
 import { FileRollupStore } from "../store/rollup-store";
 import type { S3StorageConfig } from "./s3";
 
 type StorageBackend = "file" | "minio";
+
+export interface TriageConfig {
+	endpointUrl: string;
+	minStatusCode: number;
+	dedupTtlMs: number;
+}
 
 export interface WideEventsConfig {
 	hostname: string;
@@ -23,6 +34,7 @@ export interface WideEventsConfig {
 	storageBackend: StorageBackend;
 	rawS3?: S3StorageConfig;
 	rollupS3?: S3StorageConfig;
+	triage?: TriageConfig;
 }
 
 function positiveInt(value: string | undefined, label: string) {
@@ -131,7 +143,39 @@ export function loadConfig(
 			storageBackend === "minio"
 				? loadS3Config(env, "ROLLUP")
 				: undefined,
+		triage: loadTriageConfig(env),
 	};
+}
+
+function loadTriageConfig(
+	env: NodeJS.ProcessEnv,
+): TriageConfig | undefined {
+	if (env.TRIAGE_ENABLED?.toLowerCase() !== "true") return undefined;
+	const endpointUrl = env.TRIAGE_ENDPOINT_URL?.trim();
+	if (!endpointUrl) return undefined;
+	const minStatusCode = env.TRIAGE_MIN_STATUS_CODE
+		? Number.parseInt(env.TRIAGE_MIN_STATUS_CODE, 10)
+		: 500;
+	if (!Number.isFinite(minStatusCode)) {
+		throw new Error("TRIAGE_MIN_STATUS_CODE must be an integer");
+	}
+	const dedupTtlMs = env.TRIAGE_DEDUP_TTL_MS
+		? Number.parseInt(env.TRIAGE_DEDUP_TTL_MS, 10)
+		: 15 * 60_000;
+	if (!Number.isFinite(dedupTtlMs) || dedupTtlMs <= 0) {
+		throw new Error("TRIAGE_DEDUP_TTL_MS must be a positive integer");
+	}
+	return { endpointUrl, minStatusCode, dedupTtlMs };
+}
+
+function createTriageDispatcher(
+	config: TriageConfig,
+): TriageDispatcher {
+	return new DedupingTriageDispatcher({
+		inner: new HttpTriageDispatcher({ endpointUrl: config.endpointUrl }),
+		filter: { minStatusCode: config.minStatusCode },
+		dedupTtlMs: config.dedupTtlMs,
+	});
 }
 
 export function createStores(
@@ -164,5 +208,8 @@ export function createCollectorDeps(
 		activeRequests: new InMemoryActiveRequestAggregator({
 			incompleteGraceMs: config.incompleteGraceMs,
 		}),
+		triageDispatcher: config.triage
+			? createTriageDispatcher(config.triage)
+			: undefined,
 	};
 }

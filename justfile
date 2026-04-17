@@ -255,6 +255,41 @@ git-mirror-canary-compose-down:
 git-mirror-canary-compose-e2e:
     cd experiments/git-mirror-canary && ./compose/e2e.sh
 
+# ── Triage ──────────────────────────────────────────────
+
+# Start the triage service and its Smithers server alongside the dev stack
+triage-up:
+    docker compose -f {{ DEV_COMPOSE }} --profile triage up -d triage-smithers triage
+
+# Tear down the triage service + smithers server
+triage-down:
+    docker compose -f {{ DEV_COMPOSE }} rm -sf triage triage-smithers
+
+# Tail triage logs (pass service=smithers for the smithers server)
+triage-logs service="triage":
+    docker compose -f {{ DEV_COMPOSE }} logs -f {{ if service == "smithers" { "triage-smithers" } else { "triage" } }}
+
+# Run triage tests
+triage-test:
+    cd apps/triage && bun test
+
+# Restart triage in real-smithers mode (requires ANTHROPIC_API_KEY in .env)
+triage-smithers-mode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! grep -q '^ANTHROPIC_API_KEY=..' .env 2>/dev/null; then
+        echo "error: set ANTHROPIC_API_KEY in .env before enabling smithers mode" >&2
+        exit 1
+    fi
+    TRIAGE_WORKFLOW_MODE=smithers docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage-smithers triage
+    echo "triage now running in smithers mode"
+
+# Switch triage back to the stub workflow runner (smithers server stays running)
+triage-stub-mode:
+    TRIAGE_WORKFLOW_MODE=stub docker compose -f {{ DEV_COMPOSE }} --profile triage up -d --force-recreate triage
+
+# ── Obs ─────────────────────────────────────────────────
+
 # Install dependencies for the obs app
 obs-install:
     cd apps/obs && bun install
