@@ -33,6 +33,11 @@ OBS_SINK_MODE="${OBS_SINK_MODE:-collector}"
 WIDE_EVENTS_COLLECTOR_URL="${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}"
 GIT_STORAGE_PUBLIC_URL="${GIT_STORAGE_PUBLIC_URL:-http://grs:8080}"
 GIT_STORAGE_DEFAULT_OWNER="${GIT_STORAGE_DEFAULT_OWNER:-redc}"
+TRIAGE_ENABLED="${TRIAGE_ENABLED:-true}"
+TRIAGE_ENDPOINT_URL="${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}"
+TRIAGE_MIN_STATUS_CODE="${TRIAGE_MIN_STATUS_CODE:-500}"
+TRIAGE_DEDUP_TTL_MS="${TRIAGE_DEDUP_TTL_MS:-900000}"
+TRIAGE_WORKFLOW_MODE="${TRIAGE_WORKFLOW_MODE:-stub}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
 
@@ -80,6 +85,11 @@ WIDE_EVENTS_INCOMPLETE_GRACE_MS=$WIDE_EVENTS_INCOMPLETE_GRACE_MS
 WIDE_EVENTS_REPLAY_WINDOW_MS=$WIDE_EVENTS_REPLAY_WINDOW_MS
 OBS_SINK_MODE=$OBS_SINK_MODE
 WIDE_EVENTS_COLLECTOR_URL=$WIDE_EVENTS_COLLECTOR_URL
+TRIAGE_ENABLED=$TRIAGE_ENABLED
+TRIAGE_ENDPOINT_URL=$TRIAGE_ENDPOINT_URL
+TRIAGE_MIN_STATUS_CODE=$TRIAGE_MIN_STATUS_CODE
+TRIAGE_DEDUP_TTL_MS=$TRIAGE_DEDUP_TTL_MS
+TRIAGE_WORKFLOW_MODE=$TRIAGE_WORKFLOW_MODE
 EOF
 
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
@@ -93,7 +103,7 @@ else
 fi
 
 echo "Starting dev stack..."
-docker compose --env-file .env -f "$COMPOSE_FILE" up -d s3 init obs grs db-auth auth ctl bff web
+docker compose --env-file .env -f "$COMPOSE_FILE" --profile triage up -d s3 init obs grs db-auth auth ctl bff web triage
 
 echo ""
 echo "=== Setup complete ==="
@@ -103,5 +113,6 @@ echo "BFF:     http://localhost:3001"
 echo "Auth:    http://localhost:4020"
 echo "OBS:     http://localhost:$WIDE_EVENTS_PORT"
 echo "Git:     http://localhost:9080"
+echo "Triage:  http://localhost:7000"
 echo "MinIO:   http://localhost:$MINIO_CONSOLE_PORT"
 echo "S3 API:  http://localhost:$MINIO_API_PORT"

@@ -273,6 +273,18 @@ triage-logs:
 triage-test:
     cd apps/triage && bun test
 
+# Demo: POST the failing star endpoint and list triage runs it created
+triage-demo owner="redc" repo="demo":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> POST /api/repos/{{ owner }}/{{ repo }}/star (expect 500)"
+    curl -sS -o /dev/null -w "status=%{http_code}\n" \
+        -X POST http://localhost:3000/api/repos/{{ owner }}/{{ repo }}/star
+    echo "==> giving obs a moment to flush..."
+    sleep 3
+    echo "==> triage runs:"
+    curl -sS http://localhost:7000/v1/runs | bun -e 'const d=await Bun.stdin.json(); for (const r of d.runs ?? []) console.log(`${r.id.slice(0,8)}  ${r.status.padEnd(16)} ${r.rollup.entry_service} ${r.rollup.route_names?.[0] ?? ""}`)'
+
 # ── Obs ─────────────────────────────────────────────────
 
 # Install dependencies for the obs app
