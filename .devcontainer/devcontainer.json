@@ -1,0 +1,28 @@
+{
+  "name": "redc",
+  "image": "mcr.microsoft.com/devcontainers/universal:2-linux",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [3000, 3001, 4020, 4090, 5173, 7000, 7331, 9002, 9003],
+  "portsAttributes": {
+    "3000": { "label": "ctl" },
+    "3001": { "label": "bff" },
+    "4020": { "label": "auth" },
+    "4090": { "label": "obs" },
+    "5173": { "label": "web" },
+    "7000": { "label": "triage" },
+    "7331": { "label": "smithers" },
+    "9002": { "label": "minio console" },
+    "9003": { "label": "minio api" }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:HOME}/.bun/bin:${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
+  }
+}
