@@ -5,6 +5,7 @@ import {
   obsMiddleware,
   type EventEnvelope,
 } from "@redc/obs";
+import { buildHealth } from "@redc/health";
 import { streamSSE } from "hono/streaming";
 import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
@@ -148,7 +149,7 @@ export function createApp(config: AppConfig) {
         name: "health",
       },
     });
-    return c.json({ status: "ok" });
+    return c.json(buildHealth({ service: "ctl" }));
   });
 
   // Queue stats endpoint

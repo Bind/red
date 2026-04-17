@@ -1,3 +1,4 @@
+import { buildHealth } from "@redc/health";
 import { Hono } from "hono";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
@@ -13,12 +14,7 @@ export interface CollectorApp extends Hono {
 export function createApp(deps: CollectorDependencies): CollectorApp {
 	const app = new Hono();
 
-	app.get("/health", (c) =>
-		c.json({
-			ok: true,
-			service: "wide-events-collector",
-		}),
-	);
+	app.get("/health", (c) => c.json(buildHealth({ service: "obs" })));
 
 	app.post("/v1/events", async (c) => {
 		const payload = await c.req.json().catch(() => null);

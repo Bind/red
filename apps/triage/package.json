@@ -9,6 +9,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@redc/health": "workspace:*",
     "@redc/obs": "workspace:*",
     "hono": "^4.7.0",
     "react": "^19.2.0",

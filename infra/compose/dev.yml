@@ -71,6 +71,7 @@ services:
       TRIAGE_ENDPOINT_URL: ${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}
       TRIAGE_MIN_STATUS_CODE: ${TRIAGE_MIN_STATUS_CODE:-500}
       TRIAGE_DEDUP_TTL_MS: ${TRIAGE_DEDUP_TTL_MS:-900000}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "${WIDE_EVENTS_PORT}:4090"
     command: >
@@ -118,8 +119,14 @@ services:
       GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "${GIT_SERVER_PUBLIC_PORT:-9080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   db-auth:
     container_name: db-auth
@@ -167,6 +174,7 @@ services:
       AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "${AUTH_PORT:-4020}:4020"
     command: >
@@ -226,6 +234,7 @@ services:
       MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "3000:3000"
     working_dir: /app
@@ -241,6 +250,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
       - ${HOME}/.codex:/root/.codex:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:3000/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   bff:
     container_name: bff
@@ -265,6 +285,7 @@ services:
       BFF_GIT_STORAGE_TOKEN_SECRET: ${BFF_GIT_STORAGE_TOKEN_SECRET:-dev-git-server-secret}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "3001:3001"
     command: >
@@ -275,6 +296,17 @@ services:
       - ../..:/app
       - redc-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "--eval",
+          "const response = await fetch('http://127.0.0.1:3001/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   web:
     container_name: web
@@ -314,6 +346,7 @@ services:
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "${TRIAGE_PORT:-7000}:7000"
     command: >

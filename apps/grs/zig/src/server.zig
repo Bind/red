@@ -188,6 +188,21 @@ fn handleRequest(
     obs.path = path;
     p("{s} ({d}B)\n", .{ req_line, body.len });
 
+    if (std.mem.eql(u8, method, "GET") and std.mem.eql(u8, path, "/health")) {
+        const commit_env = std.posix.getenv("GIT_COMMIT");
+        const commit: []const u8 = if (commit_env) |c|
+            (if (c.len == 0) "unknown" else c)
+        else
+            "unknown";
+        var buf: [256]u8 = undefined;
+        const health = std.fmt.bufPrint(
+            &buf,
+            "{{\"service\":\"grs\",\"status\":\"ok\",\"commit\":\"{s}\"}}\n",
+            .{commit},
+        ) catch "{\"service\":\"grs\",\"status\":\"ok\",\"commit\":\"unknown\"}\n";
+        return sendResponse(io, conn, &obs, "200 OK", "application/json", health, keep_alive);
+    }
+
     if (parseControlPlaneRoute(path)) |route| {
         obs.setRoute(.control_plane, controlPlaneResourceName(route.resource));
         const repo_id = std.fmt.allocPrint(alloc, "{s}/{s}", .{ route.owner, route.repo }) catch {
