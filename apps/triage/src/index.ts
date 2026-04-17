@@ -11,7 +11,7 @@ interface TriageConfig {
 	smithersBin?: string;
 	investigateWorkflowPath?: string;
 	proposeWorkflowPath?: string;
-	model?: string;
+	smithersDbPath?: string;
 }
 
 function loadConfig(): TriageConfig {
@@ -27,7 +27,7 @@ function loadConfig(): TriageConfig {
 		smithersBin: process.env.TRIAGE_SMITHERS_BIN,
 		investigateWorkflowPath: process.env.TRIAGE_INVESTIGATE_WORKFLOW,
 		proposeWorkflowPath: process.env.TRIAGE_PROPOSE_WORKFLOW,
-		model: process.env.TRIAGE_MODEL ?? "claude-code",
+		smithersDbPath: process.env.TRIAGE_SMITHERS_DB_PATH,
 	};
 }
 
@@ -39,18 +39,18 @@ function createRunner(config: TriageConfig): TriageWorkflowRunner {
 		smithersBin,
 		investigateWorkflowPath,
 		proposeWorkflowPath,
-		model,
+		smithersDbPath,
 	} = config;
-	if (!smithersBin || !investigateWorkflowPath || !proposeWorkflowPath || !model) {
+	if (!smithersBin || !investigateWorkflowPath || !proposeWorkflowPath || !smithersDbPath) {
 		throw new Error(
-			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_SMITHERS_BIN, TRIAGE_INVESTIGATE_WORKFLOW, TRIAGE_PROPOSE_WORKFLOW, TRIAGE_MODEL",
+			"TRIAGE_WORKFLOW_MODE=smithers requires TRIAGE_SMITHERS_BIN, TRIAGE_INVESTIGATE_WORKFLOW, TRIAGE_PROPOSE_WORKFLOW, TRIAGE_SMITHERS_DB_PATH",
 		);
 	}
 	return new SmithersTriageRunner({
 		smithersBin,
 		investigateWorkflowPath,
 		proposeWorkflowPath,
-		model,
+		smithersDbPath,
 	});
 }
 

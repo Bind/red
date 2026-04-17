@@ -308,7 +308,8 @@ services:
       TRIAGE_SMITHERS_BIN: ${TRIAGE_SMITHERS_BIN:-}
       TRIAGE_INVESTIGATE_WORKFLOW: ${TRIAGE_INVESTIGATE_WORKFLOW:-/app/apps/triage/src/workflows/investigate.tsx}
       TRIAGE_PROPOSE_WORKFLOW: ${TRIAGE_PROPOSE_WORKFLOW:-/app/apps/triage/src/workflows/propose.tsx}
-      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-code}
+      TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/app/apps/triage/smithers.db}
+      TRIAGE_MODEL: ${TRIAGE_MODEL:-}
       REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
     ports:
       - "${TRIAGE_PORT:-7000}:7000"

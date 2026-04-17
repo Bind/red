@@ -11,6 +11,11 @@
   "dependencies": {
     "@redc/obs": "workspace:*",
     "hono": "^4.7.0",
-    "zod": "^3.23.8"
+    "react": "^19.2.0",
+    "smithers-orchestrator": "^0.15.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0"
   }
 }

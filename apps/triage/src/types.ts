@@ -11,8 +11,8 @@ export const WideRollupRecordSchema = z
 		route_names: z.array(z.string()),
 		final_outcome: z.enum(["ok", "error", "unknown"]),
 		final_status_code: z.number().nullable(),
-		primary_error: z.record(z.unknown()).nullable(),
-		events: z.array(z.record(z.unknown())),
+		primary_error: z.record(z.string(), z.unknown()).nullable(),
+		events: z.array(z.record(z.string(), z.unknown())),
 	})
 	.passthrough();
 
@@ -31,6 +31,33 @@ export const TriagePlanSchema = z.object({
 });
 
 export type TriagePlan = z.infer<typeof TriagePlanSchema>;
+
+export const ReviewIssueSchema = z.object({
+	severity: z.enum(["critical", "major", "minor", "nit"]),
+	location: z.string(),
+	description: z.string(),
+});
+
+export const ReviewSchema = z.object({
+	reviewer: z.string(),
+	approved: z.boolean(),
+	issues: z.array(ReviewIssueSchema),
+	feedback: z.string(),
+});
+
+export type Review = z.infer<typeof ReviewSchema>;
+
+export const ReviewFixSchema = z.object({
+	fixes_made: z.array(
+		z.object({ issue: z.string(), fix: z.string() }),
+	),
+	all_issues_resolved: z.boolean(),
+});
+
+export const ValidateSchema = z.object({
+	all_passed: z.boolean(),
+	failing_summary: z.string().nullable(),
+});
 
 export const TriageProposalSchema = z.object({
 	repo_id: z.string(),
