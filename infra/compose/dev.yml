@@ -101,6 +101,7 @@ services:
       dockerfile: docker/gitty/Dockerfile
       args:
         GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     depends_on:
       - s3
@@ -202,6 +203,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     depends_on:
       - s3

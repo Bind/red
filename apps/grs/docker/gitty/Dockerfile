@@ -27,6 +27,8 @@ RUN zig build wasm -Doptimize=ReleaseSmall
 
 FROM oven/bun:1
 
+ARG GIT_COMMIT=unknown
+
 WORKDIR /app
 
 RUN apt-get update && \
@@ -44,5 +46,7 @@ COPY docker/gitty/run-gitty.sh /usr/local/bin/run-gitty.sh
 RUN chmod +x /usr/local/bin/run-gitty.sh
 
 EXPOSE 8080
+
+ENV GIT_COMMIT=${GIT_COMMIT}
 
 ENTRYPOINT ["/usr/local/bin/run-gitty.sh"]
