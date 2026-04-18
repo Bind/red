@@ -80,12 +80,17 @@ PR push supersedes earlier deploys on the shared box.
 
 Draft PRs are skipped (`github.event.pull_request.draft == false`).
 
-## Scope gap (intentional)
+## Preview scope
 
-Preview currently includes only services that have a production-ready
-Dockerfile: `api` (ctl), `auth`, `grs`, plus supporting `db-auth`, `s3`,
-and `gateway`. `bff`, `obs`, `triage`, and `web` will join once their
-Dockerfiles land — tracked in `infra/compose/preview.yml` comment.
+Preview stacks now include every service with a Dockerfile:
+
+- `api` (ctl), `auth`, `grs`, `bff`, `obs`, `triage`, `triage-smithers`, `web`
+- supporting: `gateway` (envoy), `db-auth` (postgres), `s3` (minio)
+
+This is intentionally **broader** than `infra/compose/prod.yml`, which today
+only ships the `api` + `gateway` + `caddy` trio. Preview catches build and
+wiring issues for services before they make it into prod. When a service
+enters prod, preview already proves it deploys cleanly.
 
 ## Nightly eviction
 
