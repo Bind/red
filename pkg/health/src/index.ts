@@ -1,3 +1,6 @@
+export { describeHealthContract } from "./contract-helper";
+export type { ContractTestOptions } from "./contract-helper";
+
 export type HealthStatus = "ok" | "degraded" | "error";
 
 export interface HealthCheck {

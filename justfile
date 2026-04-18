@@ -62,9 +62,20 @@ shell service="":
     [ -n "$selected_service" ] || exit 0
     docker compose -f {{ DEV_COMPOSE }} exec "$selected_service" sh
 
-# Run a command inside a running service (service name is required)
-exec service *cmd:
-    docker compose -f {{ DEV_COMPOSE }} exec "{{ service }}" {{ cmd }}
+# Run a command inside a running service, or pick one with fzf
+exec *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    service="${1:-}"
+    if [ $# -gt 0 ]; then shift; fi
+    if [ -z "$service" ]; then
+        service="$(
+            docker compose -f {{ DEV_COMPOSE }} config --services \
+              | fzf --prompt='service> ' --height=40% --reverse
+        )"
+    fi
+    [ -n "$service" ] || exit 0
+    docker compose -f {{ DEV_COMPOSE }} exec "$service" "$@"
 
 # Run backend tests inside Docker
 test:
@@ -317,9 +328,13 @@ ci-prep sha:
     ./infra/scripts/ci-seed-env.sh {{ sha }}
     just auth-compose-keygen
 
-# Run the in-process health-contract tests
+# Run the in-process health-contract tests (pkg/health unit + per-service)
 ci-health-contract sha:
-    GIT_COMMIT={{ sha }} bun test pkg/health
+    GIT_COMMIT={{ sha }} bun test \
+        pkg/health \
+        apps/ctl/health-contract.test.ts \
+        apps/obs/src/test/health-contract.test.ts \
+        apps/triage/src/health-contract.test.ts
 
 # Bring up the core stack and wait for every healthcheck to pass
 ci-health-compose-up:
