@@ -5,7 +5,7 @@ export default $config({
     return {
       name: "redc",
       removal: input?.stage === "production" ? "retain" : "remove",
-      home: "local",
+      home: "cloudflare",
       providers: {
         hcloud: true,
         cloudflare: true,

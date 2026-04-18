@@ -320,6 +320,28 @@ obs-lint:
 obs-format:
     cd apps/obs && bun run format
 
+# ── Release / deploy ────────────────────────────────────
+
+# Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.
+deploy-infra stage="production":
+    bunx sst deploy --stage {{ stage }}
+
+# Rsync working tree to the host and bring up infra/compose/prod.yml over ssh
+deploy-ssh host="red.computer" port="2222":
+    ./infra/scripts/deploy.sh {{ host }} {{ port }}
+
+# Curl the post-deploy health endpoint and fail unless status=="ok"
+deploy-check url="https://red.computer":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    body="$(curl -fsSL --retry 5 --retry-delay 5 --max-time 15 {{ url }}/health)"
+    echo "$body" | jq .
+    status="$(echo "$body" | jq -r .status)"
+    if [ "$status" != "ok" ]; then
+      echo "health status is $status"
+      exit 1
+    fi
+
 # ── CI ──────────────────────────────────────────────────
 
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
