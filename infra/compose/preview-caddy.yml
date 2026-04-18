@@ -1,0 +1,26 @@
+# Runs permanently on the dev box. One Caddy instance fronts every per-PR
+# preview stack via wildcard host routing. Brought up once during dev-box
+# bootstrap; left alone by per-PR deploy/teardown.
+
+services:
+  caddy:
+    container_name: preview-caddy
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/preview.Caddyfile:/etc/caddy/Caddyfile:ro
+      - preview-caddy-data:/data
+      - preview-caddy-config:/config
+    networks:
+      - preview-net
+
+networks:
+  preview-net:
+    external: true
+
+volumes:
+  preview-caddy-data:
+  preview-caddy-config:

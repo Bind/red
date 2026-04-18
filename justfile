@@ -342,6 +342,18 @@ deploy-check url="https://red.computer":
       exit 1
     fi
 
+# Deploy a per-PR preview (slug like pr-42) to the dev box
+deploy-preview slug host port="2222":
+    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }}
+
+# Tear down a per-PR preview
+teardown-preview slug host port="2222":
+    ./infra/scripts/teardown-preview.sh {{ slug }} {{ host }} {{ port }}
+
+# Smoke-check a deployed preview URL
+preview-check slug:
+    just deploy-check "https://{{ slug }}.preview.red.computer"
+
 # ── CI ──────────────────────────────────────────────────
 
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
