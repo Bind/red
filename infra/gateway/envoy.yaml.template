@@ -1,6 +1,5 @@
 static_resources:
   listeners:
-    # HTTP listener — path-based routing
     - name: http
       address:
         socket_address:
@@ -18,18 +17,58 @@ static_resources:
                   virtual_hosts:
                     - name: backend
                       domains: ["*"]
+                      # Routes are evaluated in declaration order — keep
+                      # specific matches above generic ones.
                       routes:
-                        # redc API routes
+                        # ── auth ───────────────────────────────────────
+                        - match: { path: "/me" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/.well-known/" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/oauth/" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/session/" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/login-attempts" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/magic-link/" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/user/" }
+                          route: { cluster: redc_auth }
+                        - match: { prefix: "/recovery/" }
+                          route: { cluster: redc_auth }
+
+                        # ── bff (frontend RPC + auth proxy) ────────────
+                        - match: { prefix: "/rpc/" }
+                          route: { cluster: redc_bff }
+                        - match: { prefix: "/api/auth/" }
+                          route: { cluster: redc_bff }
+
+                        # ── obs (event ingest) ─────────────────────────
+                        - match: { path: "/v1/events" }
+                          route: { cluster: redc_obs }
+
+                        # ── triage (workflow runs) ─────────────────────
+                        - match: { prefix: "/v1/runs" }
+                          route: { cluster: redc_triage }
+
+                        # ── grs (git smart-HTTP) ───────────────────────
+                        - match:
+                            safe_regex:
+                              regex: "^/[^/]+/[^/]+\\.git(/.*)?$"
+                          route: { cluster: redc_grs }
+
+                        # ── api (ctl) ──────────────────────────────────
                         - match: { path: "/health" }
                           route: { cluster: redc_api }
                         - match: { prefix: "/api/" }
                           route: { cluster: redc_api }
-                        # SPA assets
+
+                        # ── web (SPA + static) ─────────────────────────
                         - match: { prefix: "/assets/" }
-                          route: { cluster: redc_api }
-                        # SPA fallback — serves index.html for client-side routing
+                          route: { cluster: redc_web }
                         - match: { prefix: "/" }
-                          route: { cluster: redc_api }
+                          route: { cluster: redc_web }
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
@@ -48,3 +87,81 @@ static_resources:
                     socket_address:
                       address: ${API_HOST}
                       port_value: 3000
+
+    - name: redc_auth
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_auth
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${AUTH_HOST}
+                      port_value: 4020
+
+    - name: redc_bff
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_bff
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${BFF_HOST}
+                      port_value: 3001
+
+    - name: redc_obs
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_obs
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${OBS_HOST}
+                      port_value: 4090
+
+    - name: redc_triage
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_triage
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${TRIAGE_HOST}
+                      port_value: 7000
+
+    - name: redc_grs
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_grs
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${GRS_HOST}
+                      port_value: 8080
+
+    - name: redc_web
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_web
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${WEB_HOST}
+                      port_value: 5173

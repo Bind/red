@@ -14,11 +14,23 @@ services:
     restart: unless-stopped
     environment:
       API_HOST: api
+      AUTH_HOST: auth
+      BFF_HOST: bff
+      OBS_HOST: obs
+      TRIAGE_HOST: triage
+      GRS_HOST: grs
+      WEB_HOST: web
     networks:
       - default
       - preview-net
     depends_on:
       - api
+      - auth
+      - bff
+      - obs
+      - triage
+      - grs
+      - web
 
   api:
     container_name: ${COMPOSE_PROJECT_NAME}-api
