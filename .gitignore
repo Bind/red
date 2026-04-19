@@ -1,6 +1,13 @@
 node_modules/
+# Runtime plaintext .env — produced by `dotenvx decrypt` or tooling, never committed.
 .env
-.env.production
+# Per-developer local overrides
+.env.local
+.env.*.local
+# dotenvx private keys — never committed; stored on each box / in CI secret instead.
+.env.keys
+# Note: .env.ci / .env.production / .env.preview / .env.development ARE committed
+# (they hold dotenvx-encrypted ciphertext, safe to track).
 *.db
 *.db-wal
 *.db-shm

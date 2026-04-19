@@ -320,6 +320,43 @@ obs-lint:
 obs-format:
     cd apps/obs && bun run format
 
+# ── Secrets (dotenvx) ───────────────────────────────────
+
+# Encrypt .env.<env> in place, appending the private key to .env.keys.
+# Usage: just secrets-encrypt production
+secrets-encrypt env:
+    dotenvx encrypt -f .env.{{ env }}
+
+# Decrypt .env.<env> to stdout (or -o <path>). Handy for inspecting values.
+# Usage: just secrets-show production
+secrets-show env:
+    dotenvx decrypt -f .env.{{ env }} --stdout
+
+# Edit .env.<env> interactively (decrypts → $EDITOR → re-encrypts).
+secrets-edit env:
+    dotenvx edit -f .env.{{ env }}
+
+# Pretty-print the keys currently defined in .env.<env> without revealing values.
+secrets-keys env:
+    dotenvx keys -f .env.{{ env }}
+
+# ── Base image (packer / hcloud snapshot) ───────────────
+
+# Build a new redc-base snapshot on Hetzner. Requires HCLOUD_TOKEN
+# (pulled from .env.ci via dotenvx). Prints the snapshot id/name at the
+# end of the packer run; set it as REDC_BASE_SNAPSHOT_ID for future
+# `sst deploy`.
+image-build:
+    dotenvx run -f .env.ci -- packer init infra/packer
+    dotenvx run -f .env.ci -- packer build infra/packer
+
+# List all redc-base snapshots currently in the account.
+image-list:
+    @dotenvx run -f .env.ci -- bash -c \
+      'curl -fsSL -H "Authorization: Bearer $HCLOUD_TOKEN" \
+         "https://api.hetzner.cloud/v1/images?type=snapshot&label_selector=role=redc-base" \
+       | jq ".images[] | {id, description, created}"'
+
 # ── Release / deploy ────────────────────────────────────
 
 # Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.
