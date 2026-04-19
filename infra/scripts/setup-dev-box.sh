@@ -22,6 +22,11 @@ if ! command -v docker >/dev/null 2>&1; then
   systemctl enable docker
 fi
 
+echo "==> Installing dotenvx (if missing)"
+if ! command -v dotenvx >/dev/null 2>&1; then
+  curl -fsS https://dotenvx.sh | sh
+fi
+
 echo "==> mkdir ${PREVIEWS_DIR}"
 mkdir -p "${PREVIEWS_DIR}"
 
@@ -60,10 +65,16 @@ CRON
 chmod 644 "${CRON_FILE}"
 
 echo "==> Dev box setup complete."
-echo "    Next: bring up the permanent preview Caddy."
-echo "    Sync infra/caddy/preview.Caddyfile + infra/compose/preview-caddy.yml to the box"
-echo "    (or clone the repo), then:"
-echo "      cd /opt/redc && docker compose -f infra/compose/preview-caddy.yml up -d"
+echo ""
+echo "    Next steps:"
+echo ""
+echo "    1. Export DOTENV_PRIVATE_KEY_PREVIEW so deploys can decrypt"
+echo "       the per-PR secret env:"
+echo "         echo 'export DOTENV_PRIVATE_KEY_PREVIEW=<key>' >> /root/.bashrc"
+echo "       (copy the key from your local .env.keys after \`dotenvx encrypt -f .env.preview\`.)"
+echo ""
+echo "    2. Bring up the permanent preview Caddy (one-time):"
+echo "         cd /opt/redc && docker compose -f infra/compose/preview-caddy.yml up -d"
 echo ""
 echo "    Preview URLs will resolve to this box via the wildcard DNS managed"
 echo "    by \`sst deploy --stage dev\`."

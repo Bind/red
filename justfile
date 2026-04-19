@@ -320,6 +320,26 @@ obs-lint:
 obs-format:
     cd apps/obs && bun run format
 
+# ── Secrets (dotenvx) ───────────────────────────────────
+
+# Encrypt .env.<env> in place, appending the private key to .env.keys.
+# Usage: just secrets-encrypt production
+secrets-encrypt env:
+    dotenvx encrypt -f .env.{{ env }}
+
+# Decrypt .env.<env> to stdout (or -o <path>). Handy for inspecting values.
+# Usage: just secrets-show production
+secrets-show env:
+    dotenvx decrypt -f .env.{{ env }} --stdout
+
+# Edit .env.<env> interactively (decrypts → $EDITOR → re-encrypts).
+secrets-edit env:
+    dotenvx edit -f .env.{{ env }}
+
+# Pretty-print the keys currently defined in .env.<env> without revealing values.
+secrets-keys env:
+    dotenvx keys -f .env.{{ env }}
+
 # ── Release / deploy ────────────────────────────────────
 
 # Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.

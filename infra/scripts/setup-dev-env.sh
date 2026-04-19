@@ -108,6 +108,14 @@ ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 GIT_COMMIT=$GIT_COMMIT
 EOF
 
+# Append secrets from the dotenvx-encrypted .env.development so local dev can
+# exercise anything that needs an API key (triage, etc.). Silently no-ops if
+# dotenvx isn't installed or the file isn't present yet.
+if [[ -f .env.development ]] && command -v dotenvx >/dev/null 2>&1; then
+  echo "Appending decrypted .env.development..."
+  dotenvx decrypt -f .env.development --stdout >> .env
+fi
+
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
   echo "Building Claw runner image..."
   docker build -t redc-claw-runner apps/ocr/
