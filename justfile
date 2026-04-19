@@ -340,6 +340,23 @@ secrets-edit env:
 secrets-keys env:
     dotenvx keys -f .env.{{ env }}
 
+# ── Base image (packer / hcloud snapshot) ───────────────
+
+# Build a new redc-base snapshot on Hetzner. Requires HCLOUD_TOKEN
+# (pulled from .env.ci via dotenvx). Prints the snapshot id/name at the
+# end of the packer run; set it as REDC_BASE_SNAPSHOT_ID for future
+# `sst deploy`.
+image-build:
+    dotenvx run -f .env.ci -- packer init infra/packer
+    dotenvx run -f .env.ci -- packer build infra/packer
+
+# List all redc-base snapshots currently in the account.
+image-list:
+    @dotenvx run -f .env.ci -- bash -c \
+      'curl -fsSL -H "Authorization: Bearer $HCLOUD_TOKEN" \
+         "https://api.hetzner.cloud/v1/images?type=snapshot&label_selector=role=redc-base" \
+       | jq ".images[] | {id, description, created}"'
+
 # ── Release / deploy ────────────────────────────────────
 
 # Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.

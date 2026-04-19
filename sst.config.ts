@@ -30,22 +30,34 @@ export default $config({
         ],
       });
 
-      const userData = [
-        "#!/bin/bash",
-        "set -euo pipefail",
-        "",
-        "sed -i 's/^#\\?Port .*/Port 2222/' /etc/ssh/sshd_config",
-        "systemctl restart ssh",
-        "",
-        "curl -fsSL https://get.docker.com | sh",
-        "systemctl enable docker",
-        "",
-        "mkdir -p /opt/redc",
-      ].join("\n");
+      // Prefer the packer-baked redc-base snapshot when available; fall back
+      // to stock Ubuntu + cloud-init bootstrap. When the snapshot is in use,
+      // all of docker / dotenvx / sshd:2222 / /opt/redc are already baked in,
+      // so userData shrinks to a no-op marker (cloud-init is happier with a
+      // non-empty script).
+      const baseImage = process.env.REDC_BASE_SNAPSHOT_ID ?? "ubuntu-24.04";
+      const usingBakedImage = baseImage !== "ubuntu-24.04";
+
+      const userData = usingBakedImage
+        ? "#!/bin/bash\n: baked image, no bootstrap needed\n"
+        : [
+            "#!/bin/bash",
+            "set -euo pipefail",
+            "",
+            "sed -i 's/^#\\?Port .*/Port 2222/' /etc/ssh/sshd_config",
+            "systemctl restart ssh",
+            "",
+            "curl -fsSL https://get.docker.com | sh",
+            "systemctl enable docker",
+            "",
+            "curl -fsS https://dotenvx.sh | sh",
+            "",
+            "mkdir -p /opt/redc",
+          ].join("\n");
 
       const server = new hcloud.Server("redc-server", {
         serverType: "cax11",
-        image: "ubuntu-24.04",
+        image: baseImage,
         location: "nbg1",
         sshKeys: [sshPublicKey.id],
         firewallIds: [firewall.id.apply((id) => Number(id))],
