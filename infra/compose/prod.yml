@@ -18,7 +18,18 @@ services:
     build: ../gateway
     restart: unless-stopped
     environment:
+      # Prod only ships the api container today; point every cluster at it
+      # so envoy doesn't spew STRICT_DNS resolution errors for absent
+      # services. Requests to /rpc, /me, /v1/events, etc. will proxy to
+      # api, which doesn't handle them — expected 404 until we promote
+      # those services to prod.
       API_HOST: api
+      AUTH_HOST: api
+      BFF_HOST: api
+      OBS_HOST: api
+      TRIAGE_HOST: api
+      GRS_HOST: api
+      WEB_HOST: api
     networks:
       - redc-net
     depends_on:

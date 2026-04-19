@@ -53,6 +53,7 @@ export interface HealthReporterOptions {
 export interface HealthReport {
   status: "ok" | "error";
   service: string;
+  commit: string;
   time: string;
   uptime_ms: number;
   checks: Record<string, HealthCheckResult>;
@@ -199,6 +200,7 @@ export async function collectHealthReport(
   return {
     status,
     service: options.service,
+    commit: process.env.GIT_COMMIT?.trim() || "unknown",
     time: new Date().toISOString(),
     uptime_ms: Date.now() - options.startedAtMs,
     checks,

@@ -1,0 +1,232 @@
+# Per-PR preview stack. Brought up with COMPOSE_PROJECT_NAME=preview-<slug>
+# so container names / docker DNS / volumes are all namespaced.
+#
+# `gateway` joins the external `preview-net` so the permanent Caddy in
+# front of every preview can route `<slug>.preview.red.computer` to it.
+# Every other service stays on the project's private default network.
+
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required (e.g. preview-pr-42)}
+
+services:
+  gateway:
+    container_name: ${COMPOSE_PROJECT_NAME}-gateway
+    build: ../gateway
+    restart: unless-stopped
+    environment:
+      API_HOST: api
+      AUTH_HOST: auth
+      BFF_HOST: bff
+      OBS_HOST: obs
+      TRIAGE_HOST: triage
+      GRS_HOST: grs
+      WEB_HOST: web
+    networks:
+      - default
+      - preview-net
+    depends_on:
+      - api
+      - auth
+      - bff
+      - obs
+      - triage
+      - grs
+      - web
+
+  api:
+    container_name: ${COMPOSE_PROJECT_NAME}-api
+    build:
+      context: ../..
+      dockerfile: infra/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    env_file:
+      - /opt/redc-previews/.env
+    volumes:
+      - api-data:/data
+    networks:
+      - default
+
+  bff:
+    container_name: ${COMPOSE_PROJECT_NAME}-bff
+    build:
+      context: ../..
+      dockerfile: apps/bff/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      - api
+      - auth
+      - obs
+    environment:
+      BFF_PORT: 3001
+      REDC_API_BASE_URL: http://api:3000
+      AUTH_BASE_URL: http://auth:4020
+      WIDE_EVENTS_COLLECTOR_URL: http://obs:4090
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    networks:
+      - default
+
+  auth:
+    container_name: ${COMPOSE_PROJECT_NAME}-auth
+    build:
+      context: ../../apps/auth
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db-auth
+    environment:
+      AUTH_LAB_HOST: 0.0.0.0
+      AUTH_LAB_PORT: 4020
+      AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@db-auth:5432/${AUTH_DB_NAME:-auth_lab}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    networks:
+      - default
+
+  db-auth:
+    container_name: ${COMPOSE_PROJECT_NAME}-db-auth
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_lab}
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_lab}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth_lab_password}
+    volumes:
+      - db-auth-data:/var/lib/postgresql/data
+    networks:
+      - default
+
+  s3:
+    container_name: ${COMPOSE_PROJECT_NAME}-s3
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - s3-data:/data
+    networks:
+      - default
+
+  obs:
+    container_name: ${COMPOSE_PROJECT_NAME}-obs
+    build:
+      context: ../..
+      dockerfile: apps/obs/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    environment:
+      WIDE_EVENTS_HOST: 0.0.0.0
+      WIDE_EVENTS_PORT: 4090
+      WIDE_EVENTS_STORAGE_BACKEND: file
+      WIDE_EVENTS_DATA_DIR: /data/wide-events
+      WIDE_EVENTS_RAW_EVENTS_DIR: /data/wide-events/raw
+      WIDE_EVENTS_ROLLUP_DIR: /data/wide-events/rollup
+      WIDE_EVENTS_SWEEP_INTERVAL_MS: 5000
+      WIDE_EVENTS_INCOMPLETE_GRACE_MS: 60000
+      WIDE_EVENTS_REPLAY_WINDOW_MS: 600000
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    volumes:
+      - obs-data:/data
+    networks:
+      - default
+
+  grs:
+    container_name: ${COMPOSE_PROJECT_NAME}-grs
+    build:
+      context: ../../apps/grs
+      dockerfile: docker/gitty/Dockerfile
+      args:
+        GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      - s3
+    environment:
+      GIT_SERVER_PORT: 8080
+      GIT_SERVER_S3_ENDPOINT: http://s3:9000
+      GIT_SERVER_S3_REGION: ${GIT_SERVER_S3_REGION:-us-east-1}
+      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-grs-repos}
+      GIT_SERVER_S3_PREFIX: ${GIT_SERVER_S3_PREFIX:-repos}
+      GIT_SERVER_S3_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      GIT_SERVER_S3_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
+      GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
+      GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    networks:
+      - default
+
+  triage:
+    container_name: ${COMPOSE_PROJECT_NAME}-triage
+    build:
+      context: ../..
+      dockerfile: apps/triage/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      - triage-smithers
+    environment:
+      TRIAGE_PORT: 7000
+      TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
+      TRIAGE_SMITHERS_BASE_URL: http://triage-smithers:7331
+      TRIAGE_WORKFLOW_PATH: /app/apps/triage/src/workflows/triage.tsx
+      TRIAGE_SMITHERS_DB_PATH: /smithers-data/smithers.db
+      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      REDC_API_BASE_URL: http://api:3000
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    volumes:
+      - smithers-data:/smithers-data
+    networks:
+      - default
+
+  triage-smithers:
+    container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
+    image: ${COMPOSE_PROJECT_NAME}-triage
+    build:
+      context: ../..
+      dockerfile: apps/triage/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    command: ["bun", "run", "apps/triage/src/smithers-server.ts"]
+    environment:
+      SMITHERS_SERVER_PORT: 7331
+      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
+      SMITHERS_DB_PATH: /smithers-data/smithers.db
+      SMITHERS_ROOT_DIR: /app
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    volumes:
+      - smithers-data:/smithers-data
+    networks:
+      - default
+
+  web:
+    container_name: ${COMPOSE_PROJECT_NAME}-web
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  preview-net:
+    external: true
+  default:
+    driver: bridge
+
+volumes:
+  api-data:
+  db-auth-data:
+  s3-data:
+  obs-data:
+  smithers-data:

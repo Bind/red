@@ -11,6 +11,7 @@ COPY apps/grs/package.json ./apps/grs/
 COPY apps/web/package.json ./apps/web/
 COPY apps/obs/package.json ./apps/obs/
 COPY pkg/obs/package.json ./pkg/obs/
+COPY pkg/health/package.json ./pkg/health/
 RUN bun install --frozen-lockfile
 
 FROM base AS build-web
@@ -29,15 +30,19 @@ COPY apps/grs/package.json ./apps/grs/
 COPY apps/web/package.json ./apps/web/
 COPY apps/obs/package.json ./apps/obs/
 COPY pkg/obs/package.json ./pkg/obs/
+COPY pkg/health/package.json ./pkg/health/
 RUN bun install --frozen-lockfile --production
 
 FROM base AS release
+ARG GIT_COMMIT=unknown
 COPY --from=prod-install /app/node_modules ./node_modules
 COPY apps/ctl ./apps/ctl
 COPY pkg/obs ./pkg/obs
+COPY pkg/health ./pkg/health
 COPY package.json tsconfig.json ./
 COPY --from=build-web /app/apps/web/dist ./apps/web/dist
 
 EXPOSE 3000
 ENV REDC_PORT=3000
+ENV GIT_COMMIT=${GIT_COMMIT}
 CMD ["bun", "run", "apps/ctl/index.ts"]

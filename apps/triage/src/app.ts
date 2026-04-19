@@ -1,3 +1,4 @@
+import { buildHealth, statusHttpCode } from "@redc/health";
 import { Hono } from "hono";
 import type { TriageOrchestrator } from "./orchestrator";
 import type { RunStore } from "./runs/store";
@@ -11,7 +12,10 @@ export interface TriageAppDeps {
 export function createApp(deps: TriageAppDeps): Hono {
 	const app = new Hono();
 
-	app.get("/health", (c) => c.json({ ok: true, service: "triage" }));
+	app.get("/health", (c) => {
+		const health = buildHealth({ service: "triage" });
+		return c.json(health, statusHttpCode(health.status));
+	});
 
 	app.post("/v1/runs", async (c) => {
 		const payload = await c.req.json().catch(() => null);

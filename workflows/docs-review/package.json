@@ -1,17 +1,14 @@
 {
-  "name": "redc-triage",
+  "name": "redc-docs-review",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
+    "start": "bun run src/main.ts",
     "test": "bun test"
   },
   "dependencies": {
-    "@redc/health": "workspace:*",
-    "@redc/obs": "workspace:*",
-    "hono": "^4.7.0",
+    "@octokit/rest": "^21.0.0",
     "react": "^19.2.0",
     "smithers-orchestrator": "^0.15.1",
     "zod": "^4.3.6"

@@ -47,6 +47,7 @@ SMITHERS_SERVER_PORT="${SMITHERS_SERVER_PORT:-7331}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
+GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 
 mkdir -p apps/auth/compose
 if [[ ! -f apps/auth/compose/signing-key.private.jwk ]]; then
@@ -104,6 +105,7 @@ TRIAGE_MODEL=$TRIAGE_MODEL
 SMITHERS_API_KEY=$SMITHERS_API_KEY
 SMITHERS_SERVER_PORT=$SMITHERS_SERVER_PORT
 ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+GIT_COMMIT=$GIT_COMMIT
 EOF
 
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then

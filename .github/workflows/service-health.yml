@@ -1,0 +1,55 @@
+name: Service health
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+env:
+  JUST_UNSTABLE: "1"
+
+jobs:
+  contract:
+    name: Health contract (in-process)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: extractions/setup-just@v2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Health-contract tests
+        run: just ci-health-contract "${{ github.event.pull_request.head.sha || github.sha }}"
+
+  compose-smoke:
+    name: Compose smoke (docker --wait)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: extractions/setup-just@v2
+      - name: Prep CI env
+        run: just ci-prep "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Build and start stack
+        run: just ci-health-compose-up
+      - name: Probe each /health
+        run: just ci-health-probe
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f infra/compose/dev.yml logs --tail=200
+      - name: Teardown
+        if: always()
+        run: docker compose -f infra/compose/dev.yml down -v --remove-orphans

@@ -1,0 +1,31 @@
+# Wildcard host routing for per-PR previews.
+#
+# For `pr-42.preview.red.computer` the labels (Caddy indexes labels TLD-first)
+# are: 0=computer, 1=red, 2=preview, 3=pr-42. {labels.3} is the PR slug.
+#
+# Each PR deploys a gateway container named `preview-{slug}-gateway` joined to
+# the external `preview-net` network. Caddy resolves that hostname via docker's
+# embedded DNS.
+
+*.preview.red.computer {
+    @notpreview host preview.red.computer
+    respond @notpreview "no preview slug" 404
+
+    reverse_proxy http://preview-{labels.3}-gateway:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        lb_try_duration 2s
+        fail_duration 10s
+    }
+
+    handle_errors {
+        @bad_gateway expression {http.error.status_code} == 502
+        respond @bad_gateway "preview {labels.3} is not running" 404
+        respond "preview {labels.3} is unhealthy" {http.error.status_code}
+    }
+}
+
+# Apex of the preview zone — no slug in the host.
+preview.red.computer {
+    respond "redc previews — visit https://pr-N.preview.red.computer" 200
+}
