@@ -30,6 +30,7 @@ services:
       TRIAGE_HOST: api
       GRS_HOST: api
       WEB_HOST: api
+      MCP_HOST: api
     networks:
       - redc-net
     depends_on:

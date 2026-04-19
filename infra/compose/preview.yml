@@ -20,6 +20,7 @@ services:
       TRIAGE_HOST: triage
       GRS_HOST: grs
       WEB_HOST: web
+      MCP_HOST: mcp
     networks:
       - default
       - preview-net
@@ -31,6 +32,7 @@ services:
       - triage
       - grs
       - web
+      - mcp
 
   api:
     container_name: ${COMPOSE_PROJECT_NAME}-api
@@ -215,6 +217,27 @@ services:
       args:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
+    networks:
+      - default
+
+  mcp:
+    container_name: ${COMPOSE_PROJECT_NAME}-mcp
+    build:
+      context: ../..
+      dockerfile: apps/mcp/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      - auth
+    environment:
+      MCP_PORT: 3002
+      MCP_AUTH_BASE_URL: http://auth:4020
+      MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:-mcp-preview}
+      MCP_OAUTH_CLIENT_SECRET: ${MCP_OAUTH_CLIENT_SECRET:-}
+      MCP_REQUIRED_SCOPE: ${MCP_REQUIRED_SCOPE:-mcp:read}
+      MCP_DISABLE_AUTH: ${MCP_DISABLE_AUTH:-false}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     networks:
       - default
 

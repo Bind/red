@@ -58,6 +58,10 @@ static_resources:
                               regex: "^/[^/]+/[^/]+\\.git(/.*)?$"
                           route: { cluster: redc_grs }
 
+                        # ── mcp (Model Context Protocol endpoint) ──────
+                        - match: { prefix: "/mcp" }
+                          route: { cluster: redc_mcp }
+
                         # ── api (ctl) ──────────────────────────────────
                         - match: { path: "/health" }
                           route: { cluster: redc_api }
@@ -165,3 +169,16 @@ static_resources:
                     socket_address:
                       address: ${WEB_HOST}
                       port_value: 5173
+
+    - name: redc_mcp
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: redc_mcp
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${MCP_HOST}
+                      port_value: 3002
