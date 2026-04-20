@@ -1,13 +1,11 @@
-import { createRoute, createService, z } from "@redc/server";
+import { createRoute, createService, requireBearer, z } from "@redc/server";
 import type { Hono } from "hono";
-import { OAuthIntrospector, oauthMiddleware } from "./auth";
 import type { McpConfig } from "./config";
 import type { McpEndpoint } from "./mcp-server";
 
 export interface McpAppDeps {
 	config: McpConfig;
 	mcp: McpEndpoint;
-	introspector?: OAuthIntrospector;
 }
 
 export function createApp(deps: McpAppDeps): Hono {
@@ -17,10 +15,16 @@ export function createApp(deps: McpAppDeps): Hono {
 		description:
 			"Model Context Protocol server over Streamable HTTP. Clients: Claude mobile/desktop, Cursor, etc.",
 	});
-	const introspector =
-		deps.introspector ?? new OAuthIntrospector(deps.config);
 
-	app.use("/mcp", oauthMiddleware(deps.config, introspector));
+	const bearer = requireBearer({
+		authBaseUrl: deps.config.authBaseUrl,
+		clientId: deps.config.clientId,
+		clientSecret: deps.config.clientSecret,
+		scope: deps.config.requiredScope,
+		disable: deps.config.disableAuth,
+	});
+
+	app.use("/mcp", bearer);
 
 	app.openapi(
 		createRoute({
@@ -42,7 +46,6 @@ export function createApp(deps: McpAppDeps): Hono {
 		}),
 		async (c) => {
 			const response = await deps.mcp.handle(c.req.raw);
-			// hono's response typing expects a subset of Response; cast is safe.
 			return response as never;
 		},
 	);

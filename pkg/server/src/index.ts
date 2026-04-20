@@ -13,6 +13,19 @@ import { apiReference } from "@scalar/hono-api-reference";
 
 export { createRoute, z, OpenAPIHono };
 
+export {
+	requireBearer,
+	requireSession,
+	publicRoute,
+	getBearer,
+	getSession,
+	BearerIntrospector,
+	type BearerOptions,
+	type SessionOptions,
+	type SessionResult,
+	type IntrospectionResult,
+} from "./auth";
+
 export interface ServiceOptions {
 	/** Service name — used by obs, /health, and the OpenAPI `info.title`. */
 	name: string;
