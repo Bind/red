@@ -20,8 +20,17 @@ export interface RawEventStore {
 	listEventsSince(since: Date, now?: Date): Promise<WideCollectorEvent[]>;
 }
 
+export interface RollupListOptions {
+	since?: Date;
+	service?: string;
+	outcome?: "ok" | "error" | "unknown";
+	limit?: number;
+}
+
 export interface RollupStore {
 	appendRollups(records: WideRollupRecord[]): Promise<void> | void;
+	listRollups?(options?: RollupListOptions): Promise<WideRollupRecord[]>;
+	getRollup?(requestId: string): Promise<WideRollupRecord | null>;
 }
 
 export interface ActiveRequestAggregator {

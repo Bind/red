@@ -570,3 +570,95 @@ export function subscribeToAgentEvents(
 
   return () => es.close();
 }
+
+// ── Triage UI: wide events + triage runs ──────────────────────────────────
+
+export interface WideEvent {
+  event_id: string;
+  request_id: string;
+  service: string;
+  kind: string;
+  ts: string;
+  ended_at?: string;
+  duration_ms?: number;
+  outcome?: "ok" | "error";
+  status_code?: number;
+  route_name?: string;
+  error_name?: string;
+  error_message?: string;
+  data: Record<string, unknown>;
+}
+
+export interface WideRollup {
+  request_id: string;
+  first_ts: string;
+  last_ts: string;
+  total_duration_ms: number;
+  entry_service: string;
+  services: string[];
+  route_names: string[];
+  request_state: "completed" | "incomplete";
+  final_outcome: "ok" | "error" | "unknown";
+  final_status_code: number | null;
+  event_count: number;
+  error_count: number;
+  primary_error: Record<string, unknown> | null;
+  events: WideEvent[];
+  rolled_up_at: string;
+}
+
+export interface RollupListQuery {
+  service?: string;
+  outcome?: "ok" | "error" | "unknown";
+  since?: string;
+  limit?: number;
+}
+
+export async function fetchRollups(query: RollupListQuery = {}): Promise<{
+  rollups: WideRollup[];
+  count: number;
+}> {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.outcome) params.set("outcome", query.outcome);
+  if (query.since) params.set("since", query.since);
+  if (query.limit) params.set("limit", String(query.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`/rpc/rollups${suffix}`);
+  if (!res.ok) throw new ApiError(`rollups ${res.status}`, res.status);
+  return res.json();
+}
+
+export async function fetchRollupDetail(requestId: string): Promise<WideRollup> {
+  const res = await fetch(`/rpc/rollups/${encodeURIComponent(requestId)}`);
+  if (!res.ok) throw new ApiError(`rollup ${res.status}`, res.status);
+  return res.json();
+}
+
+export interface TriageRunSummary {
+  id: string;
+  status:
+    | "received"
+    | "investigating"
+    | "plan_ready"
+    | "approved"
+    | "proposing"
+    | "proposal_ready"
+    | "rejected"
+    | "failed";
+  created_at: string;
+  updated_at: string;
+  rollup: Pick<
+    WideRollup,
+    "request_id" | "entry_service" | "route_names" | "primary_error"
+  >;
+  plan?: { hypothesis: string; confidence: string };
+  proposal?: { repo_id: string; branch: string; pr_url?: string };
+  error?: string;
+}
+
+export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
+  const res = await fetch(`/rpc/triage/runs`);
+  if (!res.ok) throw new ApiError(`triage runs ${res.status}`, res.status);
+  return res.json();
+}

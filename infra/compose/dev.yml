@@ -278,6 +278,9 @@ services:
       BFF_PORT: 3001
       REDC_API_BASE_URL: http://ctl:3000
       AUTH_BASE_URL: http://auth:4020
+      OBS_BASE_URL: http://obs:4090
+      TRIAGE_BASE_URL: http://triage:7000
+      BFF_DISABLE_AUTH: ${BFF_DISABLE_AUTH:-true}
       BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-redc/redc}
       BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-redc-bff-hosted-repo}
       BFF_HOSTED_REPO_DEFAULT_BRANCH: ${BFF_HOSTED_REPO_DEFAULT_BRANCH:-main}

@@ -18,6 +18,9 @@ export interface BffConfig {
   port: number;
   apiBaseUrl: string;
   authBaseUrl: string;
+  obsBaseUrl?: string;
+  triageBaseUrl?: string;
+  disableAuth?: boolean;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
   hostedRepoReader?: HostedRepoReader;
@@ -470,6 +473,48 @@ export function createApp(config: BffConfig) {
           { authorization: `Bearer ${result.accessToken}` },
         );
       });
+    });
+
+  // ── triage UI data: wide events + triage runs ───────────────────────────
+  // These proxy directly to obs + triage which are internal services; no JWT
+  // handoff needed. Session check is gated by config.disableAuth (dev flag).
+  const requireSession = async (c: Parameters<typeof fetchSessionExchangeToken>[0] extends Request ? any : never) => {
+    if (config.disableAuth) return null;
+    const result = await fetchSessionExchangeToken(
+      c.req.raw,
+      fetchImpl,
+      config.authBaseUrl,
+    );
+    return result instanceof Response ? result : null;
+  };
+
+  rpc
+    .get("/rollups", async (c) => {
+      if (!config.obsBaseUrl)
+        return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "outcome", "since", "limit"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups", query));
+    })
+    .get("/rollups/:request_id", async (c) => {
+      if (!config.obsBaseUrl)
+        return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const id = encodeURIComponent(c.req.param("request_id"));
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/rollups/${id}`));
+    })
+    .get("/triage/runs", async (c) => {
+      if (!config.triageBaseUrl)
+        return c.json({ error: "triage backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      return proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
     });
 
   app.route("/rpc", rpc);
