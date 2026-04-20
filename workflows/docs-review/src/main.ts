@@ -131,7 +131,6 @@ async function main() {
 	const prNumber = Number.parseInt(requiredEnv("PR_NUMBER"), 10);
 	const baseSha = requiredEnv("BASE_SHA");
 	const headSha = requiredEnv("HEAD_SHA");
-	requiredEnv("ANTHROPIC_API_KEY");
 	const githubToken = requiredEnv("GITHUB_TOKEN");
 
 	const octokit = new Octokit({ auth: githubToken });

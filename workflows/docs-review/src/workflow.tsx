@@ -10,7 +10,7 @@
  */
 
 import {
-	AnthropicAgent,
+	CodexAgent,
 	createSmithers,
 	Loop,
 	Sequence,
@@ -36,8 +36,15 @@ const { Workflow, Task, smithers, tables, outputs, useCtx } = createSmithers(
 	},
 );
 
-const haiku = new AnthropicAgent({
-	model: process.env.DOCS_REVIEW_MODEL ?? "claude-haiku-4-5",
+const reviewer = new CodexAgent({
+	model: process.env.DOCS_REVIEW_SUBSCRIPTION_MODEL ?? "gpt-5.3-codex",
+	sandbox: "danger-full-access",
+	fullAuto: true,
+	config: {
+		model_reasoning_effort:
+			process.env.DOCS_REVIEW_SUBSCRIPTION_REASONING_EFFORT ?? "high",
+	},
+	timeoutMs: 30 * 60 * 1000,
 });
 
 function Analyze() {
@@ -45,7 +52,7 @@ function Analyze() {
 	const input = ctx.latest(tables.input, "input");
 	const filesList = input?.diff.files.map((f) => f.path).join(", ") ?? "";
 	return (
-		<Task id="analyze-diff" output={outputs.diffAnalysis} agent={haiku}>
+		<Task id="analyze-diff" output={outputs.diffAnalysis} agent={reviewer}>
 			{`Summarize this PR for a docs-staleness reviewer. Identify the affected
 areas of the codebase and the symbols whose behaviour or signature changed.
 
@@ -65,7 +72,7 @@ function FindFindings() {
 		<Task
 			id="find-findings"
 			output={outputs.findingsReport}
-			agent={haiku}
+			agent={reviewer}
 			timeoutMs={10 * 60 * 1000}
 		>
 			{`Identify every markdown claim that the PR diff contradicts.
@@ -101,7 +108,7 @@ function VerifyFindings() {
 	const report = ctx.latest(tables.findingsReport, "find-findings");
 	if (!report) return null;
 	return (
-		<Task id="verify-findings" output={outputs.review} agent={haiku}>
+		<Task id="verify-findings" output={outputs.review} agent={reviewer}>
 			{`Verify every finding below.
 
 approved=true ONLY if, for every finding:
