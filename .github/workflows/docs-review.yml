@@ -1,7 +1,7 @@
 name: Docs review
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
 env:
@@ -16,11 +16,21 @@ jobs:
       pull-requests: write
     timeout-minutes: 15
     steps:
-      - name: Checkout PR head
+      - name: Checkout trusted base repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout PR contents
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
+          path: pr-head
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Install bun
         uses: oven-sh/setup-bun@v2
@@ -53,5 +63,5 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          REPO_ROOT: ${{ github.workspace }}
+          REPO_ROOT: ${{ github.workspace }}/pr-head
         run: dotenvx run -f .env.ci -- bun run workflows/docs-review/src/main.ts

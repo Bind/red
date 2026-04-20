@@ -10,8 +10,11 @@ COPY apps/bff/package.json ./apps/bff/
 COPY apps/grs/package.json ./apps/grs/
 COPY apps/web/package.json ./apps/web/
 COPY apps/obs/package.json ./apps/obs/
+COPY apps/mcp/package.json ./apps/mcp/
+COPY apps/triage/package.json ./apps/triage/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/health/package.json ./pkg/health/
+COPY workflows/docs-review/package.json ./workflows/docs-review/
 RUN bun install --frozen-lockfile
 
 FROM base AS build-web
@@ -29,8 +32,11 @@ COPY apps/bff/package.json ./apps/bff/
 COPY apps/grs/package.json ./apps/grs/
 COPY apps/web/package.json ./apps/web/
 COPY apps/obs/package.json ./apps/obs/
+COPY apps/mcp/package.json ./apps/mcp/
+COPY apps/triage/package.json ./apps/triage/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/health/package.json ./pkg/health/
+COPY workflows/docs-review/package.json ./workflows/docs-review/
 RUN bun install --frozen-lockfile --production
 
 FROM base AS release
