@@ -3,12 +3,14 @@ import { join, resolve } from "node:path";
 import {
 	type CollectorDependencies,
 	InMemoryActiveRequestAggregator,
+	type RollupQuery,
 } from "../service/collector-service";
 import {
 	DedupingTriageDispatcher,
 	HttpTriageDispatcher,
 	type TriageDispatcher,
 } from "../service/triage-dispatcher";
+import { DuckDbRollupQuery } from "../store/duckdb-query";
 import { MinioRawEventStore, MinioRollupStore } from "../store/minio-store";
 import { FileRawEventStore } from "../store/raw-event-store";
 import { FileRollupStore } from "../store/rollup-store";
@@ -208,8 +210,23 @@ export function createCollectorDeps(
 		activeRequests: new InMemoryActiveRequestAggregator({
 			incompleteGraceMs: config.incompleteGraceMs,
 		}),
+		rollupQuery: createRollupQuery(config),
 		triageDispatcher: config.triage
 			? createTriageDispatcher(config.triage)
 			: undefined,
 	};
+}
+
+function createRollupQuery(config: WideEventsConfig): RollupQuery {
+	if (config.storageBackend === "minio") {
+		if (!config.rollupS3) {
+			throw new Error("rollup query engine needs rollupS3 config in MinIO mode");
+		}
+		return new DuckDbRollupQuery({
+			source: { kind: "s3", s3: config.rollupS3 },
+		});
+	}
+	return new DuckDbRollupQuery({
+		source: { kind: "file", rootDir: config.rollupDir },
+	});
 }

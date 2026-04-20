@@ -42,10 +42,14 @@ describe("wide-events collector app", () => {
 		);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({
-			ok: true,
-			service: "wide-events-collector",
-		});
+		const body = (await response.json()) as {
+			service: string;
+			status: string;
+			commit: string;
+		};
+		expect(body.service).toBe("obs");
+		expect(body.status).toBe("ok");
+		expect(typeof body.commit).toBe("string");
 	});
 
 	test("accepts valid batches, stores raw events, and rolls up terminal requests", async () => {

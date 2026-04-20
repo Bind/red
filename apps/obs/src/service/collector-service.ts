@@ -20,6 +20,13 @@ export interface RawEventStore {
 	listEventsSince(since: Date, now?: Date): Promise<WideCollectorEvent[]>;
 }
 
+export interface RollupListOptions {
+	since?: Date;
+	service?: string;
+	outcome?: "ok" | "error" | "unknown";
+	limit?: number;
+}
+
 export interface RollupStore {
 	appendRollups(records: WideRollupRecord[]): Promise<void> | void;
 }
@@ -31,9 +38,35 @@ export interface ActiveRequestAggregator {
 	flushExpired(now?: Date): Promise<WideRollupRecord[]> | WideRollupRecord[];
 }
 
+export interface AggregateOptions {
+	groupBy: "entry_service" | "route" | "final_outcome" | "error_name";
+	since?: Date;
+	limit?: number;
+}
+
+export interface AggregateRow {
+	key: string;
+	count: number;
+	error_count: number;
+	avg_duration_ms: number;
+	p95_duration_ms: number;
+}
+
+export interface RollupQuery {
+	listRollups(options?: RollupListOptions): Promise<WideRollupRecord[]>;
+	getRollup(requestId: string): Promise<WideRollupRecord | null>;
+	aggregateRollups?(options: AggregateOptions): Promise<AggregateRow[]>;
+}
+
 export interface CollectorDependencies {
 	rawEventStore: RawEventStore;
 	rollupStore: RollupStore;
+	/**
+	 * Backs GET /v1/rollups* — a DuckDB-powered read engine over the
+	 * rollup NDJSON. Optional only so write-only tests can skip it;
+	 * createCollectorDeps always provides one in production.
+	 */
+	rollupQuery?: RollupQuery;
 	activeRequests: ActiveRequestAggregator;
 	triageDispatcher?: TriageDispatcher;
 }
