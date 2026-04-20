@@ -41,12 +41,17 @@ jobs:
       - name: Configure SSH (dev key from .env.ci)
         run: |
           mkdir -p ~/.ssh
-          dotenvx run -f .env.ci -- sh -c 'printf "%s\n" "$DEV_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519'
+          key="$(dotenvx get DEV_SSH_PRIVATE_KEY -f .env.ci --format shell)"
+          if printf "%s" "$key" | grep -q "^-----BEGIN "; then
+            printf "%s\n" "$key" > ~/.ssh/id_ed25519
+          else
+            printf "%s" "$key" | openssl base64 -d -A > ~/.ssh/id_ed25519
+          fi
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Resolve dev server IP
+      - name: Resolve dev server IP from SST outputs
         id: dev-ip
-        run: echo "host=$(dotenvx get DEV_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
+        run: echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
         run: just deploy-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222
@@ -79,12 +84,19 @@ jobs:
       - name: Configure SSH (dev key from .env.ci)
         run: |
           mkdir -p ~/.ssh
-          dotenvx run -f .env.ci -- sh -c 'printf "%s\n" "$DEV_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519'
+          key="$(dotenvx get DEV_SSH_PRIVATE_KEY -f .env.ci --format shell)"
+          if printf "%s" "$key" | grep -q "^-----BEGIN "; then
+            printf "%s\n" "$key" > ~/.ssh/id_ed25519
+          else
+            printf "%s" "$key" | openssl base64 -d -A > ~/.ssh/id_ed25519
+          fi
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Resolve dev server IP
+      - name: Resolve dev server IP from SST outputs
         id: dev-ip
-        run: echo "host=$(dotenvx get DEV_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
+        run: |
+          dotenvx run -f .env.ci -- just deploy-infra dev
+          echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
 
       - name: Tear down preview
         run: just teardown-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222

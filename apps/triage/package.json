@@ -9,8 +9,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.53",
     "@redc/health": "workspace:*",
     "@redc/obs": "workspace:*",
+    "ai": "^6.0.69",
     "hono": "^4.7.0",
     "react": "^19.2.0",
     "smithers-orchestrator": "^0.15.1",

@@ -11,7 +11,7 @@
     @notpreview host preview.red.computer
     respond @notpreview "no preview slug" 404
 
-    reverse_proxy http://preview-{labels.3}-gateway:8080 {
+    reverse_proxy preview-{labels.3}-gateway:8080 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         lb_try_duration 2s

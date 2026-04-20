@@ -47,7 +47,7 @@ fi
 
 # Shared /opt/redc-previews/.env is read by every preview's env_file.
 # Regenerate it from the (possibly updated) encrypted source each deploy.
-dotenvx decrypt -f .env.preview -o /opt/redc-previews/.env
+dotenvx decrypt -f .env.preview --stdout > /opt/redc-previews/.env
 chmod 600 /opt/redc-previews/.env
 
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d --build

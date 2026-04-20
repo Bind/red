@@ -37,7 +37,7 @@ The bucket is auto-created under the Cloudflare account associated with
 `deploy.sh` **excludes** the following from rsync, on purpose — these are
 provisioned once on the server and survive every release:
 
-- `.env` — production env vars (ANTHROPIC_API_KEY, SMITHERS_API_KEY, etc.)
+- `.env` — production env vars (`TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc.)
 - `*.db` / `*.db-wal` / `*.db-shm` — sqlite files
 - `node_modules`, `.git`, `.sst`
 

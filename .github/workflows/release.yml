@@ -41,7 +41,12 @@ jobs:
       - name: Configure SSH (private key from .env.ci)
         run: |
           mkdir -p ~/.ssh
-          dotenvx run -f .env.ci -- sh -c 'printf "%s\n" "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519'
+          key="$(dotenvx get HETZNER_SSH_PRIVATE_KEY -f .env.ci --format shell)"
+          if printf "%s" "$key" | grep -q "^-----BEGIN "; then
+            printf "%s\n" "$key" > ~/.ssh/id_ed25519
+          else
+            printf "%s" "$key" | openssl base64 -d -A > ~/.ssh/id_ed25519
+          fi
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy code (rsync + docker compose up)

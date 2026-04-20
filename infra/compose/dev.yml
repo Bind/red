@@ -348,9 +348,16 @@ services:
       TRIAGE_SMITHERS_BASE_URL: ${TRIAGE_SMITHERS_BASE_URL:-http://triage-smithers:7331}
       TRIAGE_WORKFLOW_PATH: ${TRIAGE_WORKFLOW_PATH:-/app/apps/triage/src/workflows/triage.tsx}
       TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/smithers-data/smithers.db}
-      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-sonnet-4-6}
+      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-subscription}
+      TRIAGE_SUBSCRIPTION_MODEL: ${TRIAGE_SUBSCRIPTION_MODEL:-gpt-5.3-codex}
+      TRIAGE_SUBSCRIPTION_REASONING_EFFORT: ${TRIAGE_SUBSCRIPTION_REASONING_EFFORT:-high}
+      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
+      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
+      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
@@ -389,12 +396,20 @@ services:
       SMITHERS_DB_PATH: /smithers-data/smithers.db
       SMITHERS_ROOT_DIR: /app
       SMITHERS_ALLOW_NETWORK: ${SMITHERS_ALLOW_NETWORK:-true}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      TRIAGE_MODEL: ${TRIAGE_MODEL:-claude-sonnet-4-6}
+      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-subscription}
+      TRIAGE_SUBSCRIPTION_MODEL: ${TRIAGE_SUBSCRIPTION_MODEL:-gpt-5.3-codex}
+      TRIAGE_SUBSCRIPTION_REASONING_EFFORT: ${TRIAGE_SUBSCRIPTION_REASONING_EFFORT:-high}
+      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
+      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
+      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
     ports:
       - "${SMITHERS_SERVER_PORT:-7331}:7331"
     command: >
-      sh -lc "apk add --no-cache git ca-certificates &&
+      sh -lc "apk add --no-cache git ca-certificates npm &&
+      npm install -g @openai/codex@0.117.0 &&
       cd /app &&
       bun install --frozen-lockfile &&
       cd /app/apps/triage &&
@@ -403,6 +418,7 @@ services:
       - ../..:/app
       - redc-node-modules:/app/node_modules
       - smithers-data:/smithers-data
+      - ${HOME}/.codex:/root/.codex:ro
     healthcheck:
       test:
         [

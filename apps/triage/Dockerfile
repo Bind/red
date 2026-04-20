@@ -3,7 +3,8 @@
 # installed because the propose workflow can push branches to grs.
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates npm
+RUN npm install -g @openai/codex@0.117.0
 
 FROM base AS install
 COPY package.json bun.lock ./

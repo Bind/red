@@ -178,8 +178,14 @@ services:
       TRIAGE_SMITHERS_BASE_URL: http://triage-smithers:7331
       TRIAGE_WORKFLOW_PATH: /app/apps/triage/src/workflows/triage.tsx
       TRIAGE_SMITHERS_DB_PATH: /smithers-data/smithers.db
+      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-openai-compatible}
+      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
+      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
+      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDC_API_BASE_URL: http://api:3000
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:
@@ -202,7 +208,13 @@ services:
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
       SMITHERS_DB_PATH: /smithers-data/smithers.db
       SMITHERS_ROOT_DIR: /app
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-openai-compatible}
+      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
+      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
+      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:
       - smithers-data:/smithers-data

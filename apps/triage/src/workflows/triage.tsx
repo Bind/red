@@ -16,7 +16,6 @@
  */
 
 import {
-	AnthropicAgent,
 	approvalDecisionSchema,
 	createSmithers,
 	Loop,
@@ -30,6 +29,7 @@ import {
 	ValidateSchema,
 	WideRollupRecordSchema,
 } from "../types";
+import { createTriageAgent } from "./agents";
 
 const MAX_REVIEW_ROUNDS = 3;
 
@@ -51,16 +51,14 @@ const {
 	triageProposal: TriageProposalSchema,
 });
 
-const claude = new AnthropicAgent({
-	model: process.env.TRIAGE_MODEL ?? "claude-sonnet-4-6",
-});
+const triageAgent = createTriageAgent();
 
 function InvestigateDraft() {
 	const ctx = useCtx();
 	const lastReview = ctx.latest(tables.review, "investigate-review");
 	const lastPlan = ctx.latest(tables.triagePlan, "draft");
 	return (
-		<Task id="draft" output={outputs.triagePlan} agent={claude}>
+		<Task id="draft" output={outputs.triagePlan} agent={triageAgent}>
 			{`Triage this 5xx error rollup and produce a TriagePlan.
 Previous plan (if any): ${lastPlan ? JSON.stringify(lastPlan) : "none"}
 Issues to address:     ${
@@ -79,7 +77,7 @@ function InvestigateReview() {
 	const plan = ctx.latest(tables.triagePlan, "draft");
 	if (!plan) return null;
 	return (
-		<Task id="investigate-review" output={outputs.review} agent={claude}>
+		<Task id="investigate-review" output={outputs.review} agent={triageAgent}>
 			{`Critique this TriagePlan. approved=true only if hypothesis names a
 specific symbol, suspected_files are real paths, proposed_change_summary is
 scoped, and confidence is justified. Otherwise return structured issues.
@@ -97,7 +95,7 @@ function InvestigateReviewFix() {
 		<Task
 			id="investigate-review-fix"
 			output={outputs.reviewFix}
-			agent={claude}
+			agent={triageAgent}
 			skipIf={skip}
 		>
 			{`Rewrite the plan to resolve every issue:
@@ -149,7 +147,7 @@ function ProposeImplement() {
 		<Task
 			id="implement"
 			output={outputs.triageProposal}
-			agent={claude}
+			agent={triageAgent}
 			timeoutMs={30 * 60 * 1000}
 		>
 			{`Implement the approved plan:
@@ -178,7 +176,7 @@ function ProposeValidate() {
 		<Task
 			id="validate"
 			output={outputs.validate}
-			agent={claude}
+			agent={triageAgent}
 			timeoutMs={10 * 60 * 1000}
 		>
 			{`Run the affected package's tests and typecheck. Report all_passed and
@@ -193,7 +191,7 @@ function ProposeReview() {
 	const validate = ctx.latest(tables.validate, "validate");
 	if (!proposal || !validate?.all_passed) return null;
 	return (
-		<Task id="propose-review" output={outputs.review} agent={claude}>
+		<Task id="propose-review" output={outputs.review} agent={triageAgent}>
 			{`Review the diff on branch ${proposal.branch}. approved=true only if
 the change is scoped to the plan, matches proposed_change_summary, leaves no
 dead code / TODOs, and tests pass.
@@ -211,7 +209,7 @@ function ProposeReviewFix() {
 		<Task
 			id="propose-review-fix"
 			output={outputs.reviewFix}
-			agent={claude}
+			agent={triageAgent}
 			skipIf={skip}
 		>
 			{`Resolve every review issue. No scope creep.

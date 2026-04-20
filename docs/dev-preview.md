@@ -9,7 +9,7 @@ forgotten-open PR doesn't burn resources forever.
 ## Architecture
 
 ```
-Cloudflare:   *.preview.red.computer  A → DEV_SERVER_IP       (managed by sst @ dev)
+Cloudflare:   *.preview.red.computer  A → dev Hetzner server  (managed by sst @ dev)
 
 Dev box:
   preview-caddy       (permanent; one instance; wildcard host routing)
@@ -29,26 +29,23 @@ via docker's embedded DNS on the shared `preview-net`.
 
 ## One-time dev-box setup
 
-1. **Provision** a Hetzner box (cax11 = 4 GB = fits ~2–3 previews;
-   cax21 = 8 GB ≈ 5; cax31 = 16 GB ≈ 10). Drop your dev SSH key in
-   during creation. Note the IP — you'll add it as
-   the `DEV_SERVER_IP` repo secret.
+1. **Provision** the dev Hetzner box through SST:
+   ```bash
+   dotenvx run -f .env.ci -- just deploy-infra dev
+   ```
+   SST now creates the preview server and the `*.preview.red.computer`
+   wildcard DNS record directly. It uses `DEV_SSH_PUBLIC_KEY` for box access.
 2. **Run bootstrap** on the box:
    ```bash
-   scp infra/scripts/setup-dev-box.sh root@<dev-ip>:/root/
-   ssh root@<dev-ip> bash /root/setup-dev-box.sh
+   just bootstrap-dev-box <dev-ip>
    ```
-   Installs docker (if missing), creates `/opt/redc-previews`, the
-   `preview-net` docker network, and the nightly eviction cron.
-3. **Clone the repo** on the box (one time, just so the Caddy can read
-   the preview Caddyfile):
-   ```bash
-   ssh root@<dev-ip>
-   cd /opt && git clone <repo-url> redc
-   cd redc && docker compose -f infra/compose/preview-caddy.yml up -d
-   ```
-4. **Drop a production-style `.env`** at `/opt/redc-previews/.env` with the
-   secrets every preview needs: `ANTHROPIC_API_KEY`, `SMITHERS_API_KEY`,
+   This pushes the remote setup script over SSH, installs docker/dotenvx
+   if needed, creates `/opt/redc-previews`, creates the `preview-net`
+   docker network, installs the eviction cron, persists
+   `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already has it,
+   and starts the permanent preview Caddy stack on the box.
+3. **Drop a production-style `.env`** at `/opt/redc-previews/.env` with the
+   secrets every preview needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`,
    etc. This file is intentionally *not* rsynced from CI — previews
    read it via `env_file` in `infra/compose/preview.yml`.
 
@@ -56,15 +53,15 @@ via docker's embedded DNS on the shared `preview-net`.
 
 | secret | purpose |
 |---|---|
-| `DEV_SERVER_IP` | dev box IP, used by sst + deploy scripts |
+| `DEV_SSH_PUBLIC_KEY` | public key injected into the dev box by SST |
 | `DEV_SSH_PRIVATE_KEY` | SSH private key; paired public key lives on the dev box |
 | `HCLOUD_TOKEN` | sst; same as prod |
 | `CLOUDFLARE_API_TOKEN` | sst; must have Zone:DNS edit + R2 edit |
 | `CLOUDFLARE_ZONE_ID` | sst |
 | `CLOUDFLARE_DEFAULT_ACCOUNT_ID` | sst state bucket lives here |
 
-Anthropic + Smithers keys live on the dev box's `/opt/redc-previews/.env`
-(not in CI secrets; CI never touches that file).
+Triage provider credentials + the Smithers bearer token live on the dev box's
+`/opt/redc-previews/.env` (not in CI secrets; CI never touches that file).
 
 ## What the workflow does
 
