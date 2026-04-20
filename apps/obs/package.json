@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@duckdb/node-api": "^1.5.2-r.1",
     "@redc/health": "workspace:*",
     "hono": "^4.12.10"
   },

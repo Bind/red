@@ -40,9 +40,31 @@ export interface ActiveRequestAggregator {
 	flushExpired(now?: Date): Promise<WideRollupRecord[]> | WideRollupRecord[];
 }
 
+export interface AggregateOptions {
+	groupBy: "entry_service" | "route" | "final_outcome" | "error_name";
+	since?: Date;
+	limit?: number;
+}
+
+export interface AggregateRow {
+	key: string;
+	count: number;
+	error_count: number;
+	avg_duration_ms: number;
+	p95_duration_ms: number;
+}
+
+export interface RollupQuery {
+	listRollups(options?: RollupListOptions): Promise<WideRollupRecord[]>;
+	getRollup(requestId: string): Promise<WideRollupRecord | null>;
+	aggregateRollups?(options: AggregateOptions): Promise<AggregateRow[]>;
+}
+
 export interface CollectorDependencies {
 	rawEventStore: RawEventStore;
 	rollupStore: RollupStore;
+	/** Optional — when set, GET /v1/rollups* uses this. Falls back to rollupStore. */
+	rollupQuery?: RollupQuery;
 	activeRequests: ActiveRequestAggregator;
 	triageDispatcher?: TriageDispatcher;
 }
