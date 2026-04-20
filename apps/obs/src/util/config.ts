@@ -24,8 +24,6 @@ export interface TriageConfig {
 	dedupTtlMs: number;
 }
 
-export type QueryBackend = "native" | "duckdb";
-
 export interface WideEventsConfig {
 	hostname: string;
 	port: number;
@@ -36,7 +34,6 @@ export interface WideEventsConfig {
 	incompleteGraceMs: number;
 	replayWindowMs: number;
 	storageBackend: StorageBackend;
-	queryBackend: QueryBackend;
 	rawS3?: S3StorageConfig;
 	rollupS3?: S3StorageConfig;
 	triage?: TriageConfig;
@@ -140,7 +137,6 @@ export function loadConfig(
 		incompleteGraceMs,
 		replayWindowMs,
 		storageBackend,
-		queryBackend: loadQueryBackend(env),
 		rawS3:
 			storageBackend === "minio"
 				? loadS3Config(env, "RAW")
@@ -151,12 +147,6 @@ export function loadConfig(
 				: undefined,
 		triage: loadTriageConfig(env),
 	};
-}
-
-function loadQueryBackend(env: NodeJS.ProcessEnv): QueryBackend {
-	const raw = env.OBS_QUERY_BACKEND?.toLowerCase().trim();
-	if (raw === "duckdb") return "duckdb";
-	return "native";
 }
 
 function loadTriageConfig(
@@ -220,10 +210,7 @@ export function createCollectorDeps(
 		activeRequests: new InMemoryActiveRequestAggregator({
 			incompleteGraceMs: config.incompleteGraceMs,
 		}),
-		rollupQuery:
-			config.queryBackend === "duckdb"
-				? createRollupQuery(config)
-				: undefined,
+		rollupQuery: createRollupQuery(config),
 		triageDispatcher: config.triage
 			? createTriageDispatcher(config.triage)
 			: undefined,
@@ -233,7 +220,7 @@ export function createCollectorDeps(
 function createRollupQuery(config: WideEventsConfig): RollupQuery {
 	if (config.storageBackend === "minio") {
 		if (!config.rollupS3) {
-			throw new Error("DuckDB query backend needs rollupS3 config in MinIO mode");
+			throw new Error("rollup query engine needs rollupS3 config in MinIO mode");
 		}
 		return new DuckDbRollupQuery({
 			source: { kind: "s3", s3: config.rollupS3 },

@@ -29,8 +29,6 @@ export interface RollupListOptions {
 
 export interface RollupStore {
 	appendRollups(records: WideRollupRecord[]): Promise<void> | void;
-	listRollups?(options?: RollupListOptions): Promise<WideRollupRecord[]>;
-	getRollup?(requestId: string): Promise<WideRollupRecord | null>;
 }
 
 export interface ActiveRequestAggregator {
@@ -63,7 +61,11 @@ export interface RollupQuery {
 export interface CollectorDependencies {
 	rawEventStore: RawEventStore;
 	rollupStore: RollupStore;
-	/** Optional — when set, GET /v1/rollups* uses this. Falls back to rollupStore. */
+	/**
+	 * Backs GET /v1/rollups* — a DuckDB-powered read engine over the
+	 * rollup NDJSON. Optional only so write-only tests can skip it;
+	 * createCollectorDeps always provides one in production.
+	 */
 	rollupQuery?: RollupQuery;
 	activeRequests: ActiveRequestAggregator;
 	triageDispatcher?: TriageDispatcher;

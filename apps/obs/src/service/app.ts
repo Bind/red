@@ -19,21 +19,11 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		return c.json(health, statusHttpCode(health.status));
 	});
 
-	// Prefer deps.rollupQuery (duckdb) when present; fall back to the writer
-	// store's optional read methods (native FileRollupStore / MinioRollupStore).
-	const listRollups = deps.rollupQuery
-		? deps.rollupQuery.listRollups.bind(deps.rollupQuery)
-		: deps.rollupStore.listRollups?.bind(deps.rollupStore);
-	const getRollup = deps.rollupQuery
-		? deps.rollupQuery.getRollup.bind(deps.rollupQuery)
-		: deps.rollupStore.getRollup?.bind(deps.rollupStore);
-	const aggregateRollups = deps.rollupQuery?.aggregateRollups?.bind(
-		deps.rollupQuery,
-	);
+	const query = deps.rollupQuery;
 
 	app.get("/v1/rollups", async (c) => {
-		if (!listRollups) {
-			return c.json({ error: "listRollups not supported by this store" }, 501);
+		if (!query) {
+			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
 		const service = c.req.query("service") ?? undefined;
 		const outcomeRaw = c.req.query("outcome");
@@ -50,16 +40,18 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		const limit = limitRaw
 			? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500)
 			: 100;
-		const records = await listRollups({ service, outcome, since, limit });
+		const records = await query.listRollups({
+			service,
+			outcome,
+			since,
+			limit,
+		});
 		return c.json({ rollups: records, count: records.length });
 	});
 
 	app.get("/v1/rollups/stats", async (c) => {
-		if (!aggregateRollups) {
-			return c.json(
-				{ error: "aggregate queries require OBS_QUERY_BACKEND=duckdb" },
-				501,
-			);
+		if (!query?.aggregateRollups) {
+			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
 		const groupByRaw = c.req.query("groupBy") ?? "entry_service";
 		const allowed = [
@@ -83,7 +75,7 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		const limit = limitRaw
 			? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500)
 			: 50;
-		const rows = await aggregateRollups({
+		const rows = await query.aggregateRollups({
 			groupBy: groupByRaw as (typeof allowed)[number],
 			since,
 			limit,
@@ -92,10 +84,10 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 	});
 
 	app.get("/v1/rollups/:request_id", async (c) => {
-		if (!getRollup) {
-			return c.json({ error: "getRollup not supported by this store" }, 501);
+		if (!query) {
+			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
-		const record = await getRollup(c.req.param("request_id"));
+		const record = await query.getRollup(c.req.param("request_id"));
 		if (!record) return c.json({ error: "not found" }, 404);
 		return c.json(record);
 	});

@@ -7,7 +7,6 @@ import type {
 import type {
 	AcceptedCollectorBatch,
 	RawEventStore,
-	RollupListOptions,
 	RollupStore,
 } from "../service/collector-service";
 import {
@@ -143,54 +142,5 @@ export class MinioRollupStore implements RollupStore {
 
 	async readRollupObject(key: string): Promise<string> {
 		return this.client.file(key).text();
-	}
-
-	async listRollups(
-		options: RollupListOptions = {},
-	): Promise<WideRollupRecord[]> {
-		const limit = options.limit ?? 100;
-		const end = new Date();
-		const start = options.since ?? new Date(end.getTime() - 14 * 86_400_000);
-		const prefixes = datePartitionsBetween(start, end)
-			.map((date) => joinKey(this.prefix, `date=${date}`))
-			.reverse();
-
-		const collected: WideRollupRecord[] = [];
-		outer: for (const prefix of prefixes) {
-			const keys = (await listAllKeys(this.client, prefix)).sort().reverse();
-			for (const key of keys) {
-				const text = await this.client.file(key).text();
-				for (const line of text.split("\n").reverse()) {
-					const trimmed = line.trim();
-					if (!trimmed) continue;
-					const record = JSON.parse(trimmed) as WideRollupRecord;
-					if (
-						options.service &&
-						record.entry_service !== options.service
-					)
-						continue;
-					if (
-						options.outcome &&
-						record.final_outcome !== options.outcome
-					)
-						continue;
-					if (
-						options.since &&
-						Date.parse(record.rolled_up_at) < options.since.getTime()
-					)
-						continue;
-					collected.push(record);
-					if (collected.length >= limit) break outer;
-				}
-			}
-		}
-
-		collected.sort((a, b) => b.rolled_up_at.localeCompare(a.rolled_up_at));
-		return collected.slice(0, limit);
-	}
-
-	async getRollup(requestId: string): Promise<WideRollupRecord | null> {
-		const rollups = await this.listRollups({ limit: 1000 });
-		return rollups.find((r) => r.request_id === requestId) ?? null;
 	}
 }
