@@ -5,6 +5,7 @@ import {
   getEnvelope,
   obsMiddleware,
 } from "@redc/obs";
+import { createCombinedSpec, mountDocs, scalarReference } from "@redc/server";
 import {
   createHostedRepoReader,
   splitHostedRepoId,
@@ -20,6 +21,7 @@ export interface BffConfig {
   authBaseUrl: string;
   obsBaseUrl?: string;
   triageBaseUrl?: string;
+  mcpBaseUrl?: string;
   disableAuth?: boolean;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
@@ -203,6 +205,11 @@ async function fetchSessionExchangeToken(
 
 export function createApp(config: BffConfig) {
   const app = new Hono();
+  mountDocs(app, {
+    name: "bff",
+    version: "0.1.0",
+    description: "Backend-for-frontend: session → JWT exchange, upstream proxies, combined OpenAPI spec.",
+  });
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
   const hostedRepoReader =
@@ -518,6 +525,37 @@ export function createApp(config: BffConfig) {
     });
 
   app.route("/rpc", rpc);
+
+  // Combined OpenAPI spec — aggregates every service's /openapi.json.
+  // Envoy routes /api/openapi.json + /api/docs to these endpoints.
+  app.get("/rpc/openapi.json", async (c) => {
+    const spec = await createCombinedSpec(
+      [
+        { name: "api",    baseUrl: config.apiBaseUrl,                     prefix: "/api" },
+        { name: "auth",   baseUrl: config.authBaseUrl,                    prefix: "/auth" },
+        { name: "bff",    baseUrl: `http://127.0.0.1:${config.port}`,     prefix: "/rpc" },
+        ...(config.obsBaseUrl    ? [{ name: "obs",    baseUrl: config.obsBaseUrl,    prefix: "/obs" }]    : []),
+        ...(config.triageBaseUrl ? [{ name: "triage", baseUrl: config.triageBaseUrl, prefix: "/triage" }] : []),
+        ...(config.mcpBaseUrl    ? [{ name: "mcp",    baseUrl: config.mcpBaseUrl,    prefix: "/mcp" }]    : []),
+      ],
+      {
+        title: "redc",
+        version: "0.1.0",
+        description: "Combined OpenAPI spec across every redc service.",
+      },
+      fetchImpl,
+    );
+    return c.json(spec);
+  });
+
+  app.get(
+    "/rpc/docs",
+    scalarReference({
+      specUrl: "/rpc/openapi.json",
+      pageTitle: "redc · API reference",
+    }),
+  );
+
   return app;
 }
 

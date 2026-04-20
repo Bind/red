@@ -1,5 +1,5 @@
-import { buildHealth, statusHttpCode } from "@redc/health";
-import { Hono } from "hono";
+import { createRoute, createService, z } from "@redc/server";
+import type { Hono } from "hono";
 import { OAuthIntrospector, oauthMiddleware } from "./auth";
 import type { McpConfig } from "./config";
 import type { McpEndpoint } from "./mcp-server";
@@ -11,18 +11,47 @@ export interface McpAppDeps {
 }
 
 export function createApp(deps: McpAppDeps): Hono {
-	const app = new Hono();
-	const introspector = deps.introspector ?? new OAuthIntrospector(deps.config);
+	const app = createService({
+		name: "mcp",
+		version: "0.1.0",
+		description:
+			"Model Context Protocol server over Streamable HTTP. Clients: Claude mobile/desktop, Cursor, etc.",
+	});
+	const introspector =
+		deps.introspector ?? new OAuthIntrospector(deps.config);
 
-	app.get("/health", (c) => {
-		const health = buildHealth({ service: "mcp" });
-		return c.json(health, statusHttpCode(health.status));
+	app.use("/mcp", oauthMiddleware(deps.config, introspector));
+
+	app.openapi(
+		createRoute({
+			method: "post",
+			path: "/mcp",
+			tags: ["mcp"],
+			summary: "MCP JSON-RPC (Streamable HTTP transport)",
+			description:
+				"Single endpoint for every MCP JSON-RPC message. Stateless mode — no session IDs. Requires Bearer token introspected via apps/auth.",
+			security: [{ bearer: [] }],
+			responses: {
+				200: {
+					description: "JSON-RPC response",
+					content: { "application/json": { schema: z.any() } },
+				},
+				401: { description: "Missing or inactive Bearer token" },
+				403: { description: "Token lacks the required scope" },
+			},
+		}),
+		async (c) => {
+			const response = await deps.mcp.handle(c.req.raw);
+			// hono's response typing expects a subset of Response; cast is safe.
+			return response as never;
+		},
+	);
+
+	// GET /mcp is a fallback for SDK inspector GETs; same handler.
+	app.get("/mcp", async (c) => {
+		const response = await deps.mcp.handle(c.req.raw);
+		return response as never;
 	});
 
-	// /mcp is the single Streamable HTTP endpoint — POSTs carry JSON-RPC
-	// requests; SDK-side handles optional SSE upgrades.
-	app.use("/mcp", oauthMiddleware(deps.config, introspector));
-	app.all("/mcp", (c) => deps.mcp.handle(c.req.raw));
-
-	return app;
+	return app as Hono;
 }

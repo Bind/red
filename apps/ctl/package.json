@@ -10,6 +10,7 @@
   "dependencies": {
     "@redc/health": "workspace:*",
     "@redc/obs": "workspace:*",
+    "@redc/server": "workspace:*",
     "hono": "^4.7.0",
     "yaml": "^2.7.0"
   },

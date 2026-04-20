@@ -8,6 +8,7 @@ import {
 } from "@redc/obs";
 import { parseSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
+import { mountDocs } from "@redc/server";
 import { Hono } from "hono";
 import { decodeJwt } from "jose";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
@@ -187,6 +188,11 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
   const app = new Hono<{ Variables: AppVariables }>();
+  mountDocs(app, {
+    name: "auth",
+    version: "0.1.0",
+    description: "Better Auth sessions + OAuth 2.1 token authority.",
+  });
   const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
   const startedAt = Date.now();
 

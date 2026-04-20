@@ -1,5 +1,5 @@
-import { buildHealth, statusHttpCode } from "@redc/health";
-import { Hono } from "hono";
+import { createService } from "@redc/server";
+import type { Hono } from "hono";
 import type { TriageOrchestrator } from "./orchestrator";
 import type { RunStore } from "./runs/store";
 import { TriageRunRequestSchema } from "./types";
@@ -10,13 +10,17 @@ export interface TriageAppDeps {
 }
 
 export function createApp(deps: TriageAppDeps): Hono {
-	const app = new Hono();
-
-	app.get("/health", (c) => {
-		const health = buildHealth({ service: "triage" });
-		return c.json(health, statusHttpCode(health.status));
+	const app = createService({
+		name: "triage",
+		version: "0.1.0",
+		description:
+			"Error-rollup triage orchestrator — investigate, approve, propose.",
 	});
 
+	// Routes use the existing Hono surface; Zod v4 schemas internal to this
+	// workspace aren't compatible with @hono/zod-openapi's v3-typed createRoute,
+	// so these paths don't appear in /openapi.json today. Documented in
+	// docs/openapi.md.
 	app.post("/v1/runs", async (c) => {
 		const payload = await c.req.json().catch(() => null);
 		const parsed = TriageRunRequestSchema.safeParse(payload);

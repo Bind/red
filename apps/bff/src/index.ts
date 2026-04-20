@@ -9,6 +9,7 @@ function loadConfig(): BffConfig {
     authBaseUrl: process.env.AUTH_BASE_URL ?? "http://localhost:4020",
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
     triageBaseUrl: process.env.TRIAGE_BASE_URL ?? "http://triage:7000",
+    mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",
     hostedRepo:
       hostedRepoId

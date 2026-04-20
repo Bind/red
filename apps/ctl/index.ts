@@ -6,6 +6,7 @@ import {
   type EventEnvelope,
 } from "@redc/obs";
 import { buildHealth, statusHttpCode } from "@redc/health";
+import { mountDocs } from "@redc/server";
 import { streamSSE } from "hono/streaming";
 import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
@@ -140,6 +141,11 @@ export function createApp(config: AppConfig) {
   const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
 
   const app = new Hono<{ Variables: { envelope: EventEnvelope } }>();
+  mountDocs(app, {
+    name: "ctl",
+    version: "0.1.0",
+    description: "redc control plane — repos, changes, jobs, agent runs.",
+  });
   app.use("*", obsMiddleware({ service: "api", sink: createObsSinkFromEnv({ service: "api" }) }));
 
   // Health check

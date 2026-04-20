@@ -38,11 +38,19 @@ static_resources:
                         - match: { prefix: "/recovery/" }
                           route: { cluster: redc_auth }
 
-                        # ── bff (frontend RPC + auth proxy) ────────────
+                        # ── bff (frontend RPC + auth proxy + combined spec) ──
                         - match: { prefix: "/rpc/" }
                           route: { cluster: redc_bff }
                         - match: { prefix: "/api/auth/" }
                           route: { cluster: redc_bff }
+                        - match: { path: "/api/openapi.json" }
+                          route:
+                            cluster: redc_bff
+                            prefix_rewrite: "/rpc/openapi.json"
+                        - match: { path: "/api/docs" }
+                          route:
+                            cluster: redc_bff
+                            prefix_rewrite: "/rpc/docs"
 
                         # ── obs (event ingest) ─────────────────────────
                         - match: { path: "/v1/events" }
