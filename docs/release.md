@@ -4,11 +4,14 @@ Releases are cut by publishing a **GitHub Release** in the repo. That event
 triggers `.github/workflows/release.yml`, which:
 
 1. Checks out the tag.
-2. Runs `just deploy-infra production` → `sst deploy` against Cloudflare + Hetzner.
-3. Writes the SSH private key from secrets.
-4. Runs `just deploy-ssh red.computer 2222` → rsync the working tree to
-   `/opt/redc` on the server and `docker compose -f infra/compose/prod.yml up -d --build`.
-5. Runs `just deploy-check https://red.computer` → curl `/health` and fail
+2. Builds and pushes the controlled service images to GHCR, tagged by commit SHA
+   and the release version.
+3. Runs `just deploy-infra production` → `sst deploy` against Cloudflare + Hetzner.
+4. Writes the SSH private key from secrets.
+5. Runs `just deploy-ssh red.computer 2222 <release-tag> <commit-sha>` → rsyncs the
+   working tree to `/opt/redc`, decrypts `.env.production`, pulls the tagged GHCR
+   images on the server, then `docker compose -f infra/compose/prod.yml up -d`.
+6. Runs `just deploy-check https://red.computer` → curl `/health` and fail
    the workflow unless `status == "ok"`.
 
 Only maintainers with repo write access can publish releases, so release
@@ -40,6 +43,9 @@ provisioned once on the server and survive every release:
 - `.env` — production env vars (`TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc.)
 - `*.db` / `*.db-wal` / `*.db-shm` — sqlite files
 - `node_modules`, `.git`, `.sst`
+
+Docker named volumes also survive every deploy; releases now pull immutable GHCR
+image tags instead of rebuilding service images on the box.
 
 First-time-server bootstrap still needs a `.env` file dropped in
 `/opt/redc/.env` manually.

@@ -13,9 +13,22 @@ env:
   DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
 
 jobs:
+  build-images:
+    name: build preview images
+    if: github.event.action != 'closed' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-images.yml
+    with:
+      git_commit: ${{ github.event.pull_request.head.sha }}
+      image_tag: ${{ github.event.pull_request.head.sha }}
+    secrets: inherit
+
   deploy:
     name: deploy preview
-    if: github.event.action != 'closed' && github.event.pull_request.draft == false
+    if: github.event.action != 'closed' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -54,7 +67,7 @@ jobs:
         run: echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
-        run: just deploy-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222
+        run: just deploy-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222 "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.head.sha }}"
 
       - name: Health check
         run: just preview-check "pr-${{ github.event.pull_request.number }}"

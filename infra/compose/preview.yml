@@ -10,7 +10,7 @@ name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required (e.g. preview-pr-
 services:
   gateway:
     container_name: ${COMPOSE_PROJECT_NAME}-gateway
-    build: ../gateway
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-gateway:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     environment:
       API_HOST: api
@@ -36,11 +36,7 @@ services:
 
   api:
     container_name: ${COMPOSE_PROJECT_NAME}-api
-    build:
-      context: ../..
-      dockerfile: infra/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-api:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     env_file:
       - /opt/redc-previews/.env
@@ -51,11 +47,7 @@ services:
 
   bff:
     container_name: ${COMPOSE_PROJECT_NAME}-bff
-    build:
-      context: ../..
-      dockerfile: apps/bff/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-bff:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - api
@@ -72,9 +64,7 @@ services:
 
   auth:
     container_name: ${COMPOSE_PROJECT_NAME}-auth
-    build:
-      context: ../../apps/auth
-      dockerfile: Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-auth:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - db-auth
@@ -114,11 +104,7 @@ services:
 
   obs:
     container_name: ${COMPOSE_PROJECT_NAME}-obs
-    build:
-      context: ../..
-      dockerfile: apps/obs/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-obs:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     environment:
       WIDE_EVENTS_HOST: 0.0.0.0
@@ -138,12 +124,7 @@ services:
 
   grs:
     container_name: ${COMPOSE_PROJECT_NAME}-grs
-    build:
-      context: ../../apps/grs
-      dockerfile: docker/gitty/Dockerfile
-      args:
-        GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-grs:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - s3
@@ -164,11 +145,7 @@ services:
 
   triage:
     container_name: ${COMPOSE_PROJECT_NAME}-triage
-    build:
-      context: ../..
-      dockerfile: apps/triage/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - triage-smithers
@@ -195,12 +172,7 @@ services:
 
   triage-smithers:
     container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
-    image: ${COMPOSE_PROJECT_NAME}-triage
-    build:
-      context: ../..
-      dockerfile: apps/triage/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     command: ["bun", "run", "apps/triage/src/smithers-server.ts"]
     environment:
@@ -223,22 +195,14 @@ services:
 
   web:
     container_name: ${COMPOSE_PROJECT_NAME}-web
-    build:
-      context: ../..
-      dockerfile: apps/web/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-web:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     networks:
       - default
 
   mcp:
     container_name: ${COMPOSE_PROJECT_NAME}-mcp
-    build:
-      context: ../..
-      dockerfile: apps/mcp/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-mcp:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - auth
