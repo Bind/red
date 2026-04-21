@@ -15,6 +15,8 @@ IMAGE_TAG="${4:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit>}"
 GIT_COMMIT="${5:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit>}"
 REMOTE_DIR="/opt/redc-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
+CADDY_SITES_DIR="/opt/redc-preview-caddy/caddy/sites"
+CADDY_SITE_FILE="${CADDY_SITES_DIR}/${SLUG}.caddy"
 
 echo "==> Ensuring remote dir ${REMOTE_DIR} exists"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
@@ -74,6 +76,26 @@ fi
 export IMAGE_TAG GIT_COMMIT
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml pull
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d
+
+mkdir -p "${CADDY_SITES_DIR}"
+cat > "${CADDY_SITE_FILE}" <<CADDY
+${SLUG}.preview.red.computer {
+    reverse_proxy ${PROJECT}-gateway:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        lb_try_duration 2s
+        fail_duration 10s
+    }
+
+    handle_errors {
+        @bad_gateway expression {http.error.status_code} == 502
+        respond @bad_gateway "preview ${SLUG} is not running" 404
+        respond "preview ${SLUG} is unhealthy" {http.error.status_code}
+    }
+}
+CADDY
+
+docker exec preview-caddy caddy reload --config /etc/caddy/Caddyfile
 REMOTE
 
 echo "==> Deployed preview ${SLUG} → https://${SLUG}.preview.red.computer"

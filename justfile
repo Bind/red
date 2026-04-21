@@ -375,7 +375,7 @@ deploy-ssh image_tag git_commit host="red.computer" port="2222":
 deploy-check url="https://red.computer":
     #!/usr/bin/env bash
     set -euo pipefail
-    body="$(curl -fsSL --retry 5 --retry-delay 5 --max-time 15 {{ url }}/health)"
+    body="$(curl -fsSL --retry 12 --retry-delay 5 --retry-all-errors --max-time 15 {{ url }}/health)"
     echo "$body" | jq .
     status="$(echo "$body" | jq -r .status)"
     if [ "$status" != "ok" ]; then

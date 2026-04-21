@@ -37,7 +37,7 @@ COPY apps/triage/package.json ./apps/triage/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/health/package.json ./pkg/health/
 COPY workflows/docs-review/package.json ./workflows/docs-review/
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile
 
 FROM base AS release
 ARG GIT_COMMIT=unknown
