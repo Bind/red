@@ -1,7 +1,7 @@
 # Image is used for BOTH the triage HTTP service (default CMD) and the
 # long-running smithers server (compose overrides CMD). git + ca-certs are
 # installed because the propose workflow can push branches to grs.
-ARG WORKSPACE_DEPS_IMAGE=ghcr.io/bind/red-workspace-deps-alpine:dev
+ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache git ca-certificates npm

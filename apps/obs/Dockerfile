@@ -1,4 +1,4 @@
-ARG WORKSPACE_DEPS_IMAGE=ghcr.io/bind/red-workspace-deps-debian:dev
+ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-debian:dev
 FROM oven/bun:1.3.10 AS base
 WORKDIR /app
 

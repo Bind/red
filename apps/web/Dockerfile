@@ -1,7 +1,7 @@
 # Two-stage: build the Vite bundle with bun, then serve the static assets
 # via nginx. The /health endpoint is a tiny static file so the service-health
 # contract applies uniformly.
-ARG WORKSPACE_DEPS_IMAGE=ghcr.io/bind/red-workspace-deps-alpine:dev
+ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
 FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps
 
 FROM oven/bun:1-alpine AS build

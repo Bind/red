@@ -28,8 +28,22 @@ down:
 
 # Rebuild app containers and the OpenCode runner image
 build:
+    just workspace-deps-build-local
     docker compose -f {{ DEV_COMPOSE }} build
     docker build -t redc-claw-runner apps/ocr/
+
+# Prebuild local workspace dependency layers shared by Dockerfiles
+workspace-deps-build-local:
+    docker build \
+        -f infra/Dockerfile.workspace-deps \
+        --build-arg BUN_IMAGE=oven/bun:1-alpine \
+        -t red-workspace-deps-alpine:dev \
+        .
+    docker build \
+        -f infra/Dockerfile.workspace-deps \
+        --build-arg BUN_IMAGE=oven/bun:1.3.10 \
+        -t red-workspace-deps-debian:dev \
+        .
 
 # Show local service status
 ps:
@@ -413,6 +427,7 @@ ci-health-contract sha:
 
 # Bring up the core stack; readiness is asserted explicitly by ci-health-probe
 ci-health-compose-up:
+    just workspace-deps-build-local
     docker compose -f {{ DEV_COMPOSE }} --env-file .env \
         up -d --build \
         s3 obs grs db-auth auth ctl bff
