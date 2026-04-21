@@ -53,11 +53,17 @@ services:
       - api
       - auth
       - obs
+      - grs
+      - triage
+      - mcp
     environment:
       BFF_PORT: 3001
       REDC_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
-      WIDE_EVENTS_COLLECTOR_URL: http://obs:4090
+      OBS_BASE_URL: http://obs:4090
+      TRIAGE_BASE_URL: http://triage:7000
+      GRS_BASE_URL: http://grs:8080
+      MCP_BASE_URL: http://mcp:3002
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     networks:
       - default
