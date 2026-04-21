@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOST="${1:?usage: bootstrap-dev-box.sh <host-or-ip>}"
-PORT="${2:-22}"
+PORT="${2:-2222}"
 REMOTE_SCRIPT="/root/setup-dev-box.sh"
 REMOTE_PREVIEW_ENV="/opt/redc-previews/.env.preview"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

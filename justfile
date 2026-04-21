@@ -364,7 +364,7 @@ deploy-infra stage="production":
     bunx sst deploy --stage {{ stage }}
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
-bootstrap-dev-box host port="22":
+bootstrap-dev-box host port="2222":
     ./infra/scripts/bootstrap-dev-box.sh {{ host }} {{ port }}
 
 # Rsync working tree to the host and pull/start infra/compose/prod.yml over ssh
