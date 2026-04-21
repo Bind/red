@@ -19,6 +19,7 @@ RUN bun install --frozen-lockfile
 FROM base AS release
 ARG GIT_COMMIT=unknown
 COPY --from=install /app/node_modules ./node_modules
+COPY --from=install /app/apps/bff/node_modules ./apps/bff/node_modules
 COPY apps/bff ./apps/bff
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
