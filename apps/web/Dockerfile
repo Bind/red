@@ -1,24 +1,15 @@
 # Two-stage: build the Vite bundle with bun, then serve the static assets
 # via nginx. The /health endpoint is a tiny static file so the service-health
 # contract applies uniformly.
+ARG WORKSPACE_DEPS_IMAGE=ghcr.io/bind/red-workspace-deps-alpine:dev
+FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps
+
 FROM oven/bun:1-alpine AS build
 WORKDIR /app
 ARG GIT_COMMIT=unknown
 
-COPY package.json bun.lock ./
-COPY apps/web/package.json ./apps/web/
-COPY apps/ctl/package.json ./apps/ctl/
-COPY apps/auth/package.json ./apps/auth/
-COPY apps/bff/package.json ./apps/bff/
-COPY apps/grs/package.json ./apps/grs/
-COPY apps/mcp/package.json ./apps/mcp/
-COPY apps/obs/package.json ./apps/obs/
-COPY apps/triage/package.json ./apps/triage/
-COPY pkg/obs/package.json ./pkg/obs/
-COPY pkg/health/package.json ./pkg/health/
-COPY workflows/docs-review/package.json ./workflows/docs-review/
-RUN bun install --frozen-lockfile
-
+COPY --from=workspace-deps /app/node_modules ./node_modules
+COPY --from=workspace-deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web ./apps/web
 COPY package.json ./
 ENV VITE_GIT_COMMIT=${GIT_COMMIT}
