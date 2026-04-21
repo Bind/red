@@ -37,6 +37,12 @@ echo "==> Decrypting .env.preview and pulling compose images (project=${PROJECT}
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" "bash -s" <<REMOTE
 set -euo pipefail
+
+if [ -f /root/.bashrc ]; then
+  # Load persisted dotenvx keys for non-interactive deploy shells.
+  . /root/.bashrc
+fi
+
 cd "${REMOTE_DIR}"
 
 if [ -z "\${DOTENV_PRIVATE_KEY_PREVIEW:-}" ]; then

@@ -415,7 +415,7 @@ ci-health-contract sha:
 ci-health-compose-up:
     docker compose -f {{ DEV_COMPOSE }} --env-file .env \
         up -d --build --wait --wait-timeout 600 \
-        s3 init obs grs db-auth auth ctl bff
+        s3 obs grs db-auth auth ctl bff
 
 # Probe each service's /health and assert the {service,status,commit} contract
 ci-health-probe:
