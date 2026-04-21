@@ -411,10 +411,10 @@ ci-health-contract sha:
         apps/obs/src/test/health-contract.test.ts \
         apps/triage/src/health-contract.test.ts
 
-# Bring up the core stack and wait for every healthcheck to pass
+# Bring up the core stack; readiness is asserted explicitly by ci-health-probe
 ci-health-compose-up:
     docker compose -f {{ DEV_COMPOSE }} --env-file .env \
-        up -d --build --wait --wait-timeout 600 \
+        up -d --build \
         s3 obs grs db-auth auth ctl bff
 
 # Probe each service's /health and assert the {service,status,commit} contract
@@ -431,7 +431,14 @@ ci-health-probe:
     for service in "${!endpoints[@]}"; do
       url="${endpoints[$service]}"
       echo "==> $service $url"
-      body=$(curl -fsSL "$url")
+      body=""
+      for _ in $(seq 1 60); do
+        if body=$(curl -fsSL "$url" 2>/dev/null); then
+          break
+        fi
+        sleep 2
+      done
+      [ -n "$body" ] || { echo "service did not become ready: $service"; exit 1; }
       echo "$body" | jq .
       got_service=$(echo "$body" | jq -r .service)
       got_status=$(echo "$body" | jq -r .status)
