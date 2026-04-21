@@ -38,9 +38,12 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" "bash -s" <<REMOTE
 set -euo pipefail
 
-if [ -f /root/.bashrc ]; then
-  # Load persisted dotenvx keys for non-interactive deploy shells.
-  . /root/.bashrc
+if [ -z "\${DOTENV_PRIVATE_KEY_PREVIEW:-}" ] && [ -f /root/.bashrc ]; then
+  # Load just the persisted preview dotenvx key without evaluating interactive shell setup.
+  preview_key_line=\$(grep -E '^export DOTENV_PRIVATE_KEY_PREVIEW=' /root/.bashrc | tail -n1 || true)
+  if [ -n "\${preview_key_line}" ]; then
+    export "\${preview_key_line#export }"
+  fi
 fi
 
 cd "${REMOTE_DIR}"
