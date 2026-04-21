@@ -2,7 +2,7 @@ FROM debian:bookworm-slim AS build
 
 ARG GITTY_REF=291bc674c5105ccb00b27273e7772cf6120149d5
 ARG ZIG_VERSION=0.16.0-dev.3061+9b1eaad13
-ARG ZIG_TARBALL=https://ziglang.org/builds/zig-aarch64-linux-${ZIG_VERSION}.tar.xz
+ARG TARGETARCH
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl git python3 xz-utils && \
@@ -10,7 +10,12 @@ RUN apt-get update && \
 
 WORKDIR /tmp
 
-RUN curl -fsSL "${ZIG_TARBALL}" -o zig.tar.xz && \
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) zig_arch="x86_64" ;; \
+      arm64) zig_arch="aarch64" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://ziglang.org/builds/zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz" -o zig.tar.xz && \
     mkdir -p /opt/zig && \
     tar -xJf zig.tar.xz -C /opt/zig --strip-components=1
 
