@@ -63,7 +63,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy code (rsync + docker compose up)
-        run: just deploy-ssh red.computer 2222 "${{ github.event.release.tag_name }}" "${{ github.sha }}"
+        run: just deploy-ssh "${{ github.event.release.tag_name }}" "${{ github.sha }}" red.computer 2222
 
       - name: Post-deploy health check
         run: just deploy-check https://red.computer

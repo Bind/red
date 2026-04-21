@@ -31,7 +31,7 @@ jobs:
             context: .
             dockerfile: apps/bff/Dockerfile
           - image_name: red-auth
-            context: apps/auth
+            context: .
             dockerfile: apps/auth/Dockerfile
           - image_name: red-obs
             context: .

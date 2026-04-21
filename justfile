@@ -368,7 +368,7 @@ bootstrap-dev-box host port="22":
     ./infra/scripts/bootstrap-dev-box.sh {{ host }} {{ port }}
 
 # Rsync working tree to the host and pull/start infra/compose/prod.yml over ssh
-deploy-ssh host="red.computer" port="2222" image_tag git_commit:
+deploy-ssh image_tag git_commit host="red.computer" port="2222":
     ./infra/scripts/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 
 # Curl the post-deploy health endpoint and fail unless status=="ok"
@@ -384,7 +384,7 @@ deploy-check url="https://red.computer":
     fi
 
 # Deploy a per-PR preview (slug like pr-42) to the dev box
-deploy-preview slug host port="2222" image_tag git_commit:
+deploy-preview slug host image_tag git_commit port="2222":
     ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 
 # Tear down a per-PR preview
