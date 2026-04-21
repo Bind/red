@@ -662,3 +662,34 @@ export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
   if (!res.ok) throw new ApiError(`triage runs ${res.status}`, res.status);
   return res.json();
 }
+
+export type ServiceProbeStatus = "ok" | "error" | "unconfigured";
+
+export interface ServiceStatusProbe {
+  service: string;
+  url: string | null;
+  status: ServiceProbeStatus;
+  http_status: number | null;
+  latency_ms: number | null;
+  checked_at: string;
+  body: unknown | null;
+  error: string | null;
+}
+
+export interface ServiceStatusReport {
+  checked_at: string;
+  overall_status: "ok" | "degraded";
+  services: ServiceStatusProbe[];
+}
+
+export async function fetchStatusReport(): Promise<ServiceStatusReport> {
+  const res = await fetch("/rpc/status");
+  const body = (await res.json().catch(() => null)) as ServiceStatusReport | null;
+  if (!res.ok && !body) {
+    throw new ApiError(`status ${res.status}`, res.status);
+  }
+  if (!body) {
+    throw new ApiError("status response missing body", res.status);
+  }
+  return body;
+}

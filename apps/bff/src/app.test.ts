@@ -3,6 +3,85 @@ import { createApp } from "./app";
 import type { HostedRepoSnapshot } from "./hosted-repo";
 
 describe("BFF app", () => {
+  test("aggregates status across configured services", async () => {
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      obsBaseUrl: "http://obs.test",
+      triageBaseUrl: "http://triage.test",
+      grsBaseUrl: "http://grs.test",
+      mcpBaseUrl: "http://mcp.test",
+      fetchImpl: async (input) => {
+        const request = input instanceof Request ? input : new Request(input);
+        const url = new URL(request.url);
+        if (url.pathname !== "/health") {
+          return new Response("not found", { status: 404 });
+        }
+        switch (url.host) {
+          case "api.test":
+          case "auth.test":
+          case "grs.test":
+            return Response.json({ service: url.host.split(".")[0], status: "ok" });
+          case "obs.test":
+            return Response.json({ error: "duckdb unavailable" }, { status: 503 });
+          case "triage.test":
+            throw new Error("connect ECONNREFUSED");
+          case "mcp.test":
+            return Response.json({ service: "mcp", status: "ok" });
+          default:
+            return new Response("not found", { status: 404 });
+        }
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/status", {
+      headers: {
+        "x-request-id": "status-probe-1",
+      },
+    });
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.overall_status).toBe("degraded");
+    expect(body.services).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          service: "bff",
+          status: "ok",
+          http_status: 200,
+        }),
+        expect.objectContaining({
+          service: "api",
+          status: "ok",
+          http_status: 200,
+        }),
+        expect.objectContaining({
+          service: "obs",
+          status: "error",
+          http_status: 503,
+          error: "duckdb unavailable",
+        }),
+        expect.objectContaining({
+          service: "triage",
+          status: "error",
+          http_status: null,
+          error: "connect ECONNREFUSED",
+        }),
+        expect.objectContaining({
+          service: "grs",
+          status: "ok",
+          http_status: 200,
+        }),
+        expect.objectContaining({
+          service: "mcp",
+          status: "ok",
+          http_status: 200,
+        }),
+      ]),
+    );
+  });
+
   test("reports dependency-aware health", async () => {
     const app = createApp({
       port: 3001,
