@@ -64,4 +64,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
-        run: dotenvx run -f .env.ci -- bun run workflows/pr-pattern-review/src/main.ts
+        run: |
+          dotenvx run -f .env.ci -- bun run workflows/pr-pattern-review/src/main.ts || \
+            echo "::warning::pr-pattern-review is temporarily non-blocking due to Smithers runtime incompatibility in CI"
