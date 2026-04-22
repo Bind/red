@@ -30,8 +30,8 @@ export const DiffAnalysisSchema = z.object({
 
 export const EvidenceRefSchema = z.object({
 	path: z.string(),
-	line: z.number().int().positive().optional(),
-	quote: z.string().optional(),
+	line: z.number().int().positive().nullable(),
+	quote: z.string().nullable(),
 });
 
 export const FindingSchema = z.object({
@@ -40,7 +40,7 @@ export const FindingSchema = z.object({
 	claim: z.string(),
 	evidence: z.array(EvidenceRefSchema),
 	severity: z.enum(["critical", "major", "minor", "nit"]),
-	suggestion: z.string().optional(),
+	suggestion: z.string().nullable(),
 });
 
 export type Finding = z.infer<typeof FindingSchema>;

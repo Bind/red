@@ -79,7 +79,8 @@ async function runSmithers(options: {
 		const child = spawn(
 			"bunx",
 			[
-				"smithers-orchestrator",
+				"--no-install",
+				"smithers",
 				"up",
 				options.workflowPath,
 				"--run-id",
@@ -175,6 +176,7 @@ async function main() {
 		dirname(new URL(import.meta.url).pathname),
 		"./workflow.tsx",
 	);
+	const workflowDir = resolve(dirname(workflowPath), "..");
 
 	console.log(`running smithers workflow (runId=${runId})…`);
 	try {
@@ -183,7 +185,7 @@ async function main() {
 			inputPath,
 			dbPath,
 			runId,
-			cwd: repoRoot,
+			cwd: workflowDir,
 		});
 
 		const report = readFindings(dbPath, runId);
