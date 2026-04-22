@@ -23,6 +23,9 @@ jobs:
     with:
       git_commit: ${{ github.event.pull_request.head.sha }}
       image_tag: ${{ github.event.pull_request.head.sha }}
+      runner_label: ubuntu-24.04-arm
+      platforms: linux/arm64
+      enable_qemu: false
     secrets: inherit
 
   deploy:
