@@ -17,6 +17,10 @@ REMOTE_DIR="/opt/redc-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
 CADDY_SITES_DIR="/opt/redc-preview-caddy/caddy/sites"
 CADDY_SITE_FILE="${CADDY_SITES_DIR}/${SLUG}.caddy"
+PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
+PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
+PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
+PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
 
 echo "==> Ensuring remote dir ${REMOTE_DIR} exists"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
@@ -37,7 +41,12 @@ rsync -avz --delete \
 
 echo "==> Decrypting .env.preview and pulling compose images (project=${PROJECT})"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
-  IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" "bash -s" <<REMOTE
+  IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" \
+  PREVIEW_PUBLIC_URL="${PREVIEW_PUBLIC_URL}" \
+  PREVIEW_WEB_CLIENTS="${PREVIEW_WEB_CLIENTS}" \
+  PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PASSKEY_ORIGINS}" \
+  PREVIEW_PASSKEY_RP_IDS="${PREVIEW_PASSKEY_RP_IDS}" \
+  "bash -s" <<REMOTE
 set -euo pipefail
 
 if [ -z "\${DOTENV_PRIVATE_KEY_PREVIEW:-}" ] && [ -f /root/.bashrc ]; then
@@ -73,11 +82,7 @@ if [ -n "\${GHCR_USERNAME:-}" ] && [ -n "\${GHCR_TOKEN:-}" ]; then
   printf '%s' "\${GHCR_TOKEN}" | docker login ghcr.io -u "\${GHCR_USERNAME}" --password-stdin
 fi
 
-export IMAGE_TAG GIT_COMMIT
-export PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
-export PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
-export PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
-export PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
+export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml pull
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d
 
