@@ -12,6 +12,7 @@ COPY --from=install /app/node_modules ./node_modules
 COPY --from=install /app/apps/auth/node_modules ./apps/auth/node_modules
 COPY apps/auth ./apps/auth
 COPY pkg/obs ./pkg/obs
+COPY pkg/server ./pkg/server
 COPY package.json ./
 
 WORKDIR /app/apps/auth

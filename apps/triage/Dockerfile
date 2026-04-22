@@ -18,6 +18,7 @@ COPY --from=install /app/apps/triage/node_modules ./apps/triage/node_modules
 COPY apps/triage ./apps/triage
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
+COPY pkg/server ./pkg/server
 COPY package.json ./
 
 ENV TRIAGE_PORT=7000

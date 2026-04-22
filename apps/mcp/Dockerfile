@@ -13,6 +13,7 @@ COPY --from=install /app/apps/mcp/node_modules ./apps/mcp/node_modules
 COPY apps/mcp ./apps/mcp
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
+COPY pkg/server ./pkg/server
 COPY package.json ./
 
 ENV MCP_PORT=3002

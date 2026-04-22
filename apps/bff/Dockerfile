@@ -13,6 +13,7 @@ COPY --from=install /app/apps/bff/node_modules ./apps/bff/node_modules
 COPY apps/bff ./apps/bff
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
+COPY pkg/server ./pkg/server
 COPY package.json ./
 
 ENV BFF_PORT=3001

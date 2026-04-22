@@ -13,6 +13,7 @@ COPY --from=install /app/apps/obs/node_modules ./apps/obs/node_modules
 COPY apps/obs ./apps/obs
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
+COPY pkg/server ./pkg/server
 COPY package.json ./
 
 ENV GIT_COMMIT=${GIT_COMMIT}

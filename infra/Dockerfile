@@ -14,6 +14,7 @@ COPY --from=install /app/apps/ctl/node_modules ./apps/ctl/node_modules
 COPY apps/ctl ./apps/ctl
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
+COPY pkg/server ./pkg/server
 COPY package.json tsconfig.json ./
 
 EXPOSE 3000
