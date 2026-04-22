@@ -9,6 +9,8 @@ function loadConfig(): BffConfig {
     authBaseUrl: process.env.AUTH_BASE_URL ?? "http://localhost:4020",
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
     triageBaseUrl: process.env.TRIAGE_BASE_URL ?? "http://triage:7000",
+    grsBaseUrl: process.env.GRS_BASE_URL ?? "http://grs:8080",
+    mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",
     hostedRepo:
       hostedRepoId
@@ -27,6 +29,8 @@ const app = createApp(config);
 console.log(`BFF listening on http://0.0.0.0:${config.port}`);
 console.log(`API upstream: ${config.apiBaseUrl}`);
 console.log(`Auth upstream: ${config.authBaseUrl}`);
+console.log(`GRS upstream: ${config.grsBaseUrl}`);
+console.log(`MCP upstream: ${config.mcpBaseUrl}`);
 if (config.hostedRepo) {
   console.log(`Hosted repo app: ${config.hostedRepo.repoId}`);
 }

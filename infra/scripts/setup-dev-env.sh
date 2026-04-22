@@ -134,6 +134,18 @@ if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
   echo "Building Claw runner image..."
   docker build -t redc-claw-runner apps/ocr/
 
+  echo "Building shared workspace dependency images..."
+  docker build \
+    -f infra/Dockerfile.workspace-deps \
+    --build-arg BUN_IMAGE=oven/bun:1-alpine \
+    -t red-workspace-deps-alpine:dev \
+    .
+  docker build \
+    -f infra/Dockerfile.workspace-deps \
+    --build-arg BUN_IMAGE=oven/bun:1.3.10 \
+    -t red-workspace-deps-debian:dev \
+    .
+
   echo "Building Docker-backed dev services..."
   docker compose --env-file .env -f "$COMPOSE_FILE" build grs ctl
 else

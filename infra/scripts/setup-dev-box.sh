@@ -19,6 +19,7 @@ CADDY_DIR="/opt/redc-preview-caddy"
 CADDY_COMPOSE="${CADDY_DIR}/compose.yml"
 CADDY_CONFIG_DIR="${CADDY_DIR}/caddy"
 CADDYFILE="${CADDY_CONFIG_DIR}/preview.Caddyfile"
+CADDY_SITES_DIR="${CADDY_CONFIG_DIR}/sites"
 
 wait_for_apt() {
   local attempts="${1:-60}"
@@ -53,7 +54,7 @@ mkdir -p "${PREVIEWS_DIR}"
 chmod 755 "${PREVIEWS_DIR}"
 
 echo "==> mkdir ${CADDY_DIR}"
-mkdir -p "${CADDY_CONFIG_DIR}"
+mkdir -p "${CADDY_SITES_DIR}"
 
 echo "==> Creating docker network ${PREVIEW_NET}"
 if ! docker network inspect "${PREVIEW_NET}" >/dev/null 2>&1; then
@@ -95,12 +96,13 @@ services:
   caddy:
     container_name: preview-caddy
     image: caddy:2-alpine
+    command: ["caddy", "run", "--config", "/etc/caddy/preview.Caddyfile", "--adapter", "caddyfile"]
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./caddy/preview.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro
       - preview-caddy-data:/data
       - preview-caddy-config:/config
     networks:
@@ -117,27 +119,7 @@ COMPOSE
 
 echo "==> Writing preview Caddyfile at ${CADDYFILE}"
 cat > "${CADDYFILE}" <<'CADDY'
-*.preview.red.computer {
-    @notpreview host preview.red.computer
-    respond @notpreview "no preview slug" 404
-
-    reverse_proxy preview-{labels.3}-gateway:8080 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        lb_try_duration 2s
-        fail_duration 10s
-    }
-
-    handle_errors {
-        @bad_gateway expression {http.error.status_code} == 502
-        respond @bad_gateway "preview {labels.3} is not running" 404
-        respond "preview {labels.3} is unhealthy" {http.error.status_code}
-    }
-}
-
-preview.red.computer {
-    respond "redc previews — visit https://pr-N.preview.red.computer" 200
-}
+import /etc/caddy/sites/*.caddy
 CADDY
 
 if [[ -n "${DOTENV_PRIVATE_KEY_PREVIEW:-}" ]]; then

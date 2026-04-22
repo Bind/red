@@ -1,4 +1,4 @@
-name: Docs review
+name: PR pattern review
 
 on:
   pull_request_target:
@@ -8,7 +8,7 @@ env:
   DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
 
 jobs:
-  docs-review:
+  pr-pattern-review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
@@ -56,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run docs review
+      - name: Run PR pattern review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -64,4 +64,4 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
-        run: dotenvx run -f .env.ci -- bun run workflows/docs-review/src/main.ts
+        run: dotenvx run -f .env.ci -- bun run workflows/pr-pattern-review/src/main.ts

@@ -39,6 +39,17 @@ export function Layout() {
                   redc
                 </h1>
               </Link>
+              <nav className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <Link to="/" className="transition-colors hover:text-foreground">
+                  repo
+                </Link>
+                <Link to="/triage" className="transition-colors hover:text-foreground">
+                  triage
+                </Link>
+                <Link to="/status" className="transition-colors hover:text-foreground">
+                  status
+                </Link>
+              </nav>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="outline">
                   {getAuthLifecycleState(status, me).replace(/_/g, " ")}

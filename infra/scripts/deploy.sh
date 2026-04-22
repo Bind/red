@@ -4,13 +4,15 @@ set -euo pipefail
 # Deploys the current working tree to the Hetzner host via rsync + ssh.
 # The encrypted .env.production is rsynced and decrypted in place on the box
 # using DOTENV_PRIVATE_KEY_PRODUCTION (exported in the box's shell profile).
+# Compose then pulls immutable GHCR tags rather than building locally.
 #
-# Usage: ./infra/scripts/deploy.sh <host> [ssh-port]
+# Usage: ./infra/scripts/deploy.sh <host> [ssh-port] <image-tag> <git-commit>
 
 HOST="${1:?Usage: $0 <host> [ssh-port]}"
 SSH_PORT="${2:-2222}"
+IMAGE_TAG="${3:?Usage: $0 <host> [ssh-port] <image-tag> <git-commit>}"
+GIT_COMMIT="${4:?Usage: $0 <host> [ssh-port] <image-tag> <git-commit>}"
 REMOTE_DIR="/opt/redc"
-COMPOSE_FILE="infra/compose/prod.yml"
 
 echo "==> Syncing files to ${HOST} (port ${SSH_PORT})"
 rsync -avz --delete \
@@ -25,8 +27,9 @@ rsync -avz --delete \
   -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
   ./ "root@${HOST}:${REMOTE_DIR}/"
 
-echo "==> Decrypting .env.production and bringing up compose"
-ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" "bash -s" <<'REMOTE'
+echo "==> Decrypting .env.production and pulling compose images"
+ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
+  IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" "bash -s" <<'REMOTE'
 set -euo pipefail
 cd /opt/redc
 
@@ -44,7 +47,17 @@ fi
 dotenvx decrypt -f .env.production -o .env
 chmod 600 .env
 
-docker compose -f infra/compose/prod.yml up -d --build
+set -a
+. ./.env
+set +a
+
+if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
+  printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+fi
+
+export IMAGE_TAG GIT_COMMIT
+docker compose -f infra/compose/prod.yml pull
+docker compose -f infra/compose/prod.yml up -d
 REMOTE
 
 echo "==> Deployed to https://${HOST}"

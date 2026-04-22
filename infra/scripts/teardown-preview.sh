@@ -9,6 +9,7 @@ HOST="${2:?Usage: $0 <slug> <host> [ssh-port]}"
 SSH_PORT="${3:-2222}"
 REMOTE_DIR="/opt/redc-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
+CADDY_SITE_FILE="/opt/redc-preview-caddy/caddy/sites/${SLUG}.caddy"
 
 echo "==> Tearing down preview ${SLUG} on ${HOST}"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" "bash -s" <<REMOTE
@@ -21,6 +22,11 @@ if [ -d "${REMOTE_DIR}" ]; then
   echo "==> Removed ${REMOTE_DIR}"
 else
   echo "==> ${REMOTE_DIR} does not exist; nothing to do"
+fi
+
+rm -f "${CADDY_SITE_FILE}"
+if docker ps --format '{{.Names}}' | grep -qx preview-caddy; then
+  docker exec preview-caddy caddy reload --config /etc/caddy/preview.Caddyfile || true
 fi
 REMOTE
 

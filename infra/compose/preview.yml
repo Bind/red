@@ -10,7 +10,7 @@ name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required (e.g. preview-pr-
 services:
   gateway:
     container_name: ${COMPOSE_PROJECT_NAME}-gateway
-    build: ../gateway
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-gateway:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     environment:
       API_HOST: api
@@ -36,14 +36,21 @@ services:
 
   api:
     container_name: ${COMPOSE_PROJECT_NAME}-api
-    build:
-      context: ../..
-      dockerfile: infra/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-api:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     env_file:
       - /opt/redc-previews/.env
+    environment:
+      REDC_PORT: 3000
+      REDC_DB_PATH: /data/redc-preview.db
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:
       - api-data:/data
     networks:
@@ -51,37 +58,55 @@ services:
 
   bff:
     container_name: ${COMPOSE_PROJECT_NAME}-bff
-    build:
-      context: ../..
-      dockerfile: apps/bff/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-bff:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - api
       - auth
       - obs
+      - grs
+      - triage
+      - mcp
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       BFF_PORT: 3001
       REDC_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
-      WIDE_EVENTS_COLLECTOR_URL: http://obs:4090
+      OBS_BASE_URL: http://obs:4090
+      TRIAGE_BASE_URL: http://triage:7000
+      GRS_BASE_URL: http://grs:8080
+      MCP_BASE_URL: http://mcp:3002
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     networks:
       - default
 
   auth:
     container_name: ${COMPOSE_PROJECT_NAME}-auth
-    build:
-      context: ../../apps/auth
-      dockerfile: Dockerfile
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-auth:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - db-auth
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
+      AUTH_LAB_ISSUER: ${PREVIEW_PUBLIC_URL:?PREVIEW_PUBLIC_URL is required}
+      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-redc-api}
+      AUTH_LAB_WEB_CLIENTS: ${PREVIEW_WEB_CLIENTS:?PREVIEW_WEB_CLIENTS is required}
+      AUTH_LAB_PASSKEY_ORIGINS: ${PREVIEW_PASSKEY_ORIGINS:?PREVIEW_PASSKEY_ORIGINS is required}
+      AUTH_LAB_PASSKEY_RP_IDS: ${PREVIEW_PASSKEY_RP_IDS:-preview.red.computer}
+      AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-true}
       AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@db-auth:5432/${AUTH_DB_NAME:-auth_lab}
+      AUTH_LAB_BETTER_AUTH_SECRET: ${AUTH_BETTER_AUTH_SECRET:?AUTH_BETTER_AUTH_SECRET is required}
+      AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-preview}
+      AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: ${AUTH_BOOTSTRAP_CLIENT_SECRET:-auth-lab-preview-client-secret}
+      AUTH_LAB_BOOTSTRAP_SCOPES: ${AUTH_BOOTSTRAP_SCOPES:-prs:create changes:read}
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
+      AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
+      AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
+      AUTH_LAB_SIGNING_PRIVATE_JWK: ${AUTH_LAB_SIGNING_PRIVATE_JWK:?AUTH_LAB_SIGNING_PRIVATE_JWK is required}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     networks:
       - default
@@ -114,12 +139,10 @@ services:
 
   obs:
     container_name: ${COMPOSE_PROJECT_NAME}-obs
-    build:
-      context: ../..
-      dockerfile: apps/obs/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-obs:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       WIDE_EVENTS_HOST: 0.0.0.0
       WIDE_EVENTS_PORT: 4090
@@ -138,15 +161,12 @@ services:
 
   grs:
     container_name: ${COMPOSE_PROJECT_NAME}-grs
-    build:
-      context: ../../apps/grs
-      dockerfile: docker/gitty/Dockerfile
-      args:
-        GITTY_REF: ${GITTY_REF:-291bc674c5105ccb00b27273e7772cf6120149d5}
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-grs:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - s3
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       GIT_SERVER_PORT: 8080
       GIT_SERVER_S3_ENDPOINT: http://s3:9000
@@ -164,14 +184,12 @@ services:
 
   triage:
     container_name: ${COMPOSE_PROJECT_NAME}-triage
-    build:
-      context: ../..
-      dockerfile: apps/triage/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - triage-smithers
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       TRIAGE_PORT: 7000
       TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
@@ -195,14 +213,11 @@ services:
 
   triage-smithers:
     container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
-    image: ${COMPOSE_PROJECT_NAME}-triage
-    build:
-      context: ../..
-      dockerfile: apps/triage/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     command: ["bun", "run", "apps/triage/src/smithers-server.ts"]
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       SMITHERS_SERVER_PORT: 7331
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
@@ -223,25 +238,19 @@ services:
 
   web:
     container_name: ${COMPOSE_PROJECT_NAME}-web
-    build:
-      context: ../..
-      dockerfile: apps/web/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-web:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     networks:
       - default
 
   mcp:
     container_name: ${COMPOSE_PROJECT_NAME}-mcp
-    build:
-      context: ../..
-      dockerfile: apps/mcp/Dockerfile
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-mcp:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     depends_on:
       - auth
+    env_file:
+      - /opt/redc-previews/.env
     environment:
       MCP_PORT: 3002
       MCP_AUTH_BASE_URL: http://auth:4020

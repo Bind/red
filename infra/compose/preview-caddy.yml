@@ -6,12 +6,13 @@ services:
   caddy:
     container_name: preview-caddy
     image: caddy:2-alpine
+    command: ["caddy", "run", "--config", "/etc/caddy/preview.Caddyfile", "--adapter", "caddyfile"]
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./caddy/preview.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro
       - preview-caddy-data:/data
       - preview-caddy-config:/config
     networks:

@@ -13,8 +13,21 @@ env:
   DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
 
 jobs:
+  build-images:
+    name: build release images
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-images.yml
+    with:
+      git_commit: ${{ github.sha }}
+      image_tag: ${{ github.sha }}
+      release_tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
   release:
     name: sst deploy + ssh deploy + health check
+    needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -50,7 +63,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy code (rsync + docker compose up)
-        run: just deploy-ssh red.computer 2222
+        run: just deploy-ssh "${{ github.event.release.tag_name }}" "${{ github.sha }}" red.computer 2222
 
       - name: Post-deploy health check
         run: just deploy-check https://red.computer

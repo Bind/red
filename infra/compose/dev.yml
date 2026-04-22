@@ -43,7 +43,7 @@ services:
 
   obs:
     container_name: obs
-    image: oven/bun:1-alpine
+    image: oven/bun:1
     restart: unless-stopped
     depends_on:
       - s3

@@ -14,13 +14,17 @@ default:
 setup:
     ./infra/scripts/setup-dev-env.sh
 
-# Start all local services in Docker without forcing rebuilds
+# Start the local stack with fresh image builds and hot-reload mounts
 up:
+    ./infra/scripts/setup-dev-env.sh
+
+# Start the local stack without rebuilding Docker images
+up-fast:
     SKIP_IMAGE_BUILD=true ./infra/scripts/setup-dev-env.sh
 
-# Rebuild Docker images, then start the full stack
+# Back-compat alias for explicit build+start
 up-build:
-    ./infra/scripts/setup-dev-env.sh
+    just up
 
 # Stop all local services
 down:
@@ -28,8 +32,22 @@ down:
 
 # Rebuild app containers and the OpenCode runner image
 build:
+    just workspace-deps-build-local
     docker compose -f {{ DEV_COMPOSE }} build
     docker build -t redc-claw-runner apps/ocr/
+
+# Prebuild local workspace dependency layers shared by Dockerfiles
+workspace-deps-build-local:
+    docker build \
+        -f infra/Dockerfile.workspace-deps \
+        --build-arg BUN_IMAGE=oven/bun:1-alpine \
+        -t red-workspace-deps-alpine:dev \
+        .
+    docker build \
+        -f infra/Dockerfile.workspace-deps \
+        --build-arg BUN_IMAGE=oven/bun:1.3.10 \
+        -t red-workspace-deps-debian:dev \
+        .
 
 # Show local service status
 ps:
@@ -364,18 +382,18 @@ deploy-infra stage="production":
     bunx sst deploy --stage {{ stage }}
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
-bootstrap-dev-box host port="22":
+bootstrap-dev-box host port="2222":
     ./infra/scripts/bootstrap-dev-box.sh {{ host }} {{ port }}
 
-# Rsync working tree to the host and bring up infra/compose/prod.yml over ssh
-deploy-ssh host="red.computer" port="2222":
-    ./infra/scripts/deploy.sh {{ host }} {{ port }}
+# Rsync working tree to the host and pull/start infra/compose/prod.yml over ssh
+deploy-ssh image_tag git_commit host="red.computer" port="2222":
+    ./infra/scripts/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 
 # Curl the post-deploy health endpoint and fail unless status=="ok"
 deploy-check url="https://red.computer":
     #!/usr/bin/env bash
     set -euo pipefail
-    body="$(curl -fsSL --retry 5 --retry-delay 5 --max-time 15 {{ url }}/health)"
+    body="$(curl -fsSL --retry 12 --retry-delay 5 --retry-all-errors --max-time 15 {{ url }}/health)"
     echo "$body" | jq .
     status="$(echo "$body" | jq -r .status)"
     if [ "$status" != "ok" ]; then
@@ -384,8 +402,8 @@ deploy-check url="https://red.computer":
     fi
 
 # Deploy a per-PR preview (slug like pr-42) to the dev box
-deploy-preview slug host port="2222":
-    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }}
+deploy-preview slug host image_tag git_commit port="2222":
+    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 
 # Tear down a per-PR preview
 teardown-preview slug host port="2222":
@@ -411,11 +429,12 @@ ci-health-contract sha:
         apps/obs/src/test/health-contract.test.ts \
         apps/triage/src/health-contract.test.ts
 
-# Bring up the core stack and wait for every healthcheck to pass
+# Bring up the core stack; readiness is asserted explicitly by ci-health-probe
 ci-health-compose-up:
+    just workspace-deps-build-local
     docker compose -f {{ DEV_COMPOSE }} --env-file .env \
-        up -d --build --wait --wait-timeout 600 \
-        s3 init obs grs db-auth auth ctl bff
+        up -d --build \
+        s3 obs grs db-auth auth ctl bff
 
 # Probe each service's /health and assert the {service,status,commit} contract
 ci-health-probe:
@@ -431,7 +450,14 @@ ci-health-probe:
     for service in "${!endpoints[@]}"; do
       url="${endpoints[$service]}"
       echo "==> $service $url"
-      body=$(curl -fsSL "$url")
+      body=""
+      for _ in $(seq 1 60); do
+        if body=$(curl -fsSL "$url" 2>/dev/null); then
+          break
+        fi
+        sleep 2
+      done
+      [ -n "$body" ] || { echo "service did not become ready: $service"; exit 1; }
       echo "$body" | jq .
       got_service=$(echo "$body" | jq -r .service)
       got_status=$(echo "$body" | jq -r .status)

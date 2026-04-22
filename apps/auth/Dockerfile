@@ -1,13 +1,20 @@
-FROM oven/bun:1.3.10
+ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-debian:dev
+FROM oven/bun:1.3.10 AS base
 
 WORKDIR /app
 
-COPY package.json bun.lock tsconfig.json ./
-RUN bun install --frozen-lockfile
+FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps
 
-COPY src ./src
-COPY README.md ./README.md
-COPY compose ./compose
+FROM workspace-deps AS install
+
+FROM base AS release
+COPY --from=install /app/node_modules ./node_modules
+COPY --from=install /app/apps/auth/node_modules ./apps/auth/node_modules
+COPY apps/auth ./apps/auth
+COPY pkg/obs ./pkg/obs
+COPY package.json ./
+
+WORKDIR /app/apps/auth
 
 EXPOSE 4020
 

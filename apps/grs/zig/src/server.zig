@@ -189,9 +189,9 @@ fn handleRequest(
     p("{s} ({d}B)\n", .{ req_line, body.len });
 
     if (std.mem.eql(u8, method, "GET") and std.mem.eql(u8, path, "/health")) {
-        const commit_env = std.posix.getenv("GIT_COMMIT");
+        const commit_env = std.c.getenv("GIT_COMMIT");
         const commit: []const u8 = if (commit_env) |c|
-            (if (c.len == 0) "unknown" else c)
+            (if (std.mem.span(c).len == 0) "unknown" else std.mem.span(c))
         else
             "unknown";
         var buf: [256]u8 = undefined;
