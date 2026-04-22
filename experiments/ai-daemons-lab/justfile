@@ -3,23 +3,11 @@ set dotenv-load
 default:
     @just --list --unsorted
 
-install:
-    bun install
+list:
+    bun run ../../pkg/daemons/src/cli.ts list --root .
 
-run duration="30":
-    AI_DAEMONS_RUN_SECONDS={{ duration }} bun run src/index.ts
+show name:
+    bun run ../../pkg/daemons/src/cli.ts show {{ name }} --root .
 
-dev:
-    bun --watch src/index.ts
-
-test:
-    bun test
-
-typecheck:
-    bunx tsc --noEmit
-
-lint:
-    bun run lint
-
-format:
-    bun run format
+run name:
+    bun run ../../pkg/daemons/src/cli.ts run {{ name }} --root .

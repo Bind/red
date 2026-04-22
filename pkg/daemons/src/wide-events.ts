@@ -8,18 +8,13 @@ export type WideEvent = {
 
 export type WideEventSink = (event: Omit<WideEvent, "event_id" | "ts">) => void;
 
-export type WideEventRecorder = {
-  emit: WideEventSink;
-  drain: () => WideEvent[];
-};
-
 let counter = 0;
 function nextId(): string {
   counter += 1;
   return `evt_${Date.now().toString(36)}_${counter.toString(36)}`;
 }
 
-export function createStdoutSink(): WideEventSink {
+export function stdoutSink(): WideEventSink {
   return (event) => {
     const full: WideEvent = {
       event_id: nextId(),
@@ -30,7 +25,7 @@ export function createStdoutSink(): WideEventSink {
   };
 }
 
-export function createInMemoryRecorder(): WideEventRecorder {
+export function memorySink(): { emit: WideEventSink; drain: () => WideEvent[] } {
   const events: WideEvent[] = [];
   return {
     emit(event) {
