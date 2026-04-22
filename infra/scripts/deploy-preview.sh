@@ -74,6 +74,10 @@ if [ -n "\${GHCR_USERNAME:-}" ] && [ -n "\${GHCR_TOKEN:-}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT
+export PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
+export PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
+export PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
+export PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml pull
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d
 

@@ -71,6 +71,19 @@ function readRequiredFile(pathValue: string | undefined, label: string): string 
   }
 }
 
+function readRequiredSecretValue(
+  inlineValue: string | undefined,
+  inlineLabel: string,
+  fileValue: string | undefined,
+  fileLabel: string,
+): string {
+  const inline = optionalString(inlineValue);
+  if (inline) {
+    return inline;
+  }
+  return readRequiredFile(fileValue, fileLabel);
+}
+
 function parseList(value: string | undefined, label: string): string[] {
   const items = requiredString(value, label)
     .split(/\s+/)
@@ -164,7 +177,9 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     env.AUTH_LAB_BETTER_AUTH_SECRET,
     "AUTH_LAB_BETTER_AUTH_SECRET",
   );
-  const signingPrivateJwk = readRequiredFile(
+  const signingPrivateJwk = readRequiredSecretValue(
+    env.AUTH_LAB_SIGNING_PRIVATE_JWK,
+    "AUTH_LAB_SIGNING_PRIVATE_JWK",
     env.AUTH_LAB_SIGNING_PRIVATE_JWK_FILE,
     "AUTH_LAB_SIGNING_PRIVATE_JWK_FILE",
   );
