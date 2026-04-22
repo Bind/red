@@ -33,7 +33,7 @@ const db = drizzle(sqlite);
 
 startServer({
 	port,
-	db,
+	db: db as any,
 	authToken,
 	rootDir,
 	allowNetwork,

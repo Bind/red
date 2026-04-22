@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, closed]
 
 concurrency:
-  group: preview-deploy
+  group: preview-deploy-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -46,6 +46,24 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Bun download/install state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-install-${{ hashFiles('bun.lock', 'package.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-install-
+
+      - name: Cache Turbo local artifacts
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-preview-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-preview-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}-
+            ${{ runner.os }}-turbo-preview-
+
       - uses: extractions/setup-just@v2
 
       - name: Install dotenvx
@@ -53,6 +71,16 @@ jobs:
 
       - name: Install workspace deps
         run: bun install --frozen-lockfile
+
+      - name: Turbo build smoke
+        env:
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: bunx turbo run build --affected
+
+      - name: Turbo typecheck lane
+        env:
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: bunx turbo run typecheck --affected
 
       - name: Ensure wildcard preview DNS exists
         run: dotenvx run -f .env.ci -- just deploy-infra dev

@@ -1,5 +1,7 @@
 import type { WideRollupRecord } from "./collector-contract";
 
+type FetchLike = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
+
 export interface TriageDispatcher {
 	dispatch(rollup: WideRollupRecord): Promise<void>;
 }
@@ -107,14 +109,14 @@ export class DedupingTriageDispatcher implements TriageDispatcher {
 
 export interface HttpTriageDispatcherOptions {
 	endpointUrl: string;
-	fetchImpl?: typeof fetch;
+	fetchImpl?: FetchLike;
 	timeoutMs?: number;
 	onError?: (error: unknown, rollup: WideRollupRecord) => void;
 }
 
 export class HttpTriageDispatcher implements TriageDispatcher {
 	private readonly endpointUrl: string;
-	private readonly fetchImpl: typeof fetch;
+	private readonly fetchImpl: FetchLike;
 	private readonly timeoutMs: number;
 	private readonly onError: (error: unknown, rollup: WideRollupRecord) => void;
 

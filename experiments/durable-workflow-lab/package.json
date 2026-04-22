@@ -1,5 +1,5 @@
 {
-  "name": "@redc/durable-workflow-lab",
+  "name": "@red/durable-workflow-lab",
   "private": true,
   "type": "module",
   "scripts": {

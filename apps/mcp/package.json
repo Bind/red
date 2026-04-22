@@ -1,18 +1,19 @@
 {
-  "name": "@redc/mcp",
+  "name": "@red/mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
-    "@redc/health": "workspace:*",
-    "@redc/obs": "workspace:*",
-    "hono": "^4.7.0",
+    "@red/health": "workspace:*",
+    "@red/obs": "workspace:*",
+    "@red/server": "workspace:*",
     "zod": "^3.23.8"
   }
 }

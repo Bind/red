@@ -160,7 +160,7 @@ describe("DedupingTriageDispatcher", () => {
 describe("HttpTriageDispatcher", () => {
 	test("POSTs the rollup envelope to the configured endpoint", async () => {
 		const captured: { url: string; body: unknown }[] = [];
-		const fakeFetch: typeof fetch = async (url, init) => {
+		const fakeFetch = async (url: RequestInfo | URL | Request, init?: RequestInit) => {
 			captured.push({ url: String(url), body: JSON.parse(String(init?.body)) });
 			return new Response(null, { status: 202 });
 		};
@@ -178,7 +178,7 @@ describe("HttpTriageDispatcher", () => {
 
 	test("swallows errors via onError callback", async () => {
 		const errors: unknown[] = [];
-		const fakeFetch: typeof fetch = async () => {
+		const fakeFetch = async () => {
 			throw new Error("network");
 		};
 		const dispatcher = new HttpTriageDispatcher({

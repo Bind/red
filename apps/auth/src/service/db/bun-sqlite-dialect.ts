@@ -21,14 +21,7 @@ type TransactionConnection = {
 };
 
 type IntrospectionDb = {
-  selectFrom(table: string | ReturnType<typeof sql>): {
-    where(column: string, operator: string, value: string): IntrospectionDb["selectFrom"];
-    select(selection: string | string[]): IntrospectionDb["selectFrom"];
-    $castTo<T>(): {
-      execute(): Promise<T[]>;
-    };
-    execute(): Promise<unknown[]>;
-  };
+  selectFrom(table: unknown): any;
 };
 
 type TableColumnMetadata = {
@@ -182,7 +175,7 @@ class BunSqliteIntrospector {
   }
 
   async #getTableMetadata(table: string) {
-    const db = this.#db;
+    const db = this.#db as any;
     const autoIncrementCol = (
       await db
         .selectFrom("sqlite_master")

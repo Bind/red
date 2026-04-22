@@ -112,9 +112,11 @@ async function ensureCustomTables(auth: BetterAuthWithSchemaDb) {
     .addColumn("updatedAt", "text", (column) => column.notNull())
     .execute();
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(db);
+  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(
+    db as any,
+  );
   await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_status ON login_attempt(status)`.execute(
-    db,
+    db as any,
   );
 }
 

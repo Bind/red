@@ -42,7 +42,6 @@ function createOpenAiCompatibleAgent() {
 		name: process.env.TRIAGE_OPENAI_PROVIDER_NAME ?? "openai-compatible",
 		baseURL: requiredEnv("TRIAGE_OPENAI_BASE_URL"),
 		apiKey: requiredEnv("TRIAGE_OPENAI_API_KEY"),
-		compatibility: "compatible",
 		headers: {
 			...(envString(process.env.TRIAGE_OPENAI_REFERER)
 				? { "HTTP-Referer": process.env.TRIAGE_OPENAI_REFERER! }

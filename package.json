@@ -2,6 +2,7 @@
   "name": "redc",
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "bun@1.3.10",
   "workspaces": ["apps/*", "pkg/*", "workflows/*"],
   "bin": {
     "redc": "apps/ctl/cli/index.ts"
@@ -11,15 +12,20 @@
     "start": "bun run apps/ctl/index.ts",
     "cli": "bun run apps/ctl/cli/index.ts",
     "claw:manual": "bun run apps/ctl/claw/manual.ts",
+    "build": "turbo run build",
     "test": "bun test",
+    "turbo:test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "deploy": "./infra/scripts/deploy.sh"
   },
   "dependencies": {
-    "hono": "^4.7.0",
+    "hono": "^4.12.12",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "sst": "^3"
+    "sst": "^3",
+    "turbo": "^2.5.4",
+    "typescript": "^5.9.3"
   }
 }

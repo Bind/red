@@ -2,6 +2,8 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ConsoleJsonSink, type EventSink, type ObsEvent } from "./core";
 
+type FetchLike = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
+
 export interface CollectorWideEvent {
   event_id: string;
   request_id: string;
@@ -57,7 +59,7 @@ export interface HttpBatchSinkOptions {
   authToken?: string;
   flushIntervalMs?: number;
   maxBatchSize?: number;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
 }
 
 export interface FileNdjsonSinkOptions {
@@ -147,7 +149,7 @@ export class HttpBatchSink implements FlushableEventSink {
   private readonly authToken?: string;
   private readonly flushIntervalMs: number;
   private readonly maxBatchSize: number;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: FetchLike;
   private readonly queue: CollectorWideEvent[] = [];
   private timer: Timer | null = null;
   private inFlight: Promise<void> | null = null;

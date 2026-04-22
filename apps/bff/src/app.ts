@@ -1,10 +1,11 @@
-import { Hono } from "hono";
+import { Hono } from "@red/server";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
   getEnvelope,
+  type ObsFields,
   obsMiddleware,
-} from "@redc/obs";
+} from "@red/obs";
 import {
   createHostedRepoReader,
   splitHostedRepoId,
@@ -297,10 +298,13 @@ export function createApp(config: BffConfig) {
     config.hostedRepoReader
     ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
-  app.use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }));
+  app.use(
+    "*",
+    obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
+  );
 
   app.get("/health", async (c) => {
-    const envelope = getEnvelope(c);
+    const envelope = getEnvelope(c as any);
     envelope.set({
       route: {
         name: "health",
@@ -345,7 +349,7 @@ export function createApp(config: BffConfig) {
     envelope.set({
       health: {
         status: report.status,
-        checks: report.checks as Record<string, unknown>,
+        checks: report.checks as unknown as ObsFields,
       },
     });
     c.header("x-request-id", envelope.requestId);
@@ -363,7 +367,7 @@ export function createApp(config: BffConfig) {
 
   const rpc = new Hono()
     .get("/status", async (c) => {
-      const envelope = getEnvelope(c);
+      const envelope = getEnvelope(c as any);
       const checkedAt = new Date().toISOString();
       const services = await Promise.all([
         Promise.resolve({
@@ -439,7 +443,7 @@ export function createApp(config: BffConfig) {
       if (!config.hostedRepo) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
-      const envelope = getEnvelope(c);
+      const envelope = getEnvelope(c as any);
       const { owner, name } = splitHostedRepoId(config.hostedRepo.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
       const response = await fetchImpl(
@@ -453,11 +457,11 @@ export function createApp(config: BffConfig) {
       if (!response.ok) {
         return c.text(await response.text().catch(() => "Unable to load commit diff"), response.status as any);
       }
-      return c.newResponse(response.body, {
+      return new Response(response.body, {
         status: response.status,
-        headers: {
+        headers: new Headers({
           "content-type": response.headers.get("content-type") ?? "text/plain; charset=utf-8",
-        },
+        }),
       });
     })
     .get("/velocity", (c) => {

@@ -133,7 +133,9 @@ function HumanGate() {
 			id="human-gate"
 			output={outputs.humanGate}
 			mode="approve"
-			title={`Approve triage plan${plan?.hypothesis ? `: ${plan.hypothesis}` : ""}`}
+			request={{
+				title: `Approve triage plan${plan?.hypothesis ? `: ${plan.hypothesis}` : ""}`,
+			}}
 		/>
 	);
 }

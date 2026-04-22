@@ -12,6 +12,8 @@ node_modules/
 *.db-wal
 *.db-shm
 .sst/
+.turbo/
+**/.turbo/
 apps/web/dist/
 .claw-artifacts/
 .bun-tmp/

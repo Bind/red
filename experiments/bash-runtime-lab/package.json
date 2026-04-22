@@ -1,5 +1,5 @@
 {
-  "name": "@redc/bash-runtime-lab",
+  "name": "@red/bash-runtime-lab",
   "private": true,
   "type": "module",
   "scripts": {

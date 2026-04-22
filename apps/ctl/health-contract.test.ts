@@ -1,4 +1,4 @@
-import { describeHealthContract } from "@redc/health";
+import { describeHealthContract } from "@red/health";
 import { createApp, type AppConfig } from "./index";
 
 const testConfig: AppConfig = {

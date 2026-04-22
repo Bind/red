@@ -1,5 +1,5 @@
-import { buildHealth, statusHttpCode } from "@redc/health";
-import { Hono } from "hono";
+import { buildHealth, statusHttpCode } from "@red/health";
+import { Hono } from "@red/server";
 import { OAuthIntrospector, oauthMiddleware } from "./auth";
 import type { McpConfig } from "./config";
 import type { McpEndpoint } from "./mcp-server";

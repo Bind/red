@@ -1,4 +1,4 @@
-import { describeHealthContract } from "@redc/health";
+import { describeHealthContract } from "@red/health";
 import { createApp } from "./app";
 import { createMcpEndpoint } from "./mcp-server";
 

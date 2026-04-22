@@ -60,7 +60,7 @@ re-executed.
 ## Proposed API
 
 ```ts
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("deploy", async ({ input, step, sh }) => {
   await step("clone", async () => {
@@ -326,7 +326,7 @@ should stay small, realistic, and readable to both humans and agents.
 ### 1. Linear Deploy
 
 ```ts
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("deploy", async ({ input, step, sh }) => {
   await step("clone", async () => {
@@ -355,7 +355,7 @@ Why it matters:
 
 ```ts
 import { z } from "zod";
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("build-release", async ({ input, step, sh }) => {
   await step("install", async () => {
@@ -395,7 +395,7 @@ Why it matters:
 ### 3. Branch On Prior Step Result
 
 ```ts
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("conditional-deploy", async ({ step, sh }) => {
   const checks = await step("checks", async () => {
@@ -429,7 +429,7 @@ Why it matters:
 ### 4. Wait And Resume
 
 ```ts
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("rollout-check", async ({ input, step, sh, sleep }) => {
   await step("deploy", async () => {
@@ -462,7 +462,7 @@ Why it matters:
 ### 5. Small Multi-Command Step
 
 ```ts
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("package-app", async ({ step, sh }) => {
   const pkg = await step("package", async () => {

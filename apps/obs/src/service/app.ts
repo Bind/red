@@ -1,5 +1,5 @@
-import { buildHealth, statusHttpCode } from "@redc/health";
-import { Hono } from "hono";
+import { buildHealth, statusHttpCode } from "@red/health";
+import { Hono } from "@red/server";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
 	acceptCollectorBatch,

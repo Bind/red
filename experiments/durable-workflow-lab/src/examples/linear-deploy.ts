@@ -1,5 +1,5 @@
 export const linearDeployExample = `
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("deploy", async ({ input, step, sh }) => {
   await step("clone", async () => {

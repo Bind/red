@@ -1,5 +1,5 @@
 export const branchOnResultExample = `
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("conditional-deploy", async ({ step, sh }) => {
   const checks = await step("checks", async () => {
