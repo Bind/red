@@ -1,6 +1,6 @@
 export const typedOutputExample = `
 import { z } from "zod";
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("build-release", async ({ input, step, sh }) => {
   await step("install", async () => {

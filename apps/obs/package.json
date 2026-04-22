@@ -1,5 +1,5 @@
 {
-  "name": "@redc/wide-events",
+  "name": "@red/wide-events",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.2-r.1",
-    "@redc/health": "workspace:*",
-    "hono": "^4.12.10"
+    "@red/health": "workspace:*",
+    "@red/server": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",

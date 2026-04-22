@@ -1,5 +1,5 @@
-import { buildHealth, statusHttpCode } from "@redc/health";
-import { Hono } from "hono";
+import { buildHealth, statusHttpCode } from "@red/health";
+import { Hono } from "@red/server";
 import type { TriageOrchestrator } from "./orchestrator";
 import type { RunStore } from "./runs/store";
 import { TriageRunRequestSchema } from "./types";

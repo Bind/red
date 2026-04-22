@@ -72,8 +72,9 @@ Triage provider credentials + the Smithers bearer token live on the dev box's
 | opened / synchronize / reopened / ready_for_review | `deploy`: sst deploy dev (idempotent) → rsync → compose up → health check → sticky PR comment |
 | closed | `teardown`: compose down -v → rm preview dir → sticky PR comment |
 
-Concurrency: `group: preview-deploy`, `cancel-in-progress: true`. Latest
-PR push supersedes earlier deploys on the shared box.
+Concurrency is per PR (`group: preview-deploy-<pr-number>`,
+`cancel-in-progress: true`). Latest push for a given PR supersedes its
+earlier deploys without serializing unrelated PR previews behind it.
 
 Draft PRs are skipped (`github.event.pull_request.draft == false`).
 

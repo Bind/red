@@ -73,7 +73,7 @@ function readRequiredFile(pathValue: string | undefined, label: string): string 
 
 function readRequiredSecretValue(
   inlineValue: string | undefined,
-  inlineLabel: string,
+  _inlineLabel: string,
   fileValue: string | undefined,
   fileLabel: string,
 ): string {

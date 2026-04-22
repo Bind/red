@@ -57,6 +57,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run docs review
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}

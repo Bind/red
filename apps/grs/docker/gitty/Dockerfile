@@ -27,7 +27,12 @@ WORKDIR /src/gitty
 
 RUN if [ -e .git ]; then test "$(git rev-parse HEAD)" = "${GITTY_REF}"; fi
 
-RUN zig build server-only -Doptimize=ReleaseFast
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) zig_target="x86_64-linux-gnu" ;; \
+      arm64) zig_target="aarch64-linux-gnu" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    zig build server-only -Doptimize=ReleaseFast -Dtarget="${zig_target}"
 RUN zig build wasm -Doptimize=ReleaseSmall
 
 FROM oven/bun:1

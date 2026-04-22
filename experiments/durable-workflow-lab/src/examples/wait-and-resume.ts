@@ -1,5 +1,5 @@
 export const waitAndResumeExample = `
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("rollout-check", async ({ input, step, sh, sleep }) => {
   await step("deploy", async () => {

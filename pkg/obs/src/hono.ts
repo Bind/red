@@ -1,4 +1,4 @@
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "@red/server";
 import { createEventEnvelope, type EventEnvelope, type EventSink } from "./core";
 
 export interface ObsMiddlewareOptions {
@@ -10,7 +10,7 @@ export interface ObsMiddlewareOptions {
 
 export function obsMiddleware(
   options: ObsMiddlewareOptions,
-): MiddlewareHandler<{ Variables: { envelope: EventEnvelope } }> {
+): MiddlewareHandler<{ Variables: { envelope: EventEnvelope } }, any, any> {
   const requestIdHeader = options.requestIdHeader ?? "x-request-id";
 
   return async (c, next) => {
@@ -45,7 +45,7 @@ export function obsMiddleware(
 }
 
 export function getEnvelope(
-  c: Context<{ Variables: { envelope: EventEnvelope } }>,
+  c: Context<any, any, any>,
 ): EventEnvelope {
-  return c.get("envelope");
+  return c.get("envelope") as EventEnvelope;
 }

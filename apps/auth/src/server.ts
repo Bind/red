@@ -2,13 +2,13 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
-  type EventEnvelope,
   getEnvelope,
+  type ObsFields,
   obsMiddleware,
-} from "@redc/obs";
+} from "@red/obs";
+import { Hono } from "@red/server";
 import { parseSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
-import { Hono } from "hono";
 import { decodeJwt } from "jose";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
 import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
@@ -48,10 +48,6 @@ export interface AuthServer {
   registry: ReturnType<typeof createMachineClientRegistry>;
   userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
 }
-
-type AppVariables = {
-  envelope: EventEnvelope;
-};
 
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
   response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
@@ -186,7 +182,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
-  const app = new Hono<{ Variables: AppVariables }>();
+  const app = new Hono();
   const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
   const startedAt = Date.now();
 
@@ -295,7 +291,10 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return { revoked: true };
   };
 
-  app.use("*", obsMiddleware({ service: "auth", sink: createObsSinkFromEnv({ service: "auth" }) }));
+  app.use(
+    "*",
+    obsMiddleware({ service: "auth", sink: createObsSinkFromEnv({ service: "auth" }) }) as any,
+  );
 
   app.onError((error, c) => {
     getEnvelope(c).fail(error);
@@ -338,7 +337,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     envelope.set({
       health: {
         status: report.status,
-        checks: report.checks as Record<string, unknown>,
+        checks: report.checks as unknown as ObsFields,
       },
     });
 

@@ -1,5 +1,5 @@
 export const multiCommandStepExample = `
-import { workflow } from "@redc/workflows";
+import { workflow } from "@red/workflows";
 
 export default workflow("package-app", async ({ step, sh }) => {
   const pkg = await step("package", async () => {

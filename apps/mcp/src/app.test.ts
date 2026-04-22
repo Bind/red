@@ -20,7 +20,7 @@ function fakeIntrospector(
 	tokens: Record<string, { active: boolean; scope?: string }>,
 	onCall: (token: string) => void = () => {},
 ): OAuthIntrospector {
-	const fakeFetch: typeof fetch = async (_url, init) => {
+	const fakeFetch = async (_url: RequestInfo | URL | Request, init?: RequestInit) => {
 		const body = String((init?.body ?? "") as string);
 		const token = new URLSearchParams(body).get("token") ?? "";
 		onCall(token);

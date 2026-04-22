@@ -4,8 +4,8 @@ import { assertHealthContract } from "./index";
 export interface ContractTestOptions {
 	serviceName: string;
 	loadApp: () =>
-		| Promise<{ fetch: (req: Request) => Promise<Response> }>
-		| { fetch: (req: Request) => Promise<Response> };
+		| Promise<{ fetch: (req: Request) => Response | Promise<Response> }>
+		| { fetch: (req: Request) => Response | Promise<Response> };
 }
 
 /**

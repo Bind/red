@@ -1,16 +1,17 @@
 {
-  "name": "@redc/ctl",
+  "name": "@red/ctl",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@redc/health": "workspace:*",
-    "@redc/obs": "workspace:*",
-    "hono": "^4.7.0",
+    "@red/health": "workspace:*",
+    "@red/obs": "workspace:*",
+    "@red/server": "workspace:*",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

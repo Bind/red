@@ -21,6 +21,7 @@ PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
 PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
+MIN_FREE_KB=$((8 * 1024 * 1024))
 
 echo "==> Ensuring remote dir ${REMOTE_DIR} exists"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
@@ -80,6 +81,21 @@ set +a
 
 if [ -n "\${GHCR_USERNAME:-}" ] && [ -n "\${GHCR_TOKEN:-}" ]; then
   printf '%s' "\${GHCR_TOKEN}" | docker login ghcr.io -u "\${GHCR_USERNAME}" --password-stdin
+fi
+
+preview_root="/var/lib/containerd"
+if [ ! -d "\${preview_root}" ]; then
+  preview_root="/"
+fi
+free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
+if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
+  echo "==> Low disk on \${preview_root} (\${free_kb} KB free); pruning unused Docker state"
+  docker system df || true
+  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml down --remove-orphans || true
+  docker system prune -af --volumes || true
+  docker builder prune -af || true
+  free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
+  echo "==> Free space after prune: \${free_kb} KB"
 fi
 
 export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS

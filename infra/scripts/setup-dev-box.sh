@@ -80,6 +80,9 @@ find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}"
     fi
     rm -rf "$dir"
   done
+
+docker system prune -af --volumes || true
+docker builder prune -af || true
 EVICT
 chmod +x "${EVICT_SCRIPT}"
 

@@ -1,11 +1,11 @@
-import { Hono } from "hono";
+import { Hono } from "@red/server";
 import {
   createObsSinkFromEnv,
   getEnvelope,
   obsMiddleware,
   type EventEnvelope,
-} from "@redc/obs";
-import { buildHealth, statusHttpCode } from "@redc/health";
+} from "@red/obs";
+import { buildHealth, statusHttpCode } from "@red/health";
 import { streamSSE } from "hono/streaming";
 import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";

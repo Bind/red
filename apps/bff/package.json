@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@redc/obs": "workspace:*",
-    "hono": "^4.7.0"
+    "@red/obs": "workspace:*",
+    "@red/server": "workspace:*"
   }
 }

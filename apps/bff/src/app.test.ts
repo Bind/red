@@ -177,7 +177,7 @@ describe("BFF app", () => {
     });
     expect(commitDiff.status).toBe(200);
     expect(await commitDiff.text()).toContain("diff --git");
-    expect(hostedRepoCommitDiffRequestId).toBe("hosted-repo-commit-diff-1");
+    expect(String(hostedRepoCommitDiffRequestId)).toBe("hosted-repo-commit-diff-1");
   });
 
   test("exposes the auth session through /rpc/me", async () => {

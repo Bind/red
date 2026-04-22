@@ -1,5 +1,7 @@
-import type { MiddlewareHandler } from "hono";
+import type { MiddlewareHandler } from "@red/server";
 import type { McpConfig } from "./config";
+
+type FetchLike = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export interface IntrospectionResult {
 	active: boolean;
@@ -20,9 +22,9 @@ export class OAuthIntrospector {
 		{ result: IntrospectionResult; expiresAtMs: number }
 	>();
 	private readonly config: McpConfig;
-	private readonly fetchImpl: typeof fetch;
+	private readonly fetchImpl: FetchLike;
 
-	constructor(config: McpConfig, fetchImpl: typeof fetch = fetch) {
+	constructor(config: McpConfig, fetchImpl: FetchLike = fetch) {
 		this.config = config;
 		this.fetchImpl = fetchImpl;
 	}

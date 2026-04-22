@@ -1,5 +1,5 @@
 {
-  "name": "@redc/git-mirror-canary",
+  "name": "@red/git-mirror-canary",
   "private": true,
   "type": "module",
   "scripts": {
