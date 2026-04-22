@@ -26,7 +26,7 @@ fi
 
 rm -f "${CADDY_SITE_FILE}"
 if docker ps --format '{{.Names}}' | grep -qx preview-caddy; then
-  docker exec preview-caddy caddy reload --config /etc/caddy/Caddyfile || true
+  docker exec preview-caddy caddy reload --config /etc/caddy/preview.Caddyfile || true
 fi
 REMOTE
 

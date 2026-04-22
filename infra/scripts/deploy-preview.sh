@@ -95,7 +95,7 @@ ${SLUG}.preview.red.computer {
 }
 CADDY
 
-docker exec preview-caddy caddy reload --config /etc/caddy/Caddyfile
+docker exec preview-caddy caddy reload --config /etc/caddy/preview.Caddyfile
 REMOTE
 
 echo "==> Deployed preview ${SLUG} → https://${SLUG}.preview.red.computer"
