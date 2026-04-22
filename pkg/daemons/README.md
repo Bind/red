@@ -96,18 +96,48 @@ expiry.
 
 ## CLI
 
+The two headline commands for MVP are `auth` and `run`. `list` and `show` are
+read-only utilities.
+
+### `redc-daemons auth [--store <path>]`
+
+Runs the ChatGPT / Codex OAuth flow via pi-ai's `loginOpenAICodex` and
+persists the resulting credentials. Default store is `~/.codex/auth.json`,
+which matches the format written by the stock `codex login` CLI so the two
+are interchangeable — either command satisfies the file-backed auth source.
+
 ```bash
-redc-daemons list [--root <dir>]
-redc-daemons show <name> [--root <dir>]
-redc-daemons run  <name> [--root <dir>] [--input <text>] [--max-turns N] [--max-ms N]
+redc-daemons auth                           # default: writes ~/.codex/auth.json
+redc-daemons auth --store ~/.red/auth.json  # custom location
 ```
 
-`list` walks `**/*.daemon.md` under the root (defaults to `cwd`), skipping
-`node_modules`, `.git`, build directories, etc.
+### `redc-daemons run <name>`
 
-`run` emits JSONL wide-events to stdout matching red's envelope
-(`event_id`, `kind`, `ts`, `route_name`, `data`) and prints the final
-`complete` payload on success.
+Loads the named daemon, spawns a pi-agent-core Agent scoped to the daemon's
+directory, runs until `complete` is called or a budget expires.
+
+```bash
+redc-daemons run readme-links
+redc-daemons run readme-links --root experiments/ai-daemons-lab
+redc-daemons run readme-links --input "focus on the install section"
+redc-daemons run readme-links --max-turns 10 --max-ms 120000
+```
+
+Emits JSONL wide-events to stdout matching red's envelope (`event_id`,
+`kind`, `ts`, `route_name`, `data`) and prints the final `complete` payload
+as pretty JSON on success. Exits non-zero on failure with the reason on
+stderr.
+
+### `redc-daemons list [--root <dir>]`
+
+Walks `**/*.daemon.md` under the root (defaults to `cwd`), skipping
+`node_modules`, `.git`, build directories. Prints `name  file\n  description`
+per daemon.
+
+### `redc-daemons show <name> [--root <dir>]`
+
+Prints the resolved frontmatter, body, and scope root of a single daemon
+without invoking it.
 
 ## Wide-events emitted per run
 

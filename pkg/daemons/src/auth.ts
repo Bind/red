@@ -1,8 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import type { OAuthCredentials } from "@mariozechner/pi-ai";
-import { refreshOpenAICodexToken } from "@mariozechner/pi-ai/oauth";
+import { dirname, join } from "node:path";
+import type { OAuthCredentials, OAuthPrompt } from "@mariozechner/pi-ai";
+import { loginOpenAICodex, refreshOpenAICodexToken } from "@mariozechner/pi-ai/oauth";
 
 /**
  * Pluggable source of Codex OAuth credentials. Red will eventually ship its
@@ -93,4 +93,61 @@ export function createInMemoryCodexAuthSource(
       current = { ...next };
     },
   };
+}
+
+export function defaultCodexAuthPath(): string {
+  return join(homedir(), ".codex", "auth.json");
+}
+
+export type LoginCodexOptions = {
+  /** Where to persist the resulting credentials. Default: `~/.codex/auth.json`. */
+  authPath?: string;
+  /** Called with the authorization URL and optional instructions. */
+  onAuth: (info: { url: string; instructions?: string }) => void;
+  /** Optional progress messages. */
+  onProgress?: (message: string) => void;
+  /** Interactive prompt fallback if the browser callback doesn't complete. */
+  onPrompt?: (prompt: OAuthPrompt) => Promise<string>;
+  /** Optional promise that resolves with a user-pasted code, racing against the browser callback. */
+  onManualCodeInput?: () => Promise<string>;
+};
+
+export async function loginAndStoreCodexAuth(
+  options: LoginCodexOptions,
+): Promise<OAuthCredentials> {
+  const credentials = await loginOpenAICodex({
+    onAuth: options.onAuth,
+    onPrompt:
+      options.onPrompt ??
+      (() => Promise.reject(new Error("no interactive prompt handler supplied"))),
+    onProgress: options.onProgress,
+    onManualCodeInput: options.onManualCodeInput,
+  });
+
+  const authPath = options.authPath ?? defaultCodexAuthPath();
+  await mkdir(dirname(authPath), { recursive: true });
+
+  const existingRaw = await readFile(authPath, "utf8").catch(() => "{}");
+  const existing = (JSON.parse(existingRaw) || {}) as CodexAuthFile;
+  const idToken =
+    typeof credentials.id_token === "string" ? credentials.id_token : existing.tokens?.id_token;
+  const accountId =
+    typeof credentials.account_id === "string"
+      ? credentials.account_id
+      : (existing.tokens?.account_id ?? null);
+
+  const next: CodexAuthFile = {
+    ...existing,
+    OPENAI_API_KEY: existing.OPENAI_API_KEY ?? null,
+    tokens: {
+      ...(existing.tokens ?? {}),
+      access_token: credentials.access,
+      refresh_token: credentials.refresh,
+      id_token: idToken,
+      account_id: accountId,
+    },
+    last_refresh: new Date().toISOString(),
+  };
+  await writeFile(authPath, JSON.stringify(next, null, 2));
+  return credentials;
 }

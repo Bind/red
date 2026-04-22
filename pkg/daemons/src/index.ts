@@ -36,6 +36,9 @@ export {
   createFileCodexAuthSource,
   createInMemoryCodexAuthSource,
   CodexAccessTokenManager,
+  defaultCodexAuthPath,
+  loginAndStoreCodexAuth,
   type CodexAuthSource,
+  type LoginCodexOptions,
 } from "./auth";
 export { COMPLETE_TOOL_NAME, createCompleteTool, type CompleteCapture } from "./tools/complete";
