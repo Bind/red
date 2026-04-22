@@ -38,25 +38,31 @@ Both frontmatter fields are required:
 
 Nothing else is valid frontmatter; unknown keys fail validation.
 
-## The `complete` sentinel
+## The `complete` tool
 
-The framework runs Codex in a continue-loop. After each turn, if the model's
-final response is a fenced `complete` block that parses and validates, the
-run ends. Otherwise the framework nudges ("Continue; if you are finished,
-reply with ONLY the fenced complete block…") and takes another turn.
+The framework ships a tiny stdio MCP server (`src/mcp-server/complete.ts`)
+that exposes a single tool named `complete`. Codex loads it via its
+`mcp_servers` config, so the model sees `complete` alongside the built-in
+Read/Edit/Write/Bash/etc. tools.
 
-```complete
+The runner invokes the Codex thread in streaming mode and watches each
+turn's items for an `mcp_tool_call` with `server == "redc-daemons"` and
+`tool == "complete"`. When it fires, the runner validates the arguments
+with zod and ends the run. Otherwise it nudges ("Continue; if you are
+finished, call the `complete` tool…") and takes another turn.
+
+Tool input schema:
+
+```
 {
-  "summary": "one sentence recap of what this run did",
-  "findings": [
-    {
-      "invariant": "snake_case_tag",
-      "target": "optional: path or id",
-      "status": "ok | healed | violation_persists | skipped",
-      "note": "optional freeform context"
-    }
-  ],
-  "nextRunHint": "optional: advice for the next invocation"
+  summary: string                // required, one-sentence recap
+  findings?: Array<{
+    invariant: string            // snake_case tag
+    target?: string              // optional path or id
+    status: "ok" | "healed" | "violation_persists" | "skipped"
+    note?: string
+  }>
+  nextRunHint?: string           // optional advice for the next run
 }
 ```
 

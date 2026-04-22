@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentProvider, ProviderSession } from "../providers/types";
+import type { AgentProvider, ProviderSession, ProviderTurn } from "../providers/types";
 import { runDaemon } from "../runner";
 import { memorySink } from "../wide-events";
+import type { CompletePayload } from "../schema";
 
 let dir: string;
 
@@ -27,19 +28,24 @@ async function writeDaemon(
   );
 }
 
-function scriptedProvider(responses: string[]): AgentProvider {
+type ScriptStep =
+  | { complete: CompletePayload; finalResponse?: string }
+  | { finalResponse: string };
+
+function scriptedProvider(steps: ScriptStep[]): AgentProvider {
   return {
     name: "scripted",
     async spawn(): Promise<ProviderSession> {
       let i = 0;
       return {
-        async run() {
-          const r = responses[i];
+        async run(): Promise<ProviderTurn> {
+          const step = steps[i];
           i += 1;
-          if (r === undefined) throw new Error("scripted provider ran out of responses");
+          if (step === undefined) throw new Error("scripted provider ran out of responses");
           return {
-            finalResponse: r,
+            finalResponse: step.finalResponse ?? "",
             usage: { inputTokens: 10, outputTokens: 5 },
+            complete: "complete" in step ? step.complete : undefined,
           };
         },
         async stop() {},
@@ -48,17 +54,15 @@ function scriptedProvider(responses: string[]): AgentProvider {
   };
 }
 
-function completeBlock(summary: string, findings: unknown[] = []): string {
-  return "```complete\n" + JSON.stringify({ summary, findings }) + "\n```";
-}
-
 describe("runner", () => {
-  test("returns success when the first turn emits a valid complete block", async () => {
+  test("returns success when the first turn reports complete", async () => {
     await writeDaemon("one-shot", "d");
     const { emit, drain } = memorySink();
     const result = await runDaemon("one-shot", {
       root: dir,
-      provider: scriptedProvider([completeBlock("all good")]),
+      provider: scriptedProvider([
+        { complete: { summary: "all good", findings: [] } },
+      ]),
       emit,
     });
     expect(result.ok).toBe(true);
@@ -72,14 +76,19 @@ describe("runner", () => {
     expect(kinds).toContain("daemon.run.completed");
   });
 
-  test("continues past turns that don't emit a complete block", async () => {
+  test("continues past turns that don't call complete", async () => {
     await writeDaemon("multi", "d");
     const provider = scriptedProvider([
-      "Still thinking...",
-      "Almost there.",
-      completeBlock("done", [
-        { invariant: "readme_just_recipe_exists", target: "install", status: "ok" },
-      ]),
+      { finalResponse: "Still thinking..." },
+      { finalResponse: "Almost there." },
+      {
+        complete: {
+          summary: "done",
+          findings: [
+            { invariant: "readme_just_recipe_exists", target: "install", status: "ok" },
+          ],
+        },
+      },
     ]);
     const { emit, drain } = memorySink();
     const result = await runDaemon("multi", { root: dir, provider, emit });
@@ -93,9 +102,15 @@ describe("runner", () => {
     expect(findings[0]?.data.invariant).toBe("readme_just_recipe_exists");
   });
 
-  test("fails with turn_budget_exceeded when the model never completes", async () => {
+  test("fails with turn_budget_exceeded when complete is never called", async () => {
     await writeDaemon("forever", "d");
-    const provider = scriptedProvider(["nope", "still nope", "again", "and again", "no"]);
+    const provider = scriptedProvider([
+      { finalResponse: "nope" },
+      { finalResponse: "still nope" },
+      { finalResponse: "again" },
+      { finalResponse: "and again" },
+      { finalResponse: "no" },
+    ]);
     const { emit } = memorySink();
     const result = await runDaemon("forever", {
       root: dir,
@@ -108,18 +123,6 @@ describe("runner", () => {
       expect(result.reason).toBe("turn_budget_exceeded");
       expect(result.turns).toBe(3);
     }
-  });
-
-  test("asks the model to fix a malformed complete block before failing", async () => {
-    await writeDaemon("malformed", "d");
-    const provider = scriptedProvider([
-      "```complete\n{not json}\n```",
-      completeBlock("recovered"),
-    ]);
-    const { emit } = memorySink();
-    const result = await runDaemon("malformed", { root: dir, provider, emit });
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.turns).toBe(2);
   });
 
   test("surfaces provider errors as provider_error failures", async () => {
@@ -146,7 +149,10 @@ describe("runner", () => {
 
   test("accumulates tokens across turns", async () => {
     await writeDaemon("tally", "d");
-    const provider = scriptedProvider(["continue", completeBlock("done")]);
+    const provider = scriptedProvider([
+      { finalResponse: "continue" },
+      { complete: { summary: "done", findings: [] } },
+    ]);
     const { emit } = memorySink();
     const result = await runDaemon("tally", { root: dir, provider, emit });
     expect(result.ok).toBe(true);
@@ -154,5 +160,18 @@ describe("runner", () => {
       expect(result.tokens.input).toBe(20);
       expect(result.tokens.output).toBe(10);
     }
+  });
+
+  test("emits completeCalled flag on the turn.completed event", async () => {
+    await writeDaemon("flag", "d");
+    const provider = scriptedProvider([
+      { finalResponse: "working" },
+      { complete: { summary: "done", findings: [] } },
+    ]);
+    const { emit, drain } = memorySink();
+    await runDaemon("flag", { root: dir, provider, emit });
+    const turnCompleted = drain().filter((e) => e.kind === "daemon.turn.completed");
+    expect(turnCompleted[0]?.data.completeCalled).toBe(false);
+    expect(turnCompleted[1]?.data.completeCalled).toBe(true);
   });
 });

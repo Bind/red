@@ -3,7 +3,6 @@ import { resolveDaemon, type DaemonSpec } from "./loader";
 import { createCodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
-import { COMPLETE_SENTINEL_INSTRUCTIONS, parseCompleteSentinel } from "./sentinel";
 import { stdoutSink, type WideEventSink } from "./wide-events";
 
 export type RunOptions = {
@@ -28,11 +27,7 @@ export type RunFailure = {
   ok: false;
   runId: string;
   daemon: string;
-  reason:
-    | "turn_budget_exceeded"
-    | "wallclock_exceeded"
-    | "malformed_complete"
-    | "provider_error";
+  reason: "turn_budget_exceeded" | "wallclock_exceeded" | "provider_error";
   message: string;
   turns: number;
   tokens: { input: number; output: number };
@@ -42,6 +37,14 @@ export type RunResult = RunSuccess | RunFailure;
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_MAX_WALLCLOCK_MS = 5 * 60_000;
+
+export const COMPLETE_TOOL_INSTRUCTIONS = `When — and only when — your task is finished, call the \`complete\` tool exactly once. It takes:
+
+- \`summary\` (required): one-sentence recap of what this run accomplished
+- \`findings\` (optional): per-invariant outcomes, each with \`invariant\` (snake_case tag), optional \`target\`, required \`status\` of "ok" | "healed" | "violation_persists" | "skipped", and optional \`note\`
+- \`nextRunHint\` (optional): advice for the next invocation
+
+Do not call \`complete\` until you are genuinely done. If you still have work to do, keep working; the runner will prompt you to continue.`;
 
 function newRunId(name: string): string {
   return `run_${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -54,7 +57,7 @@ function buildSystemPrompt(spec: DaemonSpec): string {
     `Description: ${spec.description}`,
     "",
     "You are invoked as a daemon. Your working directory is the scope of your responsibility;",
-    "do not touch files outside it. Use the standard tools available to you.",
+    "do not touch files outside it. Use the tools available to you.",
     "",
     "---",
     "",
@@ -62,7 +65,7 @@ function buildSystemPrompt(spec: DaemonSpec): string {
     "",
     "---",
     "",
-    COMPLETE_SENTINEL_INSTRUCTIONS,
+    COMPLETE_TOOL_INSTRUCTIONS,
   ].join("\n");
 }
 
@@ -168,13 +171,13 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
           turn: turns,
           inputTokens: turn.usage?.inputTokens ?? 0,
           outputTokens: turn.usage?.outputTokens ?? 0,
+          completeCalled: turn.complete !== undefined,
           finalResponsePreview: turn.finalResponse.slice(0, 240),
         },
       });
 
-      const sentinel = parseCompleteSentinel(turn.finalResponse);
-      if (sentinel.kind === "complete") {
-        for (const finding of sentinel.payload.findings) {
+      if (turn.complete) {
+        for (const finding of turn.complete.findings) {
           emit({
             kind: "daemon.finding",
             route_name: spec.name,
@@ -187,9 +190,9 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
           data: {
             runId,
             turns,
-            summary: sentinel.payload.summary,
-            findingCount: sentinel.payload.findings.length,
-            nextRunHint: sentinel.payload.nextRunHint ?? null,
+            summary: turn.complete.summary,
+            findingCount: turn.complete.findings.length,
+            nextRunHint: turn.complete.nextRunHint ?? null,
             inputTokens,
             outputTokens,
           },
@@ -198,19 +201,14 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
           ok: true,
           runId,
           daemon: spec.name,
-          payload: sentinel.payload,
+          payload: turn.complete,
           turns,
           tokens: { input: inputTokens, output: outputTokens },
         };
       }
 
-      if (sentinel.kind === "malformed") {
-        nextInput = `Your last message contained a \`complete\` fence but it did not validate: ${sentinel.reason}. Fix the JSON and resend only the fenced block, or continue working if you are not actually done.`;
-        continue;
-      }
-
       nextInput =
-        "Continue. If you are finished, reply with ONLY the fenced `complete` block as instructed.";
+        "Continue. If you are finished, call the `complete` tool exactly once with your summary.";
     }
   } finally {
     await session.stop();

@@ -1,6 +1,9 @@
+import type { CompletePayload } from "../schema";
+
 export type ProviderTurn = {
   finalResponse: string;
   usage: { inputTokens: number; outputTokens: number } | null;
+  complete?: CompletePayload;
 };
 
 export type ProviderSession = {

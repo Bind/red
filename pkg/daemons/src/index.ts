@@ -1,6 +1,11 @@
 export { loadDaemons, resolveDaemon, type DaemonSpec, type LoadResult } from "./loader";
-export { runDaemon, runSpec, type RunOptions, type RunResult } from "./runner";
-export { parseCompleteSentinel, COMPLETE_SENTINEL_INSTRUCTIONS } from "./sentinel";
+export {
+  runDaemon,
+  runSpec,
+  COMPLETE_TOOL_INSTRUCTIONS,
+  type RunOptions,
+  type RunResult,
+} from "./runner";
 export {
   DaemonFrontmatter,
   CompletePayload,
@@ -16,4 +21,8 @@ export type {
   ProviderSpawnOptions,
   ProviderTurn,
 } from "./providers/types";
-export { createCodexProvider } from "./providers/codex";
+export {
+  createCodexProvider,
+  MCP_SERVER_NAME,
+  COMPLETE_TOOL_NAME,
+} from "./providers/codex";
