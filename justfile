@@ -14,13 +14,17 @@ default:
 setup:
     ./infra/scripts/setup-dev-env.sh
 
-# Start all local services in Docker without forcing rebuilds
+# Start the local stack with fresh image builds and hot-reload mounts
 up:
+    ./infra/scripts/setup-dev-env.sh
+
+# Start the local stack without rebuilding Docker images
+up-fast:
     SKIP_IMAGE_BUILD=true ./infra/scripts/setup-dev-env.sh
 
-# Rebuild Docker images, then start the full stack
+# Back-compat alias for explicit build+start
 up-build:
-    ./infra/scripts/setup-dev-env.sh
+    just up
 
 # Stop all local services
 down:
