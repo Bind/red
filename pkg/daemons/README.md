@@ -6,11 +6,12 @@ A daemon is a `*.daemon.md` file with two-field frontmatter and a prose body.
 The file's directory is the daemon's working directory and the limit of its
 scope — it can only read and write files under that subtree.
 
-Invocation is explicit: `redc daemons run <name>`. The framework spawns a
-Codex agent session (via `@openai/codex-sdk`, which picks up ChatGPT
-subscription credentials from `codex login`), injects the body as the
-daemon's brief, and loops until the agent emits a fenced `complete` block.
-No cron, no event triggers — those layer on later.
+Invocation is explicit: `redc-daemons run <name>`. The framework spawns a
+`@mariozechner/pi-agent-core` Agent, hands it the standard `pi-coding-agent`
+toolkit (`read`, `edit`, `write`, `bash`, `grep`, `find`, `ls`) plus our own
+in-process `complete` tool, and lets the Agent loop until `complete` is
+called or a budget is exhausted. No cron, no event triggers — those layer on
+later.
 
 ## Authoring
 
@@ -26,9 +27,7 @@ You maintain PR summaries for this directory. On invocation:
 
 1. Do X.
 2. Do Y.
-3. Do Z.
-
-Don't touch files outside this directory.
+3. When finished, call the `complete` tool with a summary and any findings.
 ```
 
 Both frontmatter fields are required:
@@ -40,18 +39,8 @@ Nothing else is valid frontmatter; unknown keys fail validation.
 
 ## The `complete` tool
 
-The framework ships a tiny stdio MCP server (`src/mcp-server/complete.ts`)
-that exposes a single tool named `complete`. Codex loads it via its
-`mcp_servers` config, so the model sees `complete` alongside the built-in
-Read/Edit/Write/Bash/etc. tools.
-
-The runner invokes the Codex thread in streaming mode and watches each
-turn's items for an `mcp_tool_call` with `server == "redc-daemons"` and
-`tool == "complete"`. When it fires, the runner validates the arguments
-with zod and ends the run. Otherwise it nudges ("Continue; if you are
-finished, call the `complete` tool…") and takes another turn.
-
-Tool input schema:
+The framework registers `complete` as a real in-process tool on the Agent.
+Its schema (TypeBox) is:
 
 ```
 {
@@ -66,8 +55,44 @@ Tool input schema:
 }
 ```
 
-Each finding becomes a `daemon.finding` wide-event, so the "what invariants
-are currently violated" view reconstructs from the event stream.
+When the model calls `complete`, the runner captures the arguments (validated
+with zod), emits one `daemon.finding` wide-event per entry, one
+`daemon.run.completed`, and exits. Subsequent turns are suppressed.
+
+## Provider and subscription auth
+
+Default provider is `pi`, which speaks to Codex via the
+`openai-codex-responses` API using OAuth subscription credentials. The
+adapter accepts a pluggable `CodexAuthSource`:
+
+```ts
+import {
+  createFileCodexAuthSource,
+  createInMemoryCodexAuthSource,
+  createPiProvider,
+  runDaemon,
+} from "@redc/daemons";
+
+// Default: reads ~/.codex/auth.json (written by `codex login`)
+const provider = createPiProvider({
+  authSource: createFileCodexAuthSource(),
+});
+
+// Red-owned flow: inject credentials from your own store
+const provider = createPiProvider({
+  authSource: createInMemoryCodexAuthSource({
+    access: "<jwt>",
+    refresh: "<refresh-token>",
+    expires: Date.now() + 25 * 60_000,
+  }),
+});
+
+await runDaemon("readme-links", { provider });
+```
+
+The `CodexAccessTokenManager` wraps any auth source and handles transparent
+refresh via `refreshOpenAICodexToken` when the access token is within 60s of
+expiry.
 
 ## CLI
 
@@ -78,51 +103,67 @@ redc-daemons run  <name> [--root <dir>] [--input <text>] [--max-turns N] [--max-
 ```
 
 `list` walks `**/*.daemon.md` under the root (defaults to `cwd`), skipping
-`node_modules`, `.git`, build output directories, etc.
+`node_modules`, `.git`, build directories, etc.
 
 `run` emits JSONL wide-events to stdout matching red's envelope
 (`event_id`, `kind`, `ts`, `route_name`, `data`) and prints the final
 `complete` payload on success.
 
-## Provider selection
+## Wide-events emitted per run
 
-Default: `codex` via `@openai/codex-sdk`. Needs `codex login` for subscription
-auth; the SDK will surface its own error if unauthenticated.
-
-Override via `AI_DAEMONS_PROVIDER=<name>`. Only `codex` is implemented today;
-a Claude Agent SDK adapter is a one-file addition later, bound to the same
-`AgentProvider` interface in `src/providers/types.ts`.
+- `daemon.run.started` — runId, provider, file, scopeRoot, input
+- `daemon.turn.started` — runId, turn
+- `daemon.tool.called` — runId, turn, toolName (every tool call, including `complete`)
+- `daemon.turn.completed` — runId, turn, inputTokens, outputTokens, completeCalled
+- `daemon.finding` — runId, invariant, target, status, note (one per finding)
+- `daemon.run.completed` — runId, turns, summary, findingCount, nextRunHint, tokens
+- `daemon.run.failed` — runId, reason, message, turns, tokens
 
 ## Scope enforcement
 
-Codex is spawned with `workingDirectory = <dir of the .daemon.md>` and
-`sandboxMode = "workspace-write"`, which restricts file writes to that tree.
-Reads are unrestricted by Codex; the body is the author's contract to stay
-local.
+The Agent runs with `cwd = <dir of the .daemon.md>`. `pi-coding-agent`'s
+tools are pre-scoped to that cwd — `read`, `edit`, `write`, `grep`, `find`,
+`ls` all reject paths that escape. `bash` is trust-based for MVP; the system
+preamble tells the daemon to stay local.
 
 ## Hard rails
 
-- `--max-turns` (default 20) — hard cap on continue-loop iterations.
-- `--max-ms` (default 300_000) — wallclock budget per run.
+- `--max-turns` (default 20) — hard cap on the Agent's prompt/continue cycles.
+- `--max-ms` (default 300_000) — wallclock budget per run. The runner aborts
+  the Agent when this expires.
 
 Both are enforced by the runner, not by frontmatter. A daemon cannot raise
 these caps.
 
 ## What's deferred
 
-- `on:` event triggers and `cron:` schedules (frontmatter is MVP two-field).
-- Claude Agent SDK provider.
-- Persistent memory store (daemons can read/write `<scope>/.daemons/*` via
-  standard tools for now).
+- `on:` event triggers and `cron:` — frontmatter is MVP two-field.
+- Claude Agent SDK provider — same `AgentProvider` interface, swap in later.
+- Persistent memory store — daemons can read/write `<scope>/.daemons/*`
+  through the standard file tools for now.
 - Hot reload, per-daemon budgets, per-daemon tool allowlists.
 
 ## Library use
 
 ```ts
-import { loadDaemons, resolveDaemon, runDaemon, memorySink } from "@redc/daemons";
+import {
+  loadDaemons,
+  resolveDaemon,
+  runDaemon,
+  memorySink,
+  createPiProvider,
+  createFileCodexAuthSource,
+} from "@redc/daemons";
 
 const { specs } = await loadDaemons();
 const { emit, drain } = memorySink();
-const result = await runDaemon("pr-health", { input: "sweep", emit });
+const provider = createPiProvider({
+  authSource: createFileCodexAuthSource(),
+});
+const result = await runDaemon("readme-links", {
+  input: "sweep",
+  emit,
+  provider,
+});
 console.log(result, drain());
 ```

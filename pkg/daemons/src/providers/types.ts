@@ -1,22 +1,39 @@
 import type { CompletePayload } from "../schema";
 
-export type ProviderTurn = {
-  finalResponse: string;
-  usage: { inputTokens: number; outputTokens: number } | null;
-  complete?: CompletePayload;
+export type ProviderTokenUsage = { input: number; output: number };
+
+export type ProviderRunSuccess = {
+  ok: true;
+  payload: CompletePayload;
+  turns: number;
+  tokens: ProviderTokenUsage;
 };
 
-export type ProviderSession = {
-  run(input: string): Promise<ProviderTurn>;
-  stop(): Promise<void>;
+export type ProviderRunFailure = {
+  ok: false;
+  reason: "turn_budget_exceeded" | "wallclock_exceeded" | "provider_error";
+  message: string;
+  turns: number;
+  tokens: ProviderTokenUsage;
 };
 
-export type ProviderSpawnOptions = {
+export type ProviderRunResult = ProviderRunSuccess | ProviderRunFailure;
+
+export type ProviderRunCallbacks = {
+  onTurnStart?(turnIndex: number): void;
+  onTurnEnd?(turnIndex: number, info: { tokens: ProviderTokenUsage; completeCalled: boolean }): void;
+  onToolCall?(turnIndex: number, toolName: string): void;
+};
+
+export type ProviderRunOptions = ProviderRunCallbacks & {
   cwd: string;
   systemPrompt: string;
+  initialInput: string;
+  maxTurns: number;
+  maxWallclockMs: number;
 };
 
-export type AgentProvider = {
-  name: string;
-  spawn(opts: ProviderSpawnOptions): Promise<ProviderSession>;
-};
+export interface AgentProvider {
+  readonly name: string;
+  runUntilComplete(opts: ProviderRunOptions): Promise<ProviderRunResult>;
+}

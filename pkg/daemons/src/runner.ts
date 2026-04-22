@@ -1,6 +1,7 @@
 import { relative } from "node:path";
 import { resolveDaemon, type DaemonSpec } from "./loader";
-import { createCodexProvider } from "./providers/codex";
+import { createFileCodexAuthSource } from "./auth";
+import { createPiProvider } from "./providers/pi";
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { stdoutSink, type WideEventSink } from "./wide-events";
@@ -70,8 +71,10 @@ function buildSystemPrompt(spec: DaemonSpec): string {
 }
 
 function selectProvider(): AgentProvider {
-  const name = process.env.AI_DAEMONS_PROVIDER ?? "codex";
-  if (name === "codex") return createCodexProvider();
+  const name = process.env.AI_DAEMONS_PROVIDER ?? "pi";
+  if (name === "pi") {
+    return createPiProvider({ authSource: createFileCodexAuthSource() });
+  }
   throw new Error(`unsupported AI_DAEMONS_PROVIDER: ${name}`);
 }
 
@@ -86,11 +89,6 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxWallclockMs = opts.maxWallclockMs ?? DEFAULT_MAX_WALLCLOCK_MS;
   const runId = newRunId(spec.name);
-  const startedAt = Date.now();
-
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let turns = 0;
 
   emit({
     kind: "daemon.run.started",
@@ -104,130 +102,91 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     },
   });
 
-  const session = await provider.spawn({
+  const result = await provider.runUntilComplete({
     cwd: spec.scopeRoot,
     systemPrompt: buildSystemPrompt(spec),
-  });
-
-  try {
-    let nextInput = opts.input ?? "Begin your run.";
-
-    while (true) {
-      if (turns >= maxTurns) {
-        return fail(
-          "turn_budget_exceeded",
-          `exceeded max turns (${maxTurns})`,
-          spec,
-          runId,
-          turns,
-          { input: inputTokens, output: outputTokens },
-          emit,
-        );
-      }
-      if (Date.now() - startedAt > maxWallclockMs) {
-        return fail(
-          "wallclock_exceeded",
-          `exceeded max wallclock (${maxWallclockMs}ms)`,
-          spec,
-          runId,
-          turns,
-          { input: inputTokens, output: outputTokens },
-          emit,
-        );
-      }
-
-      turns += 1;
+    initialInput: opts.input ?? "Begin your run.",
+    maxTurns,
+    maxWallclockMs,
+    onTurnStart(turn) {
       emit({
         kind: "daemon.turn.started",
         route_name: spec.name,
-        data: { runId, turn: turns },
+        data: { runId, turn },
       });
-
-      let turn;
-      try {
-        turn = await session.run(nextInput);
-      } catch (err) {
-        return fail(
-          "provider_error",
-          err instanceof Error ? err.message : String(err),
-          spec,
-          runId,
-          turns,
-          { input: inputTokens, output: outputTokens },
-          emit,
-        );
-      }
-
-      if (turn.usage) {
-        inputTokens += turn.usage.inputTokens;
-        outputTokens += turn.usage.outputTokens;
-      }
-
+    },
+    onToolCall(turn, toolName) {
+      emit({
+        kind: "daemon.tool.called",
+        route_name: spec.name,
+        data: { runId, turn, toolName },
+      });
+    },
+    onTurnEnd(turn, info) {
       emit({
         kind: "daemon.turn.completed",
         route_name: spec.name,
         data: {
           runId,
-          turn: turns,
-          inputTokens: turn.usage?.inputTokens ?? 0,
-          outputTokens: turn.usage?.outputTokens ?? 0,
-          completeCalled: turn.complete !== undefined,
-          finalResponsePreview: turn.finalResponse.slice(0, 240),
+          turn,
+          inputTokens: info.tokens.input,
+          outputTokens: info.tokens.output,
+          completeCalled: info.completeCalled,
         },
       });
+    },
+  });
 
-      if (turn.complete) {
-        for (const finding of turn.complete.findings) {
-          emit({
-            kind: "daemon.finding",
-            route_name: spec.name,
-            data: { runId, ...finding },
-          });
-        }
-        emit({
-          kind: "daemon.run.completed",
-          route_name: spec.name,
-          data: {
-            runId,
-            turns,
-            summary: turn.complete.summary,
-            findingCount: turn.complete.findings.length,
-            nextRunHint: turn.complete.nextRunHint ?? null,
-            inputTokens,
-            outputTokens,
-          },
-        });
-        return {
-          ok: true,
-          runId,
-          daemon: spec.name,
-          payload: turn.complete,
-          turns,
-          tokens: { input: inputTokens, output: outputTokens },
-        };
-      }
-
-      nextInput =
-        "Continue. If you are finished, call the `complete` tool exactly once with your summary.";
+  if (result.ok) {
+    for (const finding of result.payload.findings) {
+      emit({
+        kind: "daemon.finding",
+        route_name: spec.name,
+        data: { runId, ...finding },
+      });
     }
-  } finally {
-    await session.stop();
+    emit({
+      kind: "daemon.run.completed",
+      route_name: spec.name,
+      data: {
+        runId,
+        turns: result.turns,
+        summary: result.payload.summary,
+        findingCount: result.payload.findings.length,
+        nextRunHint: result.payload.nextRunHint ?? null,
+        inputTokens: result.tokens.input,
+        outputTokens: result.tokens.output,
+      },
+    });
+    return {
+      ok: true,
+      runId,
+      daemon: spec.name,
+      payload: result.payload,
+      turns: result.turns,
+      tokens: result.tokens,
+    };
   }
-}
 
-function fail(
-  reason: RunFailure["reason"],
-  message: string,
-  spec: DaemonSpec,
-  runId: string,
-  turns: number,
-  tokens: { input: number; output: number },
-  emit: WideEventSink,
-): RunFailure {
   emit({
     kind: "daemon.run.failed",
     route_name: spec.name,
-    data: { runId, reason, message, turns, ...tokens },
+    data: {
+      runId,
+      reason: result.reason,
+      message: result.message,
+      turns: result.turns,
+      input: result.tokens.input,
+      output: result.tokens.output,
+    },
   });
-  return { ok: false, runId, daemon: spec.name, reason, message, turns, tokens };
+  return {
+    ok: false,
+    runId,
+    daemon: spec.name,
+    reason: result.reason,
+    message: result.message,
+    turns: result.turns,
+    tokens: result.tokens,
+  };
 }

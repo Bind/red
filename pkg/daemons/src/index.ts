@@ -5,6 +5,8 @@ export {
   COMPLETE_TOOL_INSTRUCTIONS,
   type RunOptions,
   type RunResult,
+  type RunSuccess,
+  type RunFailure,
 } from "./runner";
 export {
   DaemonFrontmatter,
@@ -17,12 +19,23 @@ export {
 export { stdoutSink, memorySink, type WideEvent, type WideEventSink } from "./wide-events";
 export type {
   AgentProvider,
-  ProviderSession,
-  ProviderSpawnOptions,
-  ProviderTurn,
+  ProviderRunOptions,
+  ProviderRunResult,
+  ProviderRunSuccess,
+  ProviderRunFailure,
+  ProviderTokenUsage,
+  ProviderRunCallbacks,
 } from "./providers/types";
 export {
-  createCodexProvider,
-  MCP_SERVER_NAME,
-  COMPLETE_TOOL_NAME,
-} from "./providers/codex";
+  createPiProvider,
+  CODEX_PROVIDER_ID,
+  DEFAULT_CODEX_MODEL,
+  type PiProviderOptions,
+} from "./providers/pi";
+export {
+  createFileCodexAuthSource,
+  createInMemoryCodexAuthSource,
+  CodexAccessTokenManager,
+  type CodexAuthSource,
+} from "./auth";
+export { COMPLETE_TOOL_NAME, createCompleteTool, type CompleteCapture } from "./tools/complete";
