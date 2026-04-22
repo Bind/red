@@ -87,6 +87,7 @@ async function fetchPrContext(
 
 async function runSmithers(options: {
 	workflowPath: string;
+	cliPath: string;
 	inputPath: string;
 	dbPath: string;
 	runId: string;
@@ -94,10 +95,9 @@ async function runSmithers(options: {
 }): Promise<void> {
 	await new Promise<void>((resolvePromise, reject) => {
 		const child = spawn(
-			"bunx",
+			"bun",
 			[
-				"--no-install",
-				"smithers",
+				options.cliPath,
 				"up",
 				options.workflowPath,
 				"--run-id",
@@ -191,9 +191,14 @@ async function main() {
 		"./workflow.tsx",
 	);
 	const workflowDir = resolve(dirname(workflowPath), "..");
+	const cliPath = resolve(
+		workflowDir,
+		"./node_modules/smithers-orchestrator/src/cli/index.ts",
+	);
 
 	try {
 		await runSmithers({
+			cliPath,
 			workflowPath,
 			inputPath,
 			dbPath,
