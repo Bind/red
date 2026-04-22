@@ -17,6 +17,7 @@ import type {
   AuthenticatorTransportFuture,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialDescriptorJSON,
+  PublicKeyCredentialParameters,
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
@@ -203,7 +204,7 @@ function assertSupportedRegistrationOptions(
     throw new Error("Registration options were missing a challenge");
   }
   const supportsEs256 = options.pubKeyCredParams.some(
-    (param) => param.type === "public-key" && param.alg === -7,
+    (param: PublicKeyCredentialParameters) => param.type === "public-key" && param.alg === -7,
   );
   if (!supportsEs256) {
     throw new Error("Registration options did not include ES256");
@@ -235,7 +236,10 @@ function chooseCredentialId(
     return found;
   }
 
-  const allowList = options.allowCredentials?.filter((item) => item.type === "public-key") ?? [];
+  const allowList =
+    options.allowCredentials?.filter(
+      (item: PublicKeyCredentialDescriptorJSON) => item.type === "public-key",
+    ) ?? [];
   for (const descriptor of allowList) {
     const found = credentials.find((credential) => credential.id === descriptor.id);
     if (found) {
@@ -294,7 +298,9 @@ export function createVirtualPasskeyAuthenticator(
   }
 
   function pickNewCredentialId(options: PublicKeyCredentialCreationOptionsJSON): string {
-    const excluded = new Set(options.excludeCredentials?.map((item) => item.id) ?? []);
+    const excluded = new Set(
+      options.excludeCredentials?.map((item: PublicKeyCredentialDescriptorJSON) => item.id) ?? [],
+    );
     let credentialId = randomCredentialId();
     while (excluded.has(credentialId) || credentials.has(credentialId)) {
       credentialId = randomCredentialId();
@@ -354,7 +360,7 @@ export function createVirtualPasskeyAuthenticator(
       assertSupportedAuthenticationOptions(input.options, config.rpId);
       const available = [...credentials.values()].filter((credential) =>
         input.options.allowCredentials?.length
-          ? input.options.allowCredentials.some((item) =>
+          ? input.options.allowCredentials.some((item: PublicKeyCredentialDescriptorJSON) =>
               matchesCredentialDescriptor(item, credential.id),
             )
           : true,
