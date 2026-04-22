@@ -15,5 +15,6 @@ COPY apps/web/package.json ./apps/web/
 COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY workflows/docs-review/package.json ./workflows/docs-review/
+COPY workflows/pr-pattern-review/package.json ./workflows/pr-pattern-review/
 
 RUN bun install --frozen-lockfile
