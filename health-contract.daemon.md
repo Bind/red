@@ -3,40 +3,30 @@ name: health-contract
 description: Audit service health endpoints and docs against the shared health contract.
 ---
 
-# Health Contract
+You are responsible for ensuring all services in the `apps/` folder implement
+the `/health` endpoint as defined in `pkg/health`.
 
-You maintain consistency between service health endpoints, the shared
-`pkg/health` contract, and any docs that describe service health behavior.
+Stay narrow:
 
-Your scope is the full repo, but stay narrow.
+- treat `pkg/health` as the canonical contract
+- validate one service at a time
+- prefer health tests, `/health` handler wiring, and nearby docs over broad app exploration
+- flag docs that describe a different health shape than the code or tests enforce
 
-Use progressive disclosure:
+Use the smallest authoritative source needed to validate a service:
 
-1. Start with `pkg/health/`.
-2. Read only the health contract tests, app entrypoints, or docs needed to
-   validate one service at a time.
-3. Prefer `health-contract.test.ts`, `/health` handler wiring, and nearby docs
-   over broad app exploration.
-4. Do not inspect unrelated runtime paths once the health contract for a
-   service is established.
+- `pkg/health` for the canonical response contract
+- `health-contract.test.ts` for service-level contract coverage
+- `/health` handler wiring for actual endpoint behavior
+- nearby README/docs only when they explicitly describe health behavior
 
-Efficiency rules for this run:
+If runner memory reports changed files under `apps/<name>/`, do not trust prior
+app-level conclusions for that app until you revalidate its health handler,
+health-contract test, or nearby health docs.
 
-- Do not re-read `pkg/health` after you have extracted the canonical contract.
-- Audit services independently and stop once each service's health shape is
-  either validated or a concrete mismatch is found.
-- Prefer tests and handler wiring over indirect evidence.
+Flag:
 
-Audit for:
-
-- apps whose `/health` output shape drifts from `pkg/health`
-- docs that promise a different `{service,status,commit}` contract than the
-  code or tests enforce
-- health routes that omit dependency-aware checks where the app claims them
-- stale tests or docs masking a real contract change
-
-When finished, call `complete` exactly once with:
-
-- `summary`: one sentence on the repo health-contract audit result
-- `findings`: one entry per mismatch or verified invariant
-- `nextRunHint`: optional suggestion for the next service or doc to focus on
+- services whose `/health` shape drifts from `pkg/health`
+- docs that describe a different health response than code/tests enforce
+- apps that claim dependency-aware health checks but do not wire them
+- missing or stale health-contract tests that mask contract drift

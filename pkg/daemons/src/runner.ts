@@ -4,6 +4,7 @@ import { createFileCodexAuthSource } from "./auth";
 import {
   buildMemoryPrompt,
   collectCheckedFiles,
+  collectScopeInventory,
   createDaemonMemoryStore,
   createEmptyMemoryRecord,
   loadMemorySnapshot,
@@ -50,21 +51,35 @@ export type RunResult = RunSuccess | RunFailure;
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_MAX_WALLCLOCK_MS = 5 * 60_000;
 
+export const DAEMON_PREAMBLE = `You are running as a repo daemon.
+
+Operate inside your scope only.
+Work in a delta-first way:
+
+- check runner-managed memory first
+- prefer changed, new, or invalidated files before broad reads
+- reuse prior tracked facts when their dependencies are unchanged
+- read the minimum source material needed to confirm or reject a contract
+- do not keep exploring after you have enough evidence for real findings
+
+Use the \`track\` tool for daemon-local structured memory:
+
+- start by looking up stable subjects relevant to this daemon
+- record only compact reusable facts, not long narrative notes
+- include precise \`depends_on\` subjects or file paths for recorded facts
+- invalidate tracked subjects when you prove they are stale
+- record each stable subject at most once per run
+
+If the available memory and unchanged dependencies already answer the audit, complete from memory instead of rereading the repo.`;
+
 export const COMPLETE_TOOL_INSTRUCTIONS = `When — and only when — your task is finished, call the \`complete\` tool exactly once. It takes:
 
 - \`summary\` (required): one-sentence recap of what this run accomplished
 - \`findings\` (optional): per-invariant outcomes, each with \`invariant\` (snake_case tag), optional \`target\`, required \`status\` of "ok" | "healed" | "violation_persists" | "skipped", and optional \`note\`
 - \`nextRunHint\` (optional): advice for the next invocation
 
-Do not call \`complete\` until you are genuinely done. If you still have work to do, keep working; the runner will prompt you to continue.`;
-
-export const TRACK_TOOL_INSTRUCTIONS = `A daemon-local \`track\` tool is also available for structured memory across runs.
-
-- Use \`track.lookup\` semantics via action=\`lookup\` to see what this daemon already knows about a subject.
-- Use \`track.record\` semantics via action=\`record\` only for compact, structured facts worth reusing later.
-- Use \`track.invalidate\` semantics via action=\`invalidate\` when you prove a stored subject is stale.
-
-Memory is isolated per daemon. Store compact facts keyed by stable daemon-local subjects such as file paths or contract ids.`;
+Call \`complete\` immediately after you have enough evidence and have recorded any high-value tracked facts for future runs.
+Do not spend extra turns on bookkeeping after the audit result is already known.`;
 
 function newRunId(name: string): string {
   return `run_${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -78,13 +93,15 @@ function buildSystemPrompt(spec: DaemonSpec, memoryPrompt?: string | null): stri
     "",
     "You are invoked as a daemon. Your working directory is the scope of your responsibility;",
     "do not touch files outside it. Use the tools available to you.",
+    "",
+    DAEMON_PREAMBLE,
   ];
 
   if (memoryPrompt) {
     sections.push("", "---", "", memoryPrompt);
   }
 
-  sections.push("", "---", "", spec.body, "", "---", "", TRACK_TOOL_INSTRUCTIONS, "", COMPLETE_TOOL_INSTRUCTIONS);
+  sections.push("", "---", "", spec.body, "", "---", "", COMPLETE_TOOL_INSTRUCTIONS);
   return sections.join("\n");
 }
 
@@ -162,7 +179,12 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   });
 
   if (result.ok) {
-    const checkedFiles = await collectCheckedFiles(spec.scopeRoot, readPaths);
+    const freshCheckedFiles = await collectCheckedFiles(spec.scopeRoot, readPaths);
+    const checkedFiles =
+      freshCheckedFiles.length > 0
+        ? freshCheckedFiles
+        : (previousMemory?.record.lastRun.checkedFiles ?? []);
+    const fileInventory = await collectScopeInventory(spec.scopeRoot);
     const nextRecord = memoryStore.snapshot();
     await saveMemoryRecord(
       {
@@ -177,6 +199,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
           nextRunHint: result.payload.nextRunHint,
           findings: result.payload.findings,
           checkedFiles,
+          fileInventory,
         },
       },
       spec.scopeRoot,

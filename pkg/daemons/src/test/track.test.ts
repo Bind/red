@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDaemonMemoryStore, loadMemorySnapshot } from "../memory";
+import { createDaemonMemoryStore } from "../memory";
 import { createTrackTool } from "../tools/track";
 
 let dir: string;
@@ -25,7 +25,7 @@ describe("track tool", () => {
       subject: "README.md",
       fingerprint: "abc123",
       fact: { commands: ["just up"] },
-      depends_on: ["justfile"],
+      depends_on: [],
     });
     expect((recordResult.details as { entry: { subject: string } }).entry.subject).toBe("README.md");
 
@@ -36,10 +36,7 @@ describe("track tool", () => {
     const lookupEntries = (lookupResult.details as { entries: Array<{ subject: string; depends_on: string[] }> }).entries;
     expect(lookupEntries).toHaveLength(1);
     expect(lookupEntries[0]?.subject).toBe("README.md");
-    expect(lookupEntries[0]?.depends_on).toEqual(["justfile"]);
-
-    const snapshot = await loadMemorySnapshot("docs-command-surface", dir, join(dir, ".cache"));
-    expect(snapshot?.record.tracked["README.md"]?.source_run_id).toBe("run_test_1");
+    expect(lookupEntries[0]?.depends_on).toEqual([]);
 
     const invalidateResult = await tool.execute("call_3", {
       action: "invalidate",

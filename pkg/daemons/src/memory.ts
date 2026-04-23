@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import type { CompleteFinding } from "./schema";
 
 export const DEFAULT_MEMORY_DIRNAME = ".daemons-cache";
 const MEMORY_VERSION = 2;
 const REPO_MARKERS = ["turbo.json", "package.json", ".git"];
+const SKIP_DIRS = new Set([".git", "node_modules", ".turbo", DEFAULT_MEMORY_DIRNAME]);
 
 export type CheckedFileRecord = {
   path: string;
@@ -25,6 +26,7 @@ export type DaemonMemoryRecord = {
     nextRunHint?: string;
     findings: CompleteFinding[];
     checkedFiles: CheckedFileRecord[];
+    fileInventory: CheckedFileRecord[];
   };
 };
 
@@ -42,6 +44,10 @@ export type DaemonMemorySnapshot = {
   unchangedFiles: CheckedFileRecord[];
   changedFiles: CheckedFileRecord[];
   missingFiles: CheckedFileRecord[];
+  newFiles: CheckedFileRecord[];
+  changedScopeFiles: CheckedFileRecord[];
+  missingScopeFiles: CheckedFileRecord[];
+  staleTrackedSubjects: string[];
 };
 
 export type DaemonMemoryStore = {
@@ -87,6 +93,19 @@ export async function loadMemorySnapshot(
   const unchangedFiles: CheckedFileRecord[] = [];
   const changedFiles: CheckedFileRecord[] = [];
   const missingFiles: CheckedFileRecord[] = [];
+  const currentInventory = await collectScopeInventory(scopeRoot);
+  const previousInventory = new Map(
+    normalized.lastRun.fileInventory.map((entry) => [entry.path, entry]),
+  );
+  const currentInventoryByPath = new Map(currentInventory.map((entry) => [entry.path, entry]));
+  const newFiles = currentInventory.filter((entry) => !previousInventory.has(entry.path));
+  const changedScopeFiles = currentInventory.filter((entry) => {
+    const previous = previousInventory.get(entry.path);
+    return previous ? previous.fingerprint !== entry.fingerprint : false;
+  });
+  const missingScopeFiles = normalized.lastRun.fileInventory.filter(
+    (entry) => !currentInventoryByPath.has(entry.path),
+  );
 
   for (const checked of normalized.lastRun.checkedFiles) {
     const absolute = resolve(scopeRoot, checked.path);
@@ -102,7 +121,30 @@ export async function loadMemorySnapshot(
     }
   }
 
-  return { record: normalized, unchangedFiles, changedFiles, missingFiles };
+  const staleTrackedSubjects = collectStaleTrackedSubjects(
+    normalized.tracked,
+    scopeRoot,
+    previousInventory,
+    currentInventoryByPath,
+  );
+
+  const activeTracked = Object.fromEntries(
+    Object.entries(normalized.tracked).filter(([subject]) => !staleTrackedSubjects.includes(subject)),
+  );
+
+  return {
+    record: {
+      ...normalized,
+      tracked: activeTracked,
+    },
+    unchangedFiles,
+    changedFiles,
+    missingFiles,
+    newFiles,
+    changedScopeFiles,
+    missingScopeFiles,
+    staleTrackedSubjects,
+  };
 }
 
 export async function saveMemoryRecord(
@@ -198,17 +240,55 @@ export async function collectCheckedFiles(
   return out;
 }
 
+export async function collectScopeInventory(scopeRoot: string): Promise<CheckedFileRecord[]> {
+  const out: CheckedFileRecord[] = [];
+
+  async function walk(currentDir: string): Promise<void> {
+    const entries = await readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        await walk(join(currentDir, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const absolute = join(currentDir, entry.name);
+      const rel = normalizeCheckedPath(scopeRoot, absolute);
+      if (!rel) continue;
+      const current = await fingerprintFile(absolute);
+      if (current) out.push({ path: rel, ...current });
+    }
+  }
+
+  await walk(scopeRoot);
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+}
+
 export function buildMemoryPrompt(snapshot: DaemonMemorySnapshot | null): string | null {
   if (!snapshot) return null;
-  const { record, unchangedFiles, changedFiles, missingFiles } = snapshot;
+  const {
+    record,
+    unchangedFiles,
+    changedFiles,
+    missingFiles,
+    newFiles,
+    changedScopeFiles,
+    missingScopeFiles,
+    staleTrackedSubjects,
+  } = snapshot;
   const lines = [
     "Runner-managed memory from the last successful run is available.",
     "Use it to avoid rereading unchanged files unless another changed contract invalidates that conclusion.",
+    "Start with tracked subjects and delta files before broad reads.",
     `Previous summary: ${record.lastRun.summary}`,
     `Previously checked files: ${record.lastRun.checkedFiles.length}`,
     `Unchanged since last run: ${unchangedFiles.length}`,
     `Changed since last run: ${changedFiles.length}`,
     `Missing since last run: ${missingFiles.length}`,
+    `New since last run: ${newFiles.length}`,
+    `Changed anywhere in scope since last run: ${changedScopeFiles.length}`,
+    `Stale tracked subjects: ${staleTrackedSubjects.length}`,
   ];
 
   const previousFindings = record.lastRun.findings.slice(0, 8);
@@ -229,6 +309,41 @@ export function buildMemoryPrompt(snapshot: DaemonMemorySnapshot | null): string
   if (changedPreview.length > 0) {
     lines.push("Previously checked but changed:");
     for (const file of changedPreview) lines.push(`- ${file}`);
+  }
+
+  const newPreview = newFiles.slice(0, 12).map((f) => f.path);
+  if (newPreview.length > 0) {
+    lines.push("New files since last run:");
+    for (const file of newPreview) lines.push(`- ${file}`);
+  }
+
+  const changedScopePreview = changedScopeFiles
+    .filter((f) => !changedPreview.includes(f.path))
+    .slice(0, 12)
+    .map((f) => f.path);
+  if (changedScopePreview.length > 0) {
+    lines.push("Changed files anywhere in scope since last run:");
+    for (const file of changedScopePreview) lines.push(`- ${file}`);
+  }
+
+  const missingPreview = missingFiles.slice(0, 12).map((f) => f.path);
+  if (missingPreview.length > 0) {
+    lines.push("Previously checked but now missing:");
+    for (const file of missingPreview) lines.push(`- ${file}`);
+  }
+
+  const missingScopePreview = missingScopeFiles
+    .filter((f) => !missingPreview.includes(f.path))
+    .slice(0, 12)
+    .map((f) => f.path);
+  if (missingScopePreview.length > 0) {
+    lines.push("Files removed from scope since last run:");
+    for (const file of missingScopePreview) lines.push(`- ${file}`);
+  }
+
+  if (staleTrackedSubjects.length > 0) {
+    lines.push("Tracked subjects invalidated since last run:");
+    for (const subject of staleTrackedSubjects.slice(0, 12)) lines.push(`- ${subject}`);
   }
 
   if (record.lastRun.nextRunHint) {
@@ -289,6 +404,7 @@ export function createEmptyMemoryRecord(input: {
       summary: "",
       findings: [],
       checkedFiles: [],
+      fileInventory: [],
     },
   };
 }
@@ -327,6 +443,7 @@ function normalizeMemoryRecord(
       nextRunHint: parsed.lastRun?.nextRunHint,
       findings: parsed.lastRun?.findings ?? [],
       checkedFiles: parsed.lastRun?.checkedFiles ?? [],
+      fileInventory: parsed.lastRun?.fileInventory ?? [],
     },
   };
 }
@@ -340,6 +457,51 @@ function normalizeTrackEntry(entry: TrackEntry): TrackEntry {
     checked_at: entry.checked_at,
     source_run_id: entry.source_run_id,
   };
+}
+
+function collectStaleTrackedSubjects(
+  tracked: Record<string, TrackEntry>,
+  scopeRoot: string,
+  previousInventory: Map<string, CheckedFileRecord>,
+  currentInventory: Map<string, CheckedFileRecord>,
+): string[] {
+  const stale = new Set<string>();
+  const visiting = new Set<string>();
+
+  function dependencyChanged(dep: string): boolean {
+    const normalizedPath = normalizeCheckedPath(scopeRoot, dep);
+    if (!normalizedPath) return false;
+    const previous = previousInventory.get(normalizedPath);
+    const current = currentInventory.get(normalizedPath);
+    if (!previous || !current) return true;
+    return previous.fingerprint !== current.fingerprint;
+  }
+
+  function visit(subject: string): boolean {
+    if (stale.has(subject)) return true;
+    if (visiting.has(subject)) return false;
+    const entry = tracked[subject];
+    if (!entry) return true;
+
+    visiting.add(subject);
+    for (const dep of entry.depends_on) {
+      if (dependencyChanged(dep)) {
+        stale.add(subject);
+        visiting.delete(subject);
+        return true;
+      }
+      if (dep in tracked && visit(dep)) {
+        stale.add(subject);
+        visiting.delete(subject);
+        return true;
+      }
+    }
+    visiting.delete(subject);
+    return false;
+  }
+
+  for (const subject of Object.keys(tracked)) visit(subject);
+  return [...stale].sort();
 }
 
 async function fingerprintFile(
