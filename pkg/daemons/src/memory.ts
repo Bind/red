@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import type { CompleteFinding } from "./schema";
 
 export const DEFAULT_MEMORY_DIRNAME = ".daemons-cache";
-const MEMORY_VERSION = 1;
+const MEMORY_VERSION = 2;
 const REPO_MARKERS = ["turbo.json", "package.json", ".git"];
 
 export type CheckedFileRecord = {
@@ -19,6 +19,7 @@ export type DaemonMemoryRecord = {
   daemon: string;
   scopeRoot: string;
   updatedAt: string;
+  tracked: Record<string, TrackEntry>;
   lastRun: {
     summary: string;
     nextRunHint?: string;
@@ -27,11 +28,29 @@ export type DaemonMemoryRecord = {
   };
 };
 
+export type TrackEntry = {
+  subject: string;
+  fingerprint: string;
+  fact: unknown;
+  depends_on: string[];
+  checked_at: string;
+  source_run_id: string;
+};
+
 export type DaemonMemorySnapshot = {
   record: DaemonMemoryRecord;
   unchangedFiles: CheckedFileRecord[];
   changedFiles: CheckedFileRecord[];
   missingFiles: CheckedFileRecord[];
+};
+
+export type DaemonMemoryStore = {
+  readonly daemon: string;
+  readonly scopeRoot: string;
+  lookup(subjects?: string[]): TrackEntry[];
+  record(entry: TrackEntry): Promise<void>;
+  invalidate(subjects: string[]): Promise<number>;
+  snapshot(): DaemonMemoryRecord;
 };
 
 export async function resolveMemoryDir(scopeRoot: string, explicitDir?: string): Promise<string> {
@@ -62,13 +81,14 @@ export async function loadMemorySnapshot(
   }
 
   const parsed = JSON.parse(raw) as DaemonMemoryRecord;
-  if (parsed.version !== MEMORY_VERSION) return null;
+  const normalized = normalizeMemoryRecord(parsed, daemonName, scopeRoot);
+  if (!normalized) return null;
 
   const unchangedFiles: CheckedFileRecord[] = [];
   const changedFiles: CheckedFileRecord[] = [];
   const missingFiles: CheckedFileRecord[] = [];
 
-  for (const checked of parsed.lastRun.checkedFiles) {
+  for (const checked of normalized.lastRun.checkedFiles) {
     const absolute = resolve(scopeRoot, checked.path);
     const current = await fingerprintFile(absolute);
     if (!current) {
@@ -82,7 +102,7 @@ export async function loadMemorySnapshot(
     }
   }
 
-  return { record: parsed, unchangedFiles, changedFiles, missingFiles };
+  return { record: normalized, unchangedFiles, changedFiles, missingFiles };
 }
 
 export async function saveMemoryRecord(
@@ -95,6 +115,69 @@ export async function saveMemoryRecord(
   const file = memoryFilePath(memoryDir, record.daemon);
   await writeFile(file, `${JSON.stringify(record, null, 2)}\n`);
   return file;
+}
+
+export async function createDaemonMemoryStore(
+  daemonName: string,
+  scopeRoot: string,
+  explicitDir?: string,
+): Promise<DaemonMemoryStore> {
+  const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
+  const existing = await loadMemorySnapshot(daemonName, scopeRoot, explicitDir);
+  let state =
+    existing?.record ??
+    createEmptyMemoryRecord({
+      daemon: daemonName,
+      scopeRoot,
+    });
+
+  return {
+    daemon: daemonName,
+    scopeRoot,
+    lookup(subjects) {
+      const entries = Object.values(state.tracked);
+      if (!subjects || subjects.length === 0) {
+        return entries.sort((a, b) => a.subject.localeCompare(b.subject));
+      }
+      const wanted = new Set(subjects);
+      return entries
+        .filter((entry) => wanted.has(entry.subject))
+        .sort((a, b) => a.subject.localeCompare(b.subject));
+    },
+    async record(entry) {
+      state = {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        tracked: {
+          ...state.tracked,
+          [entry.subject]: normalizeTrackEntry(entry),
+        },
+      };
+      await saveMemoryRecord(state, scopeRoot, explicitDir);
+    },
+    async invalidate(subjects) {
+      const nextTracked = { ...state.tracked };
+      let removed = 0;
+      for (const subject of subjects) {
+        if (subject in nextTracked) {
+          delete nextTracked[subject];
+          removed += 1;
+        }
+      }
+      if (removed > 0) {
+        state = {
+          ...state,
+          updatedAt: new Date().toISOString(),
+          tracked: nextTracked,
+        };
+        await saveMemoryRecord(state, scopeRoot, explicitDir);
+      }
+      return removed;
+    },
+    snapshot() {
+      return structuredClone(state);
+    },
+  };
 }
 
 export async function collectCheckedFiles(
@@ -152,6 +235,17 @@ export function buildMemoryPrompt(snapshot: DaemonMemorySnapshot | null): string
     lines.push(`Previous nextRunHint: ${record.lastRun.nextRunHint}`);
   }
 
+  const trackedPreview = Object.values(record.tracked)
+    .sort((a, b) => a.subject.localeCompare(b.subject))
+    .slice(0, 12);
+  if (trackedPreview.length > 0) {
+    lines.push("Tracked daemon-local subjects already in memory:");
+    for (const entry of trackedPreview) {
+      lines.push(`- ${entry.subject} @ ${entry.fingerprint.slice(0, 12)}`);
+    }
+    lines.push("Use the `track` tool to lookup, record, or invalidate daemon-local facts.");
+  }
+
   return lines.join("\n");
 }
 
@@ -173,10 +267,79 @@ export async function findRepoRoot(startDir: string): Promise<string> {
 }
 
 export function normalizeCheckedPath(scopeRoot: string, rawPath: string): string | null {
+  if (!rawPath) return null;
   const absolute = resolve(scopeRoot, rawPath);
   const rel = relative(scopeRoot, absolute);
   if (rel === "" || rel.startsWith("..")) return null;
   return rel;
+}
+
+export function createEmptyMemoryRecord(input: {
+  daemon: string;
+  scopeRoot: string;
+  updatedAt?: string;
+}): DaemonMemoryRecord {
+  return {
+    version: MEMORY_VERSION,
+    daemon: input.daemon,
+    scopeRoot: input.scopeRoot,
+    updatedAt: input.updatedAt ?? new Date().toISOString(),
+    tracked: {},
+    lastRun: {
+      summary: "",
+      findings: [],
+      checkedFiles: [],
+    },
+  };
+}
+
+function normalizeMemoryRecord(
+  raw: unknown,
+  daemonName: string,
+  scopeRoot: string,
+): DaemonMemoryRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = raw as Partial<DaemonMemoryRecord> & {
+    tracked?: Record<string, unknown>;
+    lastRun?: Partial<DaemonMemoryRecord["lastRun"]>;
+  };
+  if (parsed.version !== MEMORY_VERSION && (parsed.version as number | undefined) !== 1) return null;
+
+  const trackedEntries = Object.fromEntries(
+    Object.entries(parsed.tracked ?? {}).flatMap(([subject, entry]) => {
+      if (!entry || typeof entry !== "object") return [];
+      try {
+        return [[subject, normalizeTrackEntry({ ...(entry as TrackEntry), subject })]];
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  return {
+    version: MEMORY_VERSION,
+    daemon: parsed.daemon ?? daemonName,
+    scopeRoot: parsed.scopeRoot ?? scopeRoot,
+    updatedAt: parsed.updatedAt ?? new Date().toISOString(),
+    tracked: trackedEntries,
+    lastRun: {
+      summary: parsed.lastRun?.summary ?? "",
+      nextRunHint: parsed.lastRun?.nextRunHint,
+      findings: parsed.lastRun?.findings ?? [],
+      checkedFiles: parsed.lastRun?.checkedFiles ?? [],
+    },
+  };
+}
+
+function normalizeTrackEntry(entry: TrackEntry): TrackEntry {
+  return {
+    subject: entry.subject,
+    fingerprint: entry.fingerprint,
+    fact: entry.fact,
+    depends_on: [...new Set(entry.depends_on ?? [])].sort(),
+    checked_at: entry.checked_at,
+    source_run_id: entry.source_run_id,
+  };
 }
 
 async function fingerprintFile(

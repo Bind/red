@@ -28,10 +28,11 @@ describe("memory", () => {
 
     await saveMemoryRecord(
       {
-        version: 1,
+        version: 2,
         daemon: "demo",
         scopeRoot: join(dir, "scope"),
         updatedAt: "2026-01-01T00:00:00.000Z",
+        tracked: {},
         lastRun: {
           summary: "ok",
           findings: [],
@@ -57,10 +58,11 @@ describe("memory", () => {
 
     await saveMemoryRecord(
       {
-        version: 1,
+        version: 2,
         daemon: "demo",
         scopeRoot: join(dir, "scope"),
         updatedAt: "2026-01-01T00:00:00.000Z",
+        tracked: {},
         lastRun: {
           summary: "ok",
           findings: [{ invariant: "x", status: "ok" }],

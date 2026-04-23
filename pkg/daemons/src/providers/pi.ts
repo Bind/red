@@ -83,7 +83,7 @@ async function runOnce(
 
   agent.state.model = model;
   agent.state.systemPrompt = options.systemPrompt;
-  agent.state.tools = [...codingTools, completeTool];
+  agent.state.tools = [...codingTools, ...(options.extraTools ?? []), completeTool];
 
   const unsubscribe = agent.subscribe((event: AgentEvent) => {
     switch (event.type) {

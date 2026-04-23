@@ -4,6 +4,8 @@ import { createFileCodexAuthSource } from "./auth";
 import {
   buildMemoryPrompt,
   collectCheckedFiles,
+  createDaemonMemoryStore,
+  createEmptyMemoryRecord,
   loadMemorySnapshot,
   normalizeCheckedPath,
   saveMemoryRecord,
@@ -11,6 +13,7 @@ import {
 import { createPiProvider } from "./providers/pi";
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
+import { createTrackTool } from "./tools/track";
 import { stdoutSink, type WideEventSink } from "./wide-events";
 
 export type RunOptions = {
@@ -55,6 +58,14 @@ export const COMPLETE_TOOL_INSTRUCTIONS = `When — and only when — your task 
 
 Do not call \`complete\` until you are genuinely done. If you still have work to do, keep working; the runner will prompt you to continue.`;
 
+export const TRACK_TOOL_INSTRUCTIONS = `A daemon-local \`track\` tool is also available for structured memory across runs.
+
+- Use \`track.lookup\` semantics via action=\`lookup\` to see what this daemon already knows about a subject.
+- Use \`track.record\` semantics via action=\`record\` only for compact, structured facts worth reusing later.
+- Use \`track.invalidate\` semantics via action=\`invalidate\` when you prove a stored subject is stale.
+
+Memory is isolated per daemon. Store compact facts keyed by stable daemon-local subjects such as file paths or contract ids.`;
+
 function newRunId(name: string): string {
   return `run_${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -73,7 +84,7 @@ function buildSystemPrompt(spec: DaemonSpec, memoryPrompt?: string | null): stri
     sections.push("", "---", "", memoryPrompt);
   }
 
-  sections.push("", "---", "", spec.body, "", "---", "", COMPLETE_TOOL_INSTRUCTIONS);
+  sections.push("", "---", "", spec.body, "", "---", "", TRACK_TOOL_INSTRUCTIONS, "", COMPLETE_TOOL_INSTRUCTIONS);
   return sections.join("\n");
 }
 
@@ -97,6 +108,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   const maxWallclockMs = opts.maxWallclockMs ?? DEFAULT_MAX_WALLCLOCK_MS;
   const runId = newRunId(spec.name);
   const previousMemory = await loadMemorySnapshot(spec.name, spec.scopeRoot, opts.memoryDir);
+  const memoryStore = await createDaemonMemoryStore(spec.name, spec.scopeRoot, opts.memoryDir);
   const readPaths = new Set<string>();
 
   emit({
@@ -117,6 +129,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
+    extraTools: [createTrackTool(memoryStore, runId)],
     onTurnStart(turn) {
       emit({
         kind: "daemon.turn.started",
@@ -150,11 +163,14 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
 
   if (result.ok) {
     const checkedFiles = await collectCheckedFiles(spec.scopeRoot, readPaths);
+    const nextRecord = memoryStore.snapshot();
     await saveMemoryRecord(
       {
-        version: 1,
-        daemon: spec.name,
-        scopeRoot: spec.scopeRoot,
+        ...createEmptyMemoryRecord({
+          daemon: spec.name,
+          scopeRoot: spec.scopeRoot,
+        }),
+        ...nextRecord,
         updatedAt: new Date().toISOString(),
         lastRun: {
           summary: result.payload.summary,

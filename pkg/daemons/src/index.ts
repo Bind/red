@@ -21,6 +21,8 @@ export {
   DEFAULT_MEMORY_DIRNAME,
   buildMemoryPrompt,
   collectCheckedFiles,
+  createDaemonMemoryStore,
+  createEmptyMemoryRecord,
   findRepoRoot,
   loadMemorySnapshot,
   memoryFilePath,
@@ -30,6 +32,8 @@ export {
   type CheckedFileRecord,
   type DaemonMemoryRecord,
   type DaemonMemorySnapshot,
+  type DaemonMemoryStore,
+  type TrackEntry,
 } from "./memory";
 export type {
   AgentProvider,
@@ -56,3 +60,4 @@ export {
   type LoginCodexOptions,
 } from "./auth";
 export { COMPLETE_TOOL_NAME, createCompleteTool, type CompleteCapture } from "./tools/complete";
+export { TRACK_TOOL_NAME, createTrackTool } from "./tools/track";

@@ -1,3 +1,4 @@
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { CompletePayload } from "../schema";
 
 export type ProviderTokenUsage = { input: number; output: number };
@@ -31,6 +32,7 @@ export type ProviderRunOptions = ProviderRunCallbacks & {
   initialInput: string;
   maxTurns: number;
   maxWallclockMs: number;
+  extraTools?: AgentTool<any>[];
 };
 
 export interface AgentProvider {
