@@ -21,6 +21,15 @@ TMP_DIR="$(mktemp -d)"
 PAYLOAD_DIR="${TMP_DIR}/payloads"
 REPO_DIR="${TMP_DIR}/repo"
 
+run_seed_git() {
+  env -u GIT_DIR \
+    -u GIT_WORK_TREE \
+    -u GIT_INDEX_FILE \
+    -u GIT_OBJECT_DIRECTORY \
+    -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+    git -C "${REPO_DIR}" "$@"
+}
+
 cleanup() {
   rm -rf "${TMP_DIR}"
 }
@@ -119,23 +128,23 @@ wait_for_grs
 run_api_post "/api/repos" "${PAYLOAD_DIR}/create-repo.json" "201" "409"
 
 echo "==> Seeding ${REPO_ID} base branch ${BASE_BRANCH}"
-rsync -a --delete "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
-git -C "${REPO_DIR}" init
-git -C "${REPO_DIR}" config user.name "preview seeder"
-git -C "${REPO_DIR}" config user.email "preview-seed@redc.local"
-git -C "${REPO_DIR}" add -A
-git -C "${REPO_DIR}" commit --allow-empty -m "seed ${BASE_BRANCH}"
-git -C "${REPO_DIR}" branch -M "${BASE_BRANCH}"
+rsync -a --delete --exclude='.git' "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
+run_seed_git init
+run_seed_git config user.name "preview seeder"
+run_seed_git config user.email "preview-seed@redc.local"
+run_seed_git add -A
+run_seed_git commit --allow-empty -m "seed ${BASE_BRANCH}"
+run_seed_git branch -M "${BASE_BRANCH}"
 run_git_push "HEAD:refs/heads/${BASE_BRANCH}"
 
 echo "==> Seeding PR branch ${HEAD_BRANCH}"
-rsync -a --delete "${HEAD_EXPORT_DIR}/" "${REPO_DIR}/"
-git -C "${REPO_DIR}" checkout -B "${HEAD_BRANCH}"
-git -C "${REPO_DIR}" add -A
-if ! git -C "${REPO_DIR}" diff --cached --quiet; then
-  git -C "${REPO_DIR}" commit -m "seed PR #${PR_NUMBER}"
+rsync -a --delete --exclude='.git' "${HEAD_EXPORT_DIR}/" "${REPO_DIR}/"
+run_seed_git checkout -B "${HEAD_BRANCH}"
+run_seed_git add -A
+if ! run_seed_git diff --cached --quiet; then
+  run_seed_git commit -m "seed PR #${PR_NUMBER}"
 fi
-SEEDED_HEAD_SHA="$(git -C "${REPO_DIR}" rev-parse HEAD)"
+SEEDED_HEAD_SHA="$(run_seed_git rev-parse HEAD)"
 run_git_push "HEAD:refs/heads/${HEAD_BRANCH}"
 
 cat > "${PAYLOAD_DIR}/ingest-ref-update.json" <<EOF
