@@ -7,7 +7,7 @@ import {
   obsMiddleware,
 } from "@red/obs";
 import { Hono } from "@red/server";
-import { parseSetCookieHeader } from "better-auth/cookies";
+import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
@@ -32,6 +32,7 @@ export interface AuthServerConfig {
   }>;
   passkeyOrigins: string[];
   passkeyRpId: string;
+  stealthTotpEmails?: string[];
   allowAnyTotpCode?: boolean;
   userAuthSecret?: string;
   signingPrivateJwk?: string;
@@ -438,6 +439,107 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
         kind: kind === "backup_code" ? "backup_code" : "totp",
       }),
     );
+  });
+
+  app.post("/user/totp-login", async (c) => {
+    const requestId = getEnvelope(c).requestId;
+    const fields = await readBodyFields(c.req.raw);
+    const email = fields.email?.trim().toLowerCase();
+    const code = fields.code?.trim();
+    if (!email || !code) {
+      throw new AuthError("invalid_request", "email and code are required", 400);
+    }
+    getEnvelope(c).set({
+      route: {
+        name: "user.totp_login",
+      },
+      auth: {
+        email,
+        second_factor_kind: "totp",
+      },
+    });
+
+    await userLifecycle.verifyTotpLogin(email, {
+      code,
+      allowlistedEmails: config.stealthTotpEmails ?? [],
+    });
+
+    const mailboxLengthBefore = userRuntime.mailbox.length;
+    const signInResponse = await authAdapter.handle(
+      new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: withRequestIdHeaders(requestId, {
+          origin: config.issuer,
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          email,
+          metadata: {
+            purpose: "bootstrap",
+          },
+        }),
+      }),
+    );
+    if (!signInResponse.ok) {
+      const message = await signInResponse.text();
+      throw new AuthError(
+        "server_error",
+        message || "Failed to dispatch stealth magic link",
+        signInResponse.status,
+      );
+    }
+
+    const mail = userRuntime.mailbox
+      .slice(mailboxLengthBefore)
+      .filter((entry) => normalizeEmail(entry.email) === email)
+      .at(-1);
+    if (!mail?.url) {
+      throw new AuthError("server_error", "Stealth magic link was not captured", 500);
+    }
+
+    const verifyResponse = await authAdapter.handle(
+      new Request(mail.url, {
+        method: "GET",
+        headers: withRequestIdHeaders(requestId, {
+          origin: config.issuer,
+        }),
+        redirect: "manual",
+      }),
+    );
+    const setCookieHeader = verifyResponse.headers.get("set-cookie");
+    if (!setCookieHeader) {
+      throw new AuthError("server_error", "Stealth login did not produce a session cookie", 500);
+    }
+
+    const sessionCookie = parseSetCookieHeader(setCookieHeader).get(
+      "better-auth.session_token",
+    )?.value;
+    if (!sessionCookie) {
+      throw new AuthError("server_error", "Stealth login did not yield a session token", 500);
+    }
+
+    for (const headerValue of splitSetCookieHeader(setCookieHeader)) {
+      c.header("set-cookie", headerValue, { append: true });
+    }
+
+    const sessionState = await authAdapter.getSession(
+      new Request(`${config.issuer}/api/auth/get-session`, {
+        headers: withRequestIdHeaders(requestId, {
+          origin: config.issuer,
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        }),
+      }),
+    );
+    const session = sessionState.response?.session;
+    if (!session) {
+      throw new AuthError("server_error", "Stealth login session could not be resolved", 500);
+    }
+
+    return c.json({
+      ok: true,
+      session_id: session.id,
+      email,
+    });
   });
 
   app.post("/user/onboarding/complete", async (c) => {

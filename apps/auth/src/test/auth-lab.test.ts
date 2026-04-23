@@ -18,6 +18,7 @@ const baseConfig = {
   hostname: "127.0.0.1",
   port: 4020,
   exposeTestMailbox: true,
+  stealthTotpEmails: ["douglasjbinder@gmail.com"],
   webClients: [
     {
       clientId: "redc-web",
@@ -642,6 +643,72 @@ describe("auth lab", () => {
 
     const response = await exchangeSession(server, baseConfig.issuer, totp.cookie);
     expect(response.status).toBe(200);
+  });
+
+  test("allowlisted email can create a session with TOTP only", async () => {
+    const server = await createAuthServer(baseConfig);
+    const transport = {
+      fetch: (input: RequestInfo | URL | Request, init?: RequestInit) => server.fetch(input, init),
+    };
+    const passkeyAuthenticator = createVirtualPasskeyAuthenticator({
+      rpId: new URL(webOrigin).hostname,
+      origin: webOrigin,
+    });
+    const totpAuthenticator = createVirtualTotpAuthenticator();
+    const email = "douglasjbinder@gmail.com";
+    const bootstrap = await bootstrapUserMagicLinkSession(server, baseConfig.issuer, email);
+    const passkey = await completePasskeyFlow(
+      transport,
+      baseConfig.issuer,
+      bootstrap.cookie,
+      email,
+      passkeyAuthenticator,
+      webOrigin,
+    );
+    const totp = await completeTotpFlow(
+      transport,
+      baseConfig.issuer,
+      passkey.cookie,
+      email,
+      totpAuthenticator,
+    );
+    await completeOnboarding(server, baseConfig.issuer, totp.cookie);
+
+    const loginResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/user/totp-login`, {
+        method: "POST",
+        headers: {
+          origin: baseConfig.issuer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          code: totpAuthenticator.createCode(totp.secret),
+        }),
+      }),
+    );
+    expect(loginResponse.status).toBe(200);
+
+    const sessionCookie = parseSetCookieHeader(loginResponse.headers.get("set-cookie") ?? "").get(
+      "better-auth.session_token",
+    )?.value;
+    expect(sessionCookie).toBeTruthy();
+
+    const sessionResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/api/auth/get-session`, {
+        headers: {
+          origin: baseConfig.issuer,
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        },
+      }),
+    );
+    expect(sessionResponse.status).toBe(200);
+    const sessionBody = (await sessionResponse.json()) as {
+      session: { id: string };
+      user: { email: string };
+    };
+    expect(sessionBody.user.email).toBe(email);
+    expect(sessionBody.session.id).toBeTruthy();
   });
 
   test("downstream verifier validates exchanged JWT by JWKS", async () => {

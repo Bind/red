@@ -37,6 +37,17 @@ function parseCsv(value: string | undefined, label: string): string[] {
   return items;
 }
 
+function parseOptionalCsv(value: string | undefined): string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return [];
+  }
+  return trimmed
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function parseSingleCsvValue(value: string | undefined, label: string): string {
   const items = parseCsv(value, label);
   if (items.length !== 1) {
@@ -138,6 +149,9 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
     passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
     passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    stealthTotpEmails: parseOptionalCsv(
+      env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
+    ),
     allowAnyTotpCode: env.AUTH_LAB_ALLOW_ANY_TOTP_CODE === "true",
     database: {
       kind: "sqlite",
@@ -200,6 +214,9 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
     passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
     passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    stealthTotpEmails: parseOptionalCsv(
+      env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
+    ),
     allowAnyTotpCode: requiredBoolean(
       env.AUTH_LAB_ALLOW_ANY_TOTP_CODE,
       "AUTH_LAB_ALLOW_ANY_TOTP_CODE",

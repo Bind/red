@@ -9,6 +9,7 @@ import { StatusPage } from "@/routes/status";
 import { Demo } from "@/components/demo";
 import { AuthSessionProvider } from "@/lib/auth";
 import { MagicLinkPage } from "@/routes/auth-magic-link";
+import { AuthYubikeyPage } from "@/routes/auth-yubikey";
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
             <Route path="changes/:id" element={<ChangeDetailPage />} />
             <Route path="triage" element={<TriagePage />} />
             <Route path="status" element={<StatusPage />} />
+            <Route path="auth/yubikey" element={<AuthYubikeyPage />} />
             <Route path="auth/magic-link" element={<MagicLinkPage />} />
             <Route path="theme" element={<Demo />} />
           </Route>
