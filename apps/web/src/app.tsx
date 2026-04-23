@@ -8,6 +8,7 @@ import { TriagePage } from "@/routes/triage";
 import { StatusPage } from "@/routes/status";
 import { Demo } from "@/components/demo";
 import { AuthSessionProvider } from "@/lib/auth";
+import { AuthEnrollPage } from "@/routes/auth-enroll";
 import { MagicLinkPage } from "@/routes/auth-magic-link";
 import { AuthYubikeyPage } from "@/routes/auth-yubikey";
 
@@ -23,6 +24,7 @@ export function App() {
             <Route path="changes/:id" element={<ChangeDetailPage />} />
             <Route path="triage" element={<TriagePage />} />
             <Route path="status" element={<StatusPage />} />
+            <Route path="auth/enroll" element={<AuthEnrollPage />} />
             <Route path="auth/yubikey" element={<AuthYubikeyPage />} />
             <Route path="auth/magic-link" element={<MagicLinkPage />} />
             <Route path="theme" element={<Demo />} />

@@ -214,16 +214,10 @@ run_git_push() {
 
   docker run --rm \
     --network "${PROJECT}_default" \
-    --entrypoint /bin/sh \
     -v "${REPO_DIR}:/repo" \
-    -w /repo \
     alpine/git \
-    -lc '
-      git config --global --add safe.directory /repo
-      git remote remove origin >/dev/null 2>&1 || true
-      git remote add origin "'"${remote_url}"'"
-      git push --force origin "'"${refspec}"'"
-    '
+    -C /repo \
+    push --force "${remote_url}" "${refspec}"
 }
 
 echo "==> Ensuring preview repo ${REPO_ID} exists in ctl"
