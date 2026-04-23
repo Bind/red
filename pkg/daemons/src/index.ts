@@ -17,6 +17,20 @@ export {
   type DaemonFrontmatter as DaemonFrontmatterT,
 } from "./schema";
 export { stdoutSink, memorySink, type WideEvent, type WideEventSink } from "./wide-events";
+export {
+  DEFAULT_MEMORY_DIRNAME,
+  buildMemoryPrompt,
+  collectCheckedFiles,
+  findRepoRoot,
+  loadMemorySnapshot,
+  memoryFilePath,
+  normalizeCheckedPath,
+  resolveMemoryDir,
+  saveMemoryRecord,
+  type CheckedFileRecord,
+  type DaemonMemoryRecord,
+  type DaemonMemorySnapshot,
+} from "./memory";
 export type {
   AgentProvider,
   ProviderRunOptions,

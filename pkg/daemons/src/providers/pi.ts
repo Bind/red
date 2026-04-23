@@ -95,7 +95,7 @@ async function runOnce(
         break;
       case "tool_execution_start":
         if (terminalTurnObserved) break;
-        options.onToolCall?.(turnIndex, event.toolName);
+        options.onToolCall?.(turnIndex, event.toolName, event.args);
         if (event.toolName === COMPLETE_TOOL_NAME) {
           completeCalledThisTurn = true;
         }

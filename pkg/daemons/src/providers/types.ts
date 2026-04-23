@@ -22,7 +22,7 @@ export type ProviderRunResult = ProviderRunSuccess | ProviderRunFailure;
 export type ProviderRunCallbacks = {
   onTurnStart?(turnIndex: number): void;
   onTurnEnd?(turnIndex: number, info: { tokens: ProviderTokenUsage; completeCalled: boolean }): void;
-  onToolCall?(turnIndex: number, toolName: string): void;
+  onToolCall?(turnIndex: number, toolName: string, args?: unknown): void;
 };
 
 export type ProviderRunOptions = ProviderRunCallbacks & {

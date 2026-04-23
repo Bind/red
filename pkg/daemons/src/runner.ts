@@ -1,6 +1,13 @@
 import { relative } from "node:path";
 import { resolveDaemon, type DaemonSpec } from "./loader";
 import { createFileCodexAuthSource } from "./auth";
+import {
+  buildMemoryPrompt,
+  collectCheckedFiles,
+  loadMemorySnapshot,
+  normalizeCheckedPath,
+  saveMemoryRecord,
+} from "./memory";
 import { createPiProvider } from "./providers/pi";
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
@@ -11,6 +18,7 @@ export type RunOptions = {
   input?: string;
   maxTurns?: number;
   maxWallclockMs?: number;
+  memoryDir?: string;
   provider?: AgentProvider;
   emit?: WideEventSink;
 };
@@ -51,23 +59,22 @@ function newRunId(name: string): string {
   return `run_${name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function buildSystemPrompt(spec: DaemonSpec): string {
-  return [
+function buildSystemPrompt(spec: DaemonSpec, memoryPrompt?: string | null): string {
+  const sections = [
     `# Daemon: ${spec.name}`,
     "",
     `Description: ${spec.description}`,
     "",
     "You are invoked as a daemon. Your working directory is the scope of your responsibility;",
     "do not touch files outside it. Use the tools available to you.",
-    "",
-    "---",
-    "",
-    spec.body,
-    "",
-    "---",
-    "",
-    COMPLETE_TOOL_INSTRUCTIONS,
-  ].join("\n");
+  ];
+
+  if (memoryPrompt) {
+    sections.push("", "---", "", memoryPrompt);
+  }
+
+  sections.push("", "---", "", spec.body, "", "---", "", COMPLETE_TOOL_INSTRUCTIONS);
+  return sections.join("\n");
 }
 
 function selectProvider(): AgentProvider {
@@ -89,6 +96,8 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxWallclockMs = opts.maxWallclockMs ?? DEFAULT_MAX_WALLCLOCK_MS;
   const runId = newRunId(spec.name);
+  const previousMemory = await loadMemorySnapshot(spec.name, spec.scopeRoot, opts.memoryDir);
+  const readPaths = new Set<string>();
 
   emit({
     kind: "daemon.run.started",
@@ -104,7 +113,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
 
   const result = await provider.runUntilComplete({
     cwd: spec.scopeRoot,
-    systemPrompt: buildSystemPrompt(spec),
+    systemPrompt: buildSystemPrompt(spec, buildMemoryPrompt(previousMemory)),
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
@@ -115,7 +124,9 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
         data: { runId, turn },
       });
     },
-    onToolCall(turn, toolName) {
+    onToolCall(turn, toolName, args) {
+      const readPath = extractCheckedPath(spec.scopeRoot, toolName, args);
+      if (readPath) readPaths.add(readPath);
       emit({
         kind: "daemon.tool.called",
         route_name: spec.name,
@@ -138,6 +149,23 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   });
 
   if (result.ok) {
+    const checkedFiles = await collectCheckedFiles(spec.scopeRoot, readPaths);
+    await saveMemoryRecord(
+      {
+        version: 1,
+        daemon: spec.name,
+        scopeRoot: spec.scopeRoot,
+        updatedAt: new Date().toISOString(),
+        lastRun: {
+          summary: result.payload.summary,
+          nextRunHint: result.payload.nextRunHint,
+          findings: result.payload.findings,
+          checkedFiles,
+        },
+      },
+      spec.scopeRoot,
+      opts.memoryDir,
+    );
     for (const finding of result.payload.findings) {
       emit({
         kind: "daemon.finding",
@@ -189,4 +217,11 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     turns: result.turns,
     tokens: result.tokens,
   };
+}
+
+function extractCheckedPath(scopeRoot: string, toolName: string, args: unknown): string | null {
+  if (toolName !== "read" || !args || typeof args !== "object") return null;
+  const path = (args as { path?: unknown }).path;
+  if (typeof path !== "string" || path.length === 0) return null;
+  return normalizeCheckedPath(scopeRoot, path);
 }

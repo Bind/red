@@ -35,7 +35,7 @@ async function writeDaemon(
 type MockScenario = {
   turns: number;
   perTurnTokens?: { input: number; output: number };
-  toolCallsPerTurn?: string[][];
+  toolCallsPerTurn?: Array<Array<{ name: string; args?: unknown }>>;
   outcome:
     | { kind: "complete"; payload: CompletePayload }
     | { kind: "turn_budget" }
@@ -52,8 +52,8 @@ function mockProvider(scenario: MockScenario): AgentProvider {
       const tokens = { input: 0, output: 0 };
       for (let i = 1; i <= turns; i += 1) {
         opts.onTurnStart?.(i);
-        for (const name of scenario.toolCallsPerTurn?.[i - 1] ?? []) {
-          opts.onToolCall?.(i, name);
+        for (const tool of scenario.toolCallsPerTurn?.[i - 1] ?? []) {
+          opts.onToolCall?.(i, tool.name, tool.args);
         }
         tokens.input += perTurnTokens.input;
         tokens.output += perTurnTokens.output;
@@ -199,7 +199,10 @@ describe("runner", () => {
       root: dir,
       provider: mockProvider({
         turns: 2,
-        toolCallsPerTurn: [["read"], ["read", "complete"]],
+        toolCallsPerTurn: [
+          [{ name: "read" }],
+          [{ name: "read" }, { name: "complete" }],
+        ],
         outcome: { kind: "complete", payload: { summary: "ok", findings: [] } },
       }),
       emit,
@@ -208,5 +211,38 @@ describe("runner", () => {
     expect(toolCalls).toHaveLength(3);
     expect(toolCalls[0]?.data.toolName).toBe("read");
     expect(toolCalls[2]?.data.toolName).toBe("complete");
+  });
+
+  test("writes daemon memory for checked read files and reuses it in the next prompt", async () => {
+    await writeDaemon("memory", "d", "read files");
+    await writeFile(join(dir, "notes.txt"), "hello\n");
+    const memoryDir = join(dir, ".cache");
+
+    await runDaemon("memory", {
+      root: dir,
+      memoryDir,
+      provider: mockProvider({
+        turns: 1,
+        toolCallsPerTurn: [[{ name: "read", args: { path: "notes.txt" } }]],
+        outcome: { kind: "complete", payload: { summary: "cached", findings: [] } },
+      }),
+    });
+
+    let capturedSystemPrompt = "";
+    await runDaemon("memory", {
+      root: dir,
+      memoryDir,
+      provider: {
+        name: "capture",
+        async runUntilComplete(opts: ProviderRunOptions): Promise<ProviderRunResult> {
+          capturedSystemPrompt = opts.systemPrompt;
+          return { ok: true, payload: { summary: "done", findings: [] }, turns: 1, tokens: { input: 0, output: 0 } };
+        },
+      },
+    });
+
+    expect(capturedSystemPrompt).toContain("Runner-managed memory from the last successful run is available.");
+    expect(capturedSystemPrompt).toContain("Previously checked and unchanged:");
+    expect(capturedSystemPrompt).toContain("notes.txt");
   });
 });
