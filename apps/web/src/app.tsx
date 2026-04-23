@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router";
 import { Layout } from "@/components/layout";
+import { Dashboard } from "@/routes/dashboard";
 import { HostedRepoPage } from "@/routes/hosted-repo";
 import { HostedRepoCommitPage } from "@/routes/hosted-repo-commit";
 import { ChangeDetailPage } from "@/routes/change";
@@ -15,7 +16,8 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<HostedRepoPage />} />
+            <Route index element={<Dashboard />} />
+            <Route path="hosted-repo" element={<HostedRepoPage />} />
             <Route path="hosted-repo/commits/:sha" element={<HostedRepoCommitPage />} />
             <Route path="changes/:id" element={<ChangeDetailPage />} />
             <Route path="triage" element={<TriagePage />} />

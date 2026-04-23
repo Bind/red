@@ -402,8 +402,8 @@ deploy-check url="https://red.computer":
     fi
 
 # Deploy a per-PR preview (slug like pr-42) to the dev box
-deploy-preview slug host image_tag git_commit port="2222":
-    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
+deploy-preview slug host image_tag git_commit base_branch base_ref head_branch pr_number port="2222":
+    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }} {{ base_branch }} {{ base_ref }} {{ head_branch }} {{ pr_number }}
 
 # Tear down a per-PR preview
 teardown-preview slug host port="2222":

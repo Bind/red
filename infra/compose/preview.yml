@@ -43,6 +43,8 @@ services:
     environment:
       REDC_PORT: 3000
       REDC_DB_PATH: /data/redc-preview.db
+      REDC_REPOS: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
+      GIT_STORAGE_DEFAULT_OWNER: ${PREVIEW_REPO_OWNER:-redc}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
       MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
@@ -71,6 +73,7 @@ services:
       - /opt/redc-previews/.env
     environment:
       BFF_PORT: 3001
+      BFF_HOSTED_REPO_ID: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
       REDC_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
       OBS_BASE_URL: http://obs:4090

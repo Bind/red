@@ -6,13 +6,17 @@ set -euo pipefail
 # .env.preview with DOTENV_PRIVATE_KEY_PREVIEW (kept in the box's shell profile).
 # Compose then pulls immutable GHCR tags rather than building locally.
 #
-# Usage: ./infra/scripts/deploy-preview.sh <slug> <host> [ssh-port] <image-tag> <git-commit>
+# Usage: ./infra/scripts/deploy-preview.sh <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>
 
 SLUG="${1:?Usage: $0 <slug> <host> [ssh-port]}"
 HOST="${2:?Usage: $0 <slug> <host> [ssh-port]}"
 SSH_PORT="${3:-2222}"
 IMAGE_TAG="${4:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit>}"
 GIT_COMMIT="${5:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit>}"
+BASE_BRANCH="${6:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
+BASE_REF="${7:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
+HEAD_BRANCH="${8:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
+PR_NUMBER="${9:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
 REMOTE_DIR="/opt/redc-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
 CADDY_SITES_DIR="/opt/redc-preview-caddy/caddy/sites"
@@ -21,7 +25,21 @@ PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
 PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
+PREVIEW_HOSTED_REPO_ID="redc/red"
+PREVIEW_REPO_OWNER="${PREVIEW_HOSTED_REPO_ID%%/*}"
 MIN_FREE_KB=$((8 * 1024 * 1024))
+SEED_TMP="$(mktemp -d)"
+BASE_EXPORT_DIR="${SEED_TMP}/base"
+HEAD_EXPORT_DIR="${SEED_TMP}/head"
+
+cleanup() {
+  rm -rf "${SEED_TMP}"
+}
+trap cleanup EXIT
+
+mkdir -p "${BASE_EXPORT_DIR}" "${HEAD_EXPORT_DIR}"
+git archive "${BASE_REF}" | tar -x -C "${BASE_EXPORT_DIR}"
+git archive "${GIT_COMMIT}" | tar -x -C "${HEAD_EXPORT_DIR}"
 
 echo "==> Ensuring remote dir ${REMOTE_DIR} exists"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
@@ -40,6 +58,16 @@ rsync -avz --delete \
   -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
   ./ "root@${HOST}:${REMOTE_DIR}/"
 
+echo "==> Syncing preview seed snapshots → ${HOST}:${REMOTE_DIR}/.preview-seed"
+ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
+  "mkdir -p ${REMOTE_DIR}/.preview-seed/base ${REMOTE_DIR}/.preview-seed/head"
+rsync -avz --delete \
+  -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
+  "${BASE_EXPORT_DIR}/" "root@${HOST}:${REMOTE_DIR}/.preview-seed/base/"
+rsync -avz --delete \
+  -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
+  "${HEAD_EXPORT_DIR}/" "root@${HOST}:${REMOTE_DIR}/.preview-seed/head/"
+
 echo "==> Decrypting .env.preview and pulling compose images (project=${PROJECT})"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" \
@@ -47,6 +75,11 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   PREVIEW_WEB_CLIENTS="${PREVIEW_WEB_CLIENTS}" \
   PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PASSKEY_ORIGINS}" \
   PREVIEW_PASSKEY_RP_IDS="${PREVIEW_PASSKEY_RP_IDS}" \
+  PREVIEW_HOSTED_REPO_ID="${PREVIEW_HOSTED_REPO_ID}" \
+  PREVIEW_REPO_OWNER="${PREVIEW_REPO_OWNER}" \
+  BASE_BRANCH="${BASE_BRANCH}" \
+  HEAD_BRANCH="${HEAD_BRANCH}" \
+  PR_NUMBER="${PR_NUMBER}" \
   "bash -s" <<REMOTE
 set -euo pipefail
 
@@ -98,9 +131,19 @@ if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
   echo "==> Free space after prune: \${free_kb} KB"
 fi
 
-export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS
+export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS PREVIEW_HOSTED_REPO_ID PREVIEW_REPO_OWNER
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml pull
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d
+
+"${REMOTE_DIR}/infra/scripts/seed-preview-repo.sh" \
+  "${PROJECT}" \
+  "${REMOTE_DIR}" \
+  "${PREVIEW_HOSTED_REPO_ID}" \
+  "${BASE_BRANCH}" \
+  "${HEAD_BRANCH}" \
+  "${PR_NUMBER}" \
+  "${GIT_COMMIT}" \
+  "${PREVIEW_PUBLIC_URL}"
 
 mkdir -p "${CADDY_SITES_DIR}"
 cat > "${CADDY_SITE_FILE}" <<CADDY
