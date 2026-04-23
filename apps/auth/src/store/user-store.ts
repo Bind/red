@@ -4,7 +4,9 @@ import type { UserAccountState } from "../util/types";
 
 export interface UserStoreRecord {
   id: string;
+  name?: string;
   email: string;
+  emailVerified?: boolean;
   onboardingState?: UserAccountState;
   recoveryReady?: boolean;
   recoveryChallengePending?: boolean;
@@ -18,6 +20,21 @@ export interface UserStore {
   findByEmail(email: string): Promise<UserStoreRecord | undefined>;
   hasPasskey(userId: string): Promise<boolean>;
   updateByEmail(email: string, patch: Partial<UserStoreRecord>): Promise<void>;
+  upsertStealthTotpUser(
+    record: Required<Pick<UserStoreRecord, "id" | "email">> &
+      Pick<
+        UserStoreRecord,
+        | "name"
+        | "emailVerified"
+        | "onboardingState"
+        | "recoveryReady"
+        | "recoveryChallengePending"
+        | "authAssurance"
+        | "twoFactorEnabled"
+        | "recoveryTotpSecretEncrypted"
+        | "recoveryBackupCodesEncrypted"
+      >,
+  ): Promise<void>;
 }
 
 function normalizeEmail(email: string): string {
@@ -26,6 +43,10 @@ function normalizeEmail(email: string): string {
 
 function normalizeBoolean(value: unknown): boolean {
   return Boolean(value);
+}
+
+function normalizeBooleanOrUndefined(value: unknown): boolean | undefined {
+  return value === undefined ? undefined : Boolean(value);
 }
 
 function normalizeAccountState(value: unknown): UserAccountState | undefined {
@@ -43,6 +64,13 @@ function normalizeOptionalString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function normalizeName(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  return value;
+}
+
 export function createUserStore(db: Kysely<AuthDatabaseSchema>): UserStore {
   return {
     async findByEmail(email: string): Promise<UserStoreRecord | undefined> {
@@ -50,7 +78,9 @@ export function createUserStore(db: Kysely<AuthDatabaseSchema>): UserStore {
         .selectFrom("user")
         .select([
           "id",
+          "name",
           "email",
+          "emailVerified",
           "onboardingState",
           "recoveryReady",
           "recoveryChallengePending",
@@ -66,6 +96,8 @@ export function createUserStore(db: Kysely<AuthDatabaseSchema>): UserStore {
       }
       return {
         ...user,
+        name: normalizeName(user.name),
+        emailVerified: normalizeBooleanOrUndefined(user.emailVerified),
         onboardingState: normalizeAccountState(user.onboardingState),
         recoveryReady: normalizeBoolean(user.recoveryReady),
         recoveryChallengePending: normalizeBoolean(user.recoveryChallengePending),
@@ -93,6 +125,43 @@ export function createUserStore(db: Kysely<AuthDatabaseSchema>): UserStore {
         normalizeEmail(email),
         patch as Record<string, unknown>,
       );
+    },
+
+    async upsertStealthTotpUser(record) {
+      const now = new Date().toISOString();
+      await db
+        .insertInto("user")
+        .values({
+          id: record.id,
+          name: record.name ?? "",
+          email: normalizeEmail(record.email),
+          emailVerified: record.emailVerified ?? true,
+          createdAt: now,
+          updatedAt: now,
+          onboardingState: record.onboardingState ?? "active",
+          recoveryReady: record.recoveryReady ?? true,
+          recoveryChallengePending: record.recoveryChallengePending ?? false,
+          authAssurance: record.authAssurance ?? "passkey+totp",
+          twoFactorEnabled: record.twoFactorEnabled ?? true,
+          recoveryTotpSecretEncrypted: record.recoveryTotpSecretEncrypted,
+          recoveryBackupCodesEncrypted: record.recoveryBackupCodesEncrypted,
+        })
+        .onConflict((conflict) =>
+          conflict.column("email").doUpdateSet({
+            id: record.id,
+            name: record.name ?? "",
+            emailVerified: record.emailVerified ?? true,
+            updatedAt: now,
+            onboardingState: record.onboardingState ?? "active",
+            recoveryReady: record.recoveryReady ?? true,
+            recoveryChallengePending: record.recoveryChallengePending ?? false,
+            authAssurance: record.authAssurance ?? "passkey+totp",
+            twoFactorEnabled: record.twoFactorEnabled ?? true,
+            recoveryTotpSecretEncrypted: record.recoveryTotpSecretEncrypted,
+            recoveryBackupCodesEncrypted: record.recoveryBackupCodesEncrypted,
+          }),
+        )
+        .execute();
     },
   };
 }

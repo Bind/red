@@ -33,6 +33,12 @@ export interface AuthServerConfig {
   passkeyOrigins: string[];
   passkeyRpId: string;
   stealthTotpEmails?: string[];
+  stealthTotpSeedUser?: {
+    id: string;
+    email: string;
+    name: string;
+    totpSecret: string;
+  };
   allowAnyTotpCode?: boolean;
   userAuthSecret?: string;
   signingPrivateJwk?: string;
@@ -129,6 +135,11 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function normalizeDisplayName(name: string, email: string): string {
+  const trimmed = name.trim();
+  return trimmed || normalizeEmail(email);
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -186,6 +197,25 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   const app = new Hono();
   const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
   const startedAt = Date.now();
+
+  if (config.stealthTotpSeedUser) {
+    const encryptedTotpSecret = await symmetricEncrypt({
+      key: authSecret,
+      data: config.stealthTotpSeedUser.totpSecret,
+    });
+    await userRuntime.stores.user.upsertStealthTotpUser({
+      id: config.stealthTotpSeedUser.id,
+      email: normalizeEmail(config.stealthTotpSeedUser.email),
+      name: normalizeDisplayName(config.stealthTotpSeedUser.name, config.stealthTotpSeedUser.email),
+      emailVerified: true,
+      onboardingState: "active",
+      recoveryReady: true,
+      recoveryChallengePending: false,
+      authAssurance: "passkey+totp",
+      twoFactorEnabled: true,
+      recoveryTotpSecretEncrypted: encryptedTotpSecret,
+    });
+  }
 
   const resolveSessionState = async (request: Request): Promise<ResolvedSessionState | null> => {
     const sessionResult = await authAdapter.getSession(request);

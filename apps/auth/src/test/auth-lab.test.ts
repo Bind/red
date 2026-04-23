@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createOTP } from "@better-auth/utils/otp";
 import { parseSetCookieHeader } from "better-auth/cookies";
 import { createTokenVerifier } from "../sdk/verifier";
 import { createAuthServer } from "../server";
@@ -709,6 +710,56 @@ describe("auth lab", () => {
     };
     expect(sessionBody.user.email).toBe(email);
     expect(sessionBody.session.id).toBeTruthy();
+  });
+
+  test("seeded stealth TOTP user can create a session without prior onboarding", async () => {
+    const totpSecret = "JBSWY3DPEHPK3PXP";
+    const server = await createAuthServer({
+      ...baseConfig,
+      stealthTotpSeedUser: {
+        id: "seeded-douglas",
+        email: "douglasjbinder@gmail.com",
+        name: "Douglas Binder",
+        totpSecret,
+      },
+    });
+    const code = await createOTP(totpSecret, { digits: 6, period: 30 }).totp();
+
+    const loginResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/user/totp-login`, {
+        method: "POST",
+        headers: {
+          origin: baseConfig.issuer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "douglasjbinder@gmail.com",
+          code,
+        }),
+      }),
+    );
+    expect(loginResponse.status).toBe(200);
+
+    const sessionCookie = parseSetCookieHeader(loginResponse.headers.get("set-cookie") ?? "").get(
+      "better-auth.session_token",
+    )?.value;
+    expect(sessionCookie).toBeTruthy();
+
+    const sessionResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/api/auth/get-session`, {
+        headers: {
+          origin: baseConfig.issuer,
+          cookie: `better-auth.session_token=${sessionCookie}`,
+        },
+      }),
+    );
+    expect(sessionResponse.status).toBe(200);
+    const sessionBody = (await sessionResponse.json()) as {
+      user: { email: string; onboardingState?: string; recoveryReady?: boolean };
+    };
+    expect(sessionBody.user.email).toBe("douglasjbinder@gmail.com");
+    expect(sessionBody.user.onboardingState).toBe("active");
+    expect(sessionBody.user.recoveryReady).toBe(true);
   });
 
   test("downstream verifier validates exchanged JWT by JWKS", async () => {

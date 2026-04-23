@@ -25,6 +25,25 @@ function optionalString(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function defaultSeedUserId(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function parseStealthTotpSeedUser(env: NodeJS.ProcessEnv) {
+  const email = optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_EMAIL);
+  const totpSecret = optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_SECRET);
+  if (!email || !totpSecret) {
+    return undefined;
+  }
+
+  return {
+    id: optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_USER_ID) ?? defaultSeedUserId(email),
+    email,
+    name: optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_NAME) ?? "",
+    totpSecret,
+  };
+}
+
 function parseCsv(value: string | undefined, label: string): string[] {
   const raw = requiredString(value, label);
   const items = raw
@@ -152,6 +171,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     stealthTotpEmails: parseOptionalCsv(
       env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
     ),
+    stealthTotpSeedUser: parseStealthTotpSeedUser(env),
     allowAnyTotpCode: env.AUTH_LAB_ALLOW_ANY_TOTP_CODE === "true",
     database: {
       kind: "sqlite",
@@ -217,6 +237,7 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     stealthTotpEmails: parseOptionalCsv(
       env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
     ),
+    stealthTotpSeedUser: parseStealthTotpSeedUser(env),
     allowAnyTotpCode: requiredBoolean(
       env.AUTH_LAB_ALLOW_ANY_TOTP_CODE,
       "AUTH_LAB_ALLOW_ANY_TOTP_CODE",
