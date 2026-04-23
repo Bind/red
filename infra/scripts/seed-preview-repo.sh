@@ -20,6 +20,7 @@ DELIVERY_ID="preview:pr-${PR_NUMBER}:${HEAD_SHA}"
 TMP_DIR="$(mktemp -d)"
 PAYLOAD_DIR="${TMP_DIR}/payloads"
 REPO_DIR="${TMP_DIR}/repo"
+REPO_DIR_REAL=""
 
 run_seed_git() {
   env -i \
@@ -28,6 +29,20 @@ run_seed_git() {
     USER="${USER:-root}" \
     LANG="${LANG:-C.UTF-8}" \
     git -C "${REPO_DIR}" "$@"
+}
+
+bootstrap_seed_repo() {
+  REPO_DIR_REAL="$(cd "${REPO_DIR}" && pwd -P)"
+
+  env -i \
+    PATH="${PATH}" \
+    HOME="${HOME}" \
+    USER="${USER:-root}" \
+    LANG="${LANG:-C.UTF-8}" \
+    git config --global --add safe.directory "${REPO_DIR_REAL}"
+
+  run_seed_git init
+  run_seed_git branch -M "${BASE_BRANCH}"
 }
 
 cleanup() {
@@ -129,8 +144,7 @@ run_api_post "/api/repos" "${PAYLOAD_DIR}/create-repo.json" "201" "409"
 
 echo "==> Seeding ${REPO_ID} base branch ${BASE_BRANCH}"
 rsync -a --delete --exclude='.git' "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
-run_seed_git init
-run_seed_git branch -M "${BASE_BRANCH}"
+bootstrap_seed_repo
 run_seed_git config user.name "preview seeder"
 run_seed_git config user.email "preview-seed@redc.local"
 run_seed_git add -A
