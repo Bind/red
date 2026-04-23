@@ -8,7 +8,7 @@ triggers `.github/workflows/release.yml`, which:
    and the release version.
 3. Runs `just deploy-infra production` → `sst deploy` against Cloudflare + Hetzner.
 4. Writes the SSH private key from secrets.
-5. Runs `just deploy-ssh red.computer 2222 <release-tag> <commit-sha>` → rsyncs the
+5. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
    working tree to `/opt/redc`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/compose/prod.yml up -d`.
 6. Runs `just deploy-check https://red.computer` → curl `/health` and fail
@@ -68,5 +68,5 @@ publishing a new tag at the previous SHA, or redeploy manually:
 
 ```bash
 git checkout <good-sha>
-just deploy-ssh red.computer 2222
+just deploy-ssh <release-tag> <good-sha> red.computer 2222
 ```

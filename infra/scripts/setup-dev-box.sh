@@ -67,6 +67,7 @@ cat > "${EVICT_SCRIPT}" <<'EVICT'
 set -euo pipefail
 MAX_AGE_DAYS="${1:-14}"
 PREVIEWS_DIR="/opt/redc-previews"
+CADDY_SITE_DIR="/opt/redc-preview-caddy/caddy/sites"
 [ -d "${PREVIEWS_DIR}" ] || exit 0
 find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}" -print0 \
   | while IFS= read -r -d '' dir; do
@@ -79,7 +80,12 @@ find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}"
       docker compose -p "${project}" down -v --remove-orphans 2>/dev/null || true
     fi
     rm -rf "$dir"
+    rm -f "${CADDY_SITE_DIR}/${slug}.caddy"
   done
+
+if docker ps --format '{{.Names}}' | grep -qx preview-caddy; then
+  docker exec preview-caddy caddy reload --config /etc/caddy/preview.Caddyfile || true
+fi
 
 docker system prune -af --volumes || true
 docker builder prune -af || true
