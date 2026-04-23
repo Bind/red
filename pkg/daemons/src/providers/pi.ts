@@ -18,13 +18,13 @@ import type {
 } from "./types";
 
 export const CODEX_PROVIDER_ID = "openai-codex";
-export const DEFAULT_CODEX_MODEL = "gpt-5.2-codex";
+export const DEFAULT_CODEX_MODEL = "gpt-5.4";
 
 export type PiProviderOptions = {
   authSource: CodexAuthSource;
   /** Provider id recognised by pi-ai's model registry. Default: "openai-codex". */
   provider?: string;
-  /** Model id within the provider. Default: "gpt-5.2-codex". */
+  /** Model id within the provider. Default: "gpt-5.4". */
   model?: string;
   /** Override the resolved Model instance entirely. */
   modelOverride?: Model<"openai-codex-responses">;
@@ -36,7 +36,7 @@ export function createPiProvider(opts: PiProviderOptions): AgentProvider {
     opts.modelOverride ??
     (getModel(
       (opts.provider ?? CODEX_PROVIDER_ID) as "openai-codex",
-      (opts.model ?? DEFAULT_CODEX_MODEL) as "gpt-5.2-codex",
+      (opts.model ?? DEFAULT_CODEX_MODEL) as "gpt-5.4",
     ) as Model<"openai-codex-responses">);
 
   return {
@@ -53,15 +53,13 @@ async function runOnce(
   tokenManager: CodexAccessTokenManager,
 ): Promise<ProviderRunResult> {
   const capture: CompleteCapture = {};
-  const completeTool = createCompleteTool(capture);
-  const codingTools = createCodingTools(options.cwd);
-
   const tokens: ProviderTokenUsage = { input: 0, output: 0 };
   let turnIndex = 0;
   let completeCalledThisTurn = false;
-  let toolCallsThisTurn: string[] = [];
   let failureReason: ProviderRunFailure["reason"] | null = null;
   let failureMessage = "";
+  let completedViaTool = false;
+  let terminalTurnObserved = false;
 
   const agent = new Agent({
     streamFn: (m, context, streamOptions) =>
@@ -75,6 +73,13 @@ async function runOnce(
     convertToLlm: (messages) => messages as Message[],
     toolExecution: "sequential",
   });
+  const completeTool = createCompleteTool(capture, {
+    onComplete() {
+      completedViaTool = true;
+      agent.abort();
+    },
+  });
+  const codingTools = createCodingTools(options.cwd);
 
   agent.state.model = model;
   agent.state.systemPrompt = options.systemPrompt;
@@ -83,26 +88,35 @@ async function runOnce(
   const unsubscribe = agent.subscribe((event: AgentEvent) => {
     switch (event.type) {
       case "turn_start":
+        if (terminalTurnObserved) break;
         turnIndex += 1;
         completeCalledThisTurn = false;
-        toolCallsThisTurn = [];
         options.onTurnStart?.(turnIndex);
         break;
       case "tool_execution_start":
-        toolCallsThisTurn.push(event.toolName);
+        if (terminalTurnObserved) break;
         options.onToolCall?.(turnIndex, event.toolName);
         if (event.toolName === COMPLETE_TOOL_NAME) {
           completeCalledThisTurn = true;
         }
         break;
       case "turn_end": {
+        if (terminalTurnObserved) break;
         const assistantUsage = extractUsage(event.message);
+        const providerError = extractProviderError(event.message);
         tokens.input += assistantUsage.input;
         tokens.output += assistantUsage.output;
+        if (providerError) {
+          failureReason = "provider_error";
+          failureMessage = providerError;
+        }
         options.onTurnEnd?.(turnIndex, {
           tokens: assistantUsage,
           completeCalled: capture.payload !== undefined && completeCalledThisTurn,
         });
+        if (capture.payload !== undefined && completeCalledThisTurn) {
+          terminalTurnObserved = true;
+        }
         break;
       }
     }
@@ -135,7 +149,7 @@ async function runOnce(
       );
     }
   } catch (err) {
-    if (!failureReason) {
+    if (!completedViaTool && !failureReason) {
       failureReason = "provider_error";
       failureMessage = err instanceof Error ? err.message : String(err);
     }
@@ -164,4 +178,20 @@ function extractUsage(message: unknown): ProviderTokenUsage {
   const usage = m.usage;
   if (!usage) return { input: 0, output: 0 };
   return { input: usage.input ?? 0, output: usage.output ?? 0 };
+}
+
+function extractProviderError(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const m = message as AssistantMessage & { stopReason?: string; errorMessage?: string };
+  if (m.role !== "assistant" || m.stopReason !== "error") return undefined;
+
+  const raw = typeof m.errorMessage === "string" ? m.errorMessage : "";
+  if (!raw) return "provider returned an error turn";
+
+  try {
+    const parsed = JSON.parse(raw) as { detail?: string; error?: { message?: string }; message?: string };
+    return parsed.detail ?? parsed.error?.message ?? parsed.message ?? raw;
+  } catch {
+    return raw;
+  }
 }

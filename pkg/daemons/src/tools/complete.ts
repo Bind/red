@@ -41,7 +41,14 @@ export type CompleteCapture = {
   error?: string;
 };
 
-export function createCompleteTool(capture: CompleteCapture): AgentTool<typeof CompleteParams> {
+export type CompleteToolOptions = {
+  onComplete?(payload: CompletePayloadT): void;
+};
+
+export function createCompleteTool(
+  capture: CompleteCapture,
+  options: CompleteToolOptions = {},
+): AgentTool<typeof CompleteParams> {
   return {
     name: COMPLETE_TOOL_NAME,
     label: "Complete",
@@ -65,6 +72,7 @@ export function createCompleteTool(capture: CompleteCapture): AgentTool<typeof C
         };
       }
       capture.payload = parsed.data;
+      queueMicrotask(() => options.onComplete?.(parsed.data));
       return {
         content: [
           {
