@@ -22,11 +22,11 @@ PAYLOAD_DIR="${TMP_DIR}/payloads"
 REPO_DIR="${TMP_DIR}/repo"
 
 run_seed_git() {
-  env -u GIT_DIR \
-    -u GIT_WORK_TREE \
-    -u GIT_INDEX_FILE \
-    -u GIT_OBJECT_DIRECTORY \
-    -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  env -i \
+    PATH="${PATH}" \
+    HOME="${HOME}" \
+    USER="${USER:-root}" \
+    LANG="${LANG:-C.UTF-8}" \
     git -C "${REPO_DIR}" "$@"
 }
 
@@ -130,11 +130,11 @@ run_api_post "/api/repos" "${PAYLOAD_DIR}/create-repo.json" "201" "409"
 echo "==> Seeding ${REPO_ID} base branch ${BASE_BRANCH}"
 rsync -a --delete --exclude='.git' "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
 run_seed_git init
+run_seed_git branch -M "${BASE_BRANCH}"
 run_seed_git config user.name "preview seeder"
 run_seed_git config user.email "preview-seed@redc.local"
 run_seed_git add -A
 run_seed_git commit --allow-empty -m "seed ${BASE_BRANCH}"
-run_seed_git branch -M "${BASE_BRANCH}"
 run_git_push "HEAD:refs/heads/${BASE_BRANCH}"
 
 echo "==> Seeding PR branch ${HEAD_BRANCH}"
