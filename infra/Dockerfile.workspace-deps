@@ -12,6 +12,7 @@ COPY apps/mcp/package.json ./apps/mcp/
 COPY apps/obs/package.json ./apps/obs/
 COPY apps/triage/package.json ./apps/triage/
 COPY apps/web/package.json ./apps/web/
+COPY pkg/daemons/package.json ./pkg/daemons/
 COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/server/package.json ./pkg/server/
