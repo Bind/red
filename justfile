@@ -46,11 +46,6 @@ workspace-deps-build-local:
         --build-arg BUN_IMAGE=oven/bun:1-alpine \
         -t red-workspace-deps-alpine:dev \
         .
-    docker build \
-        -f infra/base/Dockerfile.workspace-deps \
-        --build-arg BUN_IMAGE=oven/bun:1.3.10 \
-        -t red-workspace-deps-debian:dev \
-        .
 
 # Show local service status
 ps:

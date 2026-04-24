@@ -148,11 +148,6 @@ if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
     --build-arg BUN_IMAGE=oven/bun:1-alpine \
     -t red-workspace-deps-alpine:dev \
     .
-  docker build \
-    -f infra/base/Dockerfile.workspace-deps \
-    --build-arg BUN_IMAGE=oven/bun:1.3.10 \
-    -t red-workspace-deps-debian:dev \
-    .
 
   echo "Building Docker-backed dev services..."
   docker compose --env-file .env -f "$COMPOSE_FILE" build grs ctl
