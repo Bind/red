@@ -6,7 +6,7 @@ set -euo pipefail
 # using DOTENV_PRIVATE_KEY_PRODUCTION (exported in the box's shell profile).
 # Compose then pulls immutable GHCR tags rather than building locally.
 #
-# Usage: ./infra/scripts/deploy.sh <host> [ssh-port] <image-tag> <git-commit>
+# Usage: ./infra/prod/deploy.sh <host> [ssh-port] <image-tag> <git-commit>
 
 HOST="${1:?Usage: $0 <host> [ssh-port]}"
 SSH_PORT="${2:-2222}"
@@ -56,8 +56,8 @@ if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT
-docker compose -f infra/compose/runtime.yml -f infra/compose/prod.yml pull
-docker compose -f infra/compose/runtime.yml -f infra/compose/prod.yml up -d
+docker compose -f infra/base/compose.yml -f infra/prod/compose.yml pull
+docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d
 REMOTE
 
 echo "==> Deployed to https://${HOST}"

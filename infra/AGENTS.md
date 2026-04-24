@@ -33,38 +33,36 @@ are auditing clearly depends on an external contract.
 
 ## Folder Map
 
-- `compose/`
-  - `dev.yml` is the local development override used by root `just up` /
-    `just down`
-  - `runtime.yml` is the immutable-image runtime layer shared by preview and
+- `base/`
+  - `compose.yml` is the immutable-image runtime layer shared by preview and
     production deploys
-  - `preview.yml` is the per-PR preview overlay applied on top of
-    `runtime.yml`
-  - `prod.yml` is the production overlay applied on top of `runtime.yml`
+  - `redc`, `commands/`, and `lib.sh` are shared shell entrypoints/helpers
+  - Dockerfiles here are shared container build primitives
+- `host/`
+  - owns Caddy, gateway, Packer, and other machine-facing bootstrap assets
   - `preview-caddy.yml` defines the permanent wildcard ingress for preview
     stacks
-- `scripts/`
-  - owns bootstrap, deploy, preview lifecycle, env seeding, and the `redc`
-    shell entrypoint under `infra/scripts/redc`
-  - `lib.sh` is shared shell logic; keep common helpers there instead of
-    duplicating them across scripts
-- `caddy/`
-  - local and preview Caddy config; this is public ingress behavior
-- `gateway/`
-  - Envoy template, container entrypoint, and Dockerfile for request routing
-- `packer/`
-  - base image build definition and provisioners for Hetzner snapshots
-- top-level Dockerfiles
-  - shared container build primitives for repo workflows and service images
+- `dev/`
+  - `compose.yml` is the local development override used by root `just up` /
+    `just down`
+  - owns local bootstrap helpers such as `setup-env.sh`
+- `preview/`
+  - `compose.yml` is the per-PR preview overlay applied on top of
+    `base/compose.yml`
+  - owns preview deploy, teardown, eviction, and box bootstrap scripts
+- `prod/`
+  - `compose.yml` is the production overlay applied on top of
+    `base/compose.yml`
+  - owns the production deploy script
 
 ## Core Invariants
 
-- `infra/compose/dev.yml` remains the source of truth for the root local
+- `infra/dev/compose.yml` remains the source of truth for the root local
   docker compose workflow and should stay source-mounted / hot-reload-first.
-- `infra/compose/runtime.yml` is the shared immutable-image runtime contract
+- `infra/base/compose.yml` is the shared immutable-image runtime contract
   for preview and production.
-- `infra/compose/prod.yml` and `infra/compose/preview.yml` are thin overlays
-  on top of `runtime.yml`, not standalone stacks.
+- `infra/prod/compose.yml` and `infra/preview/compose.yml` are thin overlays
+  on top of `base/compose.yml`, not standalone stacks.
 - Preview should still exercise a broader surface than production so it
   catches wiring issues before production rollout.
 - Preview and production deploy paths must preserve server-owned state.
@@ -72,7 +70,8 @@ are auditing clearly depends on an external contract.
   `.git`, `.sst`, or equivalent host-resident state.
 - Preview stacks are isolated per PR via `COMPOSE_PROJECT_NAME`, while
   sharing only the intentionally shared preview ingress/network surface.
-- Scripts under `infra/scripts/` must be safe for unattended use in CI:
+- Scripts under `infra/base/`, `infra/dev/`, `infra/preview/`, and
+  `infra/prod/` must be safe for unattended use in CI:
   fail fast, avoid hidden prompts, and keep behavior explicit.
 - Shell scripts should centralize shared logic in `lib.sh` and avoid copy-paste
   drift across deploy/bootstrap flows.
@@ -101,9 +100,10 @@ When auditing `infra/`, check for:
   or env files
 - scripts that assume files, directories, or env vars no longer provisioned
 - preview/prod drift that looks accidental rather than intentional
-- shared runtime concerns duplicated in `preview.yml` or `prod.yml` instead
-  of living in `runtime.yml`
-- local dev concerns leaking into `runtime.yml`, `preview.yml`, or `prod.yml`
+- shared runtime concerns duplicated in `preview/compose.yml` or
+  `prod/compose.yml` instead of living in `base/compose.yml`
+- local dev concerns leaking into `base/compose.yml`, `preview/compose.yml`,
+  or `prod/compose.yml`
 - ingress config that disagrees with compose topology
 - docs or `just` recipes that no longer match the actual operator flow
 - duplicated shell logic that should be consolidated in `lib.sh`

@@ -2,7 +2,7 @@
 
 set dotenv-load
 
-DEV_COMPOSE := "infra/compose/dev.yml"
+DEV_COMPOSE := "infra/dev/compose.yml"
 
 # Start the full local stack in Docker
 up:

@@ -92,10 +92,11 @@ Shared importable code lives here.
 
 Infra and local dev wiring.
 
-- `infra/compose/`: root Docker Compose stack used by `just up`, `just down`, and related commands.
-- `infra/caddy/`: local gateway/proxy configuration.
-- `infra/gateway/`: gateway-specific config and assets.
-- `infra/scripts/`: setup and deployment scripts, including the local dev bootstrap path.
+- `infra/base/`: shared runtime/build plumbing used by preview and prod, including the shared compose layer and reusable shell helpers.
+- `infra/host/`: host-owned ingress/bootstrap assets such as Caddy, gateway, and Packer.
+- `infra/dev/`, `infra/preview/`, `infra/prod/`: environment-specific overlays and lifecycle scripts.
+- `infra/host/caddy/`: local gateway/proxy configuration.
+- `infra/host/gateway/`: gateway-specific config and assets.
 
 ### `experiments/`
 

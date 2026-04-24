@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tears down a per-PR preview stack and removes its working dir.
 #
-# Usage: ./infra/scripts/teardown-preview.sh <slug> <host> [ssh-port]
+# Usage: ./infra/preview/teardown.sh <slug> <host> [ssh-port]
 set -euo pipefail
 
 SLUG="${1:?Usage: $0 <slug> <host> [ssh-port]}"
@@ -16,7 +16,7 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" "bash -s
 set -euo pipefail
 if [ -d "${REMOTE_DIR}" ]; then
   cd "${REMOTE_DIR}"
-  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans || true
+  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down -v --remove-orphans || true
   cd /
   rm -rf "${REMOTE_DIR}"
   echo "==> Removed ${REMOTE_DIR}"

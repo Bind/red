@@ -1,4 +1,4 @@
-# Per-PR preview overlay. Apply on top of `infra/compose/runtime.yml`.
+# Per-PR preview overlay. Apply on top of `infra/base/compose.yml`.
 #
 # `gateway` joins the external `preview-net` so the permanent Caddy in
 # front of every preview can route `<slug>.preview.red.computer` to it.

@@ -56,7 +56,7 @@ AUTH_LAB_STEALTH_TOTP_EMAILS="${AUTH_LAB_STEALTH_TOTP_EMAILS:-douglasjbinder@gma
 AUTH_LAB_STEALTH_TOTP_SEED_EMAIL="${AUTH_LAB_STEALTH_TOTP_SEED_EMAIL:-douglasjbinder@gmail.com}"
 AUTH_LAB_STEALTH_TOTP_SEED_NAME="${AUTH_LAB_STEALTH_TOTP_SEED_NAME:-Douglas Binder}"
 AUTH_LAB_STEALTH_TOTP_SEED_SECRET="${AUTH_LAB_STEALTH_TOTP_SEED_SECRET:-JBSWY3DPEHPK3PXP}"
-COMPOSE_FILE="${COMPOSE_FILE:-infra/compose/dev.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-infra/dev/compose.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
 GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 
@@ -144,12 +144,12 @@ if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
 
   echo "Building shared workspace dependency images..."
   docker build \
-    -f infra/Dockerfile.workspace-deps \
+    -f infra/base/Dockerfile.workspace-deps \
     --build-arg BUN_IMAGE=oven/bun:1-alpine \
     -t red-workspace-deps-alpine:dev \
     .
   docker build \
-    -f infra/Dockerfile.workspace-deps \
+    -f infra/base/Dockerfile.workspace-deps \
     --build-arg BUN_IMAGE=oven/bun:1.3.10 \
     -t red-workspace-deps-debian:dev \
     .

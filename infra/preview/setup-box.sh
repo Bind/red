@@ -5,7 +5,7 @@
 # Prerequisites: root SSH access.
 #
 # Usage (run on the dev box):
-#   sudo bash setup-dev-box.sh
+#   sudo bash setup-box.sh
 # Optional env:
 #   DOTENV_PRIVATE_KEY_PREVIEW=...   write preview dotenvx key into /root/.bashrc
 #   BOOTSTRAP_PREVIEW_ENV=1          decrypt /opt/redc-previews/.env.preview → /opt/redc-previews/.env
@@ -14,7 +14,7 @@ set -euo pipefail
 PREVIEWS_DIR="/opt/redc-previews"
 PREVIEW_NET="preview-net"
 CRON_FILE="/etc/cron.d/redc-preview-evict"
-EVICT_SCRIPT="${PREVIEWS_DIR}/evict-old-previews.sh"
+EVICT_SCRIPT="${PREVIEWS_DIR}/preview-evict.sh"
 CADDY_DIR="/opt/redc-preview-caddy"
 CADDY_COMPOSE="${CADDY_DIR}/compose.yml"
 CADDY_CONFIG_DIR="${CADDY_DIR}/caddy"
@@ -74,8 +74,8 @@ find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}"
     slug="$(basename "$dir")"
     project="preview-${slug}"
     echo "Evicting ${slug}"
-    if [ -f "${dir}/infra/compose/preview.yml" ]; then
-      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans) || true
+    if [ -f "${dir}/infra/preview/compose.yml" ]; then
+      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down -v --remove-orphans) || true
     else
       docker compose -p "${project}" down -v --remove-orphans 2>/dev/null || true
     fi
@@ -168,7 +168,7 @@ echo "       export it so deploys can decrypt the per-PR secret env:"
 echo "         echo 'export DOTENV_PRIVATE_KEY_PREVIEW=<key>' >> /root/.bashrc"
 echo ""
 echo "    2. Create /opt/redc-previews/.env with preview secrets or let"
-echo "       deploy-preview.sh decrypt .env.preview into place."
+echo "       infra/preview/deploy.sh decrypt .env.preview into place."
 echo ""
 echo "    Preview URLs will resolve to this box via the wildcard DNS managed"
 echo "    by \`sst deploy --stage dev\`."

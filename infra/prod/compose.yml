@@ -1,4 +1,4 @@
-# Production overlay. Apply on top of `infra/compose/runtime.yml`.
+# Production overlay. Apply on top of `infra/base/compose.yml`.
 
 services:
   caddy:

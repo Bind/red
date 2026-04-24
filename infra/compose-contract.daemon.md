@@ -11,10 +11,11 @@ Your scope is `infra/` and its descendants.
 
 Start with `AGENTS.md`, then use progressive disclosure:
 
-1. Begin with the smallest relevant compose file in `infra/compose/`.
+1. Begin with the smallest relevant compose file in `infra/base/`,
+   `infra/dev/`, `infra/preview/`, or `infra/prod/`.
 2. Pull in only the adjacent ingress or lifecycle files needed to validate
-   that contract: `caddy/*`, `gateway/*`, or a specific script in
-   `infra/scripts/`.
+   that contract: `host/caddy/*`, `host/gateway/*`, or a specific script in
+   the matching environment folder.
 3. Read root `justfile` only when validating how operators invoke the stack.
 4. Do not inspect unrelated repo code unless an infra-facing contract depends
    on it directly.

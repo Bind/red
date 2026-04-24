@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOST="${1:?usage: bootstrap-dev-box.sh <host-or-ip>}"
+HOST="${1:?usage: bootstrap-box.sh <host-or-ip>}"
 PORT="${2:-2222}"
-REMOTE_SCRIPT="/root/setup-dev-box.sh"
+REMOTE_SCRIPT="/root/setup-preview-box.sh"
 REMOTE_PREVIEW_ENV="/opt/redc-previews/.env.preview"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -41,7 +41,7 @@ if [[ -f .env.keys ]]; then
   PREVIEW_KEY="$(awk -F= '$1=="DOTENV_PRIVATE_KEY_PREVIEW"{print substr($0, index($0,$2))}' .env.keys | tail -n1)"
 fi
 
-scp "${SSH_OPTS[@]}" -P "${PORT}" -i "${TMP_KEY}" "${SCRIPT_DIR}/setup-dev-box.sh" "root@${HOST}:${REMOTE_SCRIPT}"
+scp "${SSH_OPTS[@]}" -P "${PORT}" -i "${TMP_KEY}" "${SCRIPT_DIR}/setup-box.sh" "root@${HOST}:${REMOTE_SCRIPT}"
 
 if [[ -n "${PREVIEW_KEY}" ]]; then
   scp "${SSH_OPTS[@]}" -P "${PORT}" -i "${TMP_KEY}" "${REPO_ROOT}/.env.preview" "root@${HOST}:${REMOTE_PREVIEW_ENV}"

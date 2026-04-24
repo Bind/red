@@ -6,7 +6,7 @@ set -euo pipefail
 # .env.preview with DOTENV_PRIVATE_KEY_PREVIEW (kept in the box's shell profile).
 # Compose then pulls immutable GHCR tags rather than building locally.
 #
-# Usage: ./infra/scripts/deploy-preview.sh <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>
+# Usage: ./infra/preview/deploy.sh <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>
 
 SLUG="${1:?Usage: $0 <slug> <host> [ssh-port]}"
 HOST="${2:?Usage: $0 <slug> <host> [ssh-port]}"
@@ -124,7 +124,7 @@ free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
 if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
   echo "==> Low disk on \${preview_root} (\${free_kb} KB free); pruning unused Docker state"
   docker system df || true
-  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down --remove-orphans || true
+  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down --remove-orphans || true
   docker system prune -af --volumes || true
   docker builder prune -af || true
   free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
@@ -132,10 +132,10 @@ if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS PREVIEW_HOSTED_REPO_ID PREVIEW_REPO_OWNER
-COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml pull
-COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml up -d
+COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml pull
+COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d
 
-"${REMOTE_DIR}/infra/scripts/seed-preview-repo.sh" \
+"${REMOTE_DIR}/infra/preview/seed-repo.sh" \
   "${PROJECT}" \
   "${REMOTE_DIR}" \
   "${PREVIEW_HOSTED_REPO_ID}" \

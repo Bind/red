@@ -1,4 +1,4 @@
-# One exact-host site block per preview slug is written by deploy-preview.sh
+# One exact-host site block per preview slug is written by infra/preview/deploy.sh
 # into /etc/caddy/sites/<slug>.caddy so Caddy can obtain ordinary HTTP-01/TLS-
 # ALPN-01 certificates for concrete hosts like `pr-42.preview.red.computer`.
 import /etc/caddy/sites/*.caddy

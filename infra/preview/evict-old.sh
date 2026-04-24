@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Nightly cron: evict preview stacks older than MAX_AGE_DAYS.
-# Runs ON the dev box (not from CI). Installed by setup-dev-box.sh.
+# Runs ON the dev box (not from CI). Installed by setup-box.sh.
 #
-# Usage: ./infra/scripts/evict-old-previews.sh [max-age-days]
+# Usage: ./infra/preview/evict-old.sh [max-age-days]
 set -euo pipefail
 
 MAX_AGE_DAYS="${1:-14}"
@@ -16,8 +16,8 @@ find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}"
     slug="$(basename "$dir")"
     project="preview-${slug}"
     echo "==> Evicting preview ${slug} (older than ${MAX_AGE_DAYS} days)"
-    if [ -f "${dir}/infra/compose/preview.yml" ]; then
-      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans) || true
+    if [ -f "${dir}/infra/preview/compose.yml" ]; then
+      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down -v --remove-orphans) || true
     else
       docker compose -p "${project}" down -v --remove-orphans 2>/dev/null || true
     fi

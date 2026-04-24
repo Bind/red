@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes a CI .env for the service-health compose-smoke job.
-# Call: ./infra/scripts/ci-seed-env.sh <git-sha>
+# Call: ./infra/base/ci-seed-env.sh <git-sha>
 set -euo pipefail
 
 SHA="${1:?usage: $0 <git-sha>}"
