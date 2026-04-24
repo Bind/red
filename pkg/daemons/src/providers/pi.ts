@@ -23,6 +23,7 @@ export const CODEX_PROVIDER_ID = "openai-codex";
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
 export const OPENROUTER_PROVIDER_ID = "openrouter";
 export const DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
+export const OPENROUTER_FALLBACK_MODEL = "deepseek/deepseek-chat-v3.1";
 
 function resolveModel(opts: PiProviderOptions): Model<Api> {
   const providerId = opts.provider ?? CODEX_PROVIDER_ID;
@@ -57,7 +58,19 @@ function resolveModel(opts: PiProviderOptions): Model<Api> {
     };
   }
 
+  if (providerId === OPENROUTER_PROVIDER_ID && modelId === OPENROUTER_FALLBACK_MODEL) {
+    return getModel(OPENROUTER_PROVIDER_ID as any, OPENROUTER_FALLBACK_MODEL as any) as Model<Api>;
+  }
+
   return getModel(providerId as any, modelId as any) as Model<Api>;
+}
+
+function shouldFallbackOpenRouterModel(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("temporarily rate-limited upstream") ||
+    (normalized.includes("429") && normalized.includes("rate-limit"))
+  );
 }
 
 export type PiProviderOptions = {
@@ -73,12 +86,26 @@ export type PiProviderOptions = {
 
 export function createPiProvider(opts: PiProviderOptions): AgentProvider {
   const tokenManager = opts.authSource ? new CodexAccessTokenManager(opts.authSource) : null;
-  const model = resolveModel(opts);
+  const primaryModel = resolveModel(opts);
+  const fallbackModel =
+    (opts.provider ?? CODEX_PROVIDER_ID) === OPENROUTER_PROVIDER_ID &&
+    (opts.model ?? DEFAULT_OPENROUTER_MODEL) === DEFAULT_OPENROUTER_MODEL
+      ? resolveModel({ ...opts, model: OPENROUTER_FALLBACK_MODEL })
+      : null;
 
   return {
     name: "pi",
     async runUntilComplete(options: ProviderRunOptions): Promise<ProviderRunResult> {
-      return runOnce(options, model, tokenManager, opts.apiKey);
+      const result = await runOnce(options, primaryModel, tokenManager, opts.apiKey);
+      if (
+        fallbackModel &&
+        !result.ok &&
+        result.reason === "provider_error" &&
+        shouldFallbackOpenRouterModel(result.message)
+      ) {
+        return runOnce(options, fallbackModel, tokenManager, opts.apiKey);
+      }
+      return result;
     },
   };
 }
