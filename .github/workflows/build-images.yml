@@ -82,7 +82,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: infra/Dockerfile.workspace-deps
+          file: infra/base/Dockerfile.workspace-deps
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.alpine_image }}
@@ -98,7 +98,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: infra/Dockerfile.workspace-deps
+          file: infra/base/Dockerfile.workspace-deps
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.debian_image }}
@@ -119,12 +119,12 @@ jobs:
       matrix:
         include:
           - image_name: red-gateway
-            context: infra/gateway
-            dockerfile: infra/gateway/Dockerfile
+            context: infra/platform/gateway
+            dockerfile: infra/platform/gateway/Dockerfile
             workspace_deps_flavor: none
           - image_name: red-api
             context: .
-            dockerfile: infra/Dockerfile
+            dockerfile: infra/base/Dockerfile
             workspace_deps_flavor: alpine
           - image_name: red-bff
             context: .
