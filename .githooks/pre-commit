@@ -6,11 +6,19 @@ cd "$repo_root"
 
 staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-if echo "$staged_files" | rg -q '^(apps|pkg)/'; then
+needs_repo_checks_pattern='^(apps|pkg|workflows)/|^\.github/workflows/|^(package\.json|bun\.lock|turbo\.json|justfile)$'
+
+if echo "$staged_files" | rg -q "$needs_repo_checks_pattern"; then
+  echo "pre-commit: running repo lint"
+  just lint
+
+  echo "pre-commit: running repo typecheck"
+  bun run typecheck
+
   echo "pre-commit: running root bun test"
   bun test
 else
-  echo "pre-commit: skipping root bun test (no staged changes under apps/ or pkg/)"
+  echo "pre-commit: skipping repo lint/typecheck/test (no staged changes in checked surfaces)"
 fi
 
 if echo "$staged_files" | rg -q '^apps/auth/'; then
