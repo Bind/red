@@ -100,7 +100,13 @@ working directory was last modified >14 days ago.
 ## Local testing
 
 ```bash
-# On the dev box (or any docker host with preview-net created):
-COMPOSE_PROJECT_NAME=preview-pr-local docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d --build
+# On the dev box (or any docker host with preview-net created and
+# /opt/redc-previews/.env already present), using an image tag that exists in GHCR:
+IMAGE_TAG=<existing-ghcr-tag> \
+PREVIEW_PUBLIC_URL=https://pr-local.preview.red.computer \
+PREVIEW_WEB_CLIENTS=redc-web=https://pr-local.preview.red.computer \
+PREVIEW_PASSKEY_ORIGINS=https://pr-local.preview.red.computer \
+COMPOSE_PROJECT_NAME=preview-pr-local \
+docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d
 docker inspect preview-pr-local-gateway --format '{{.NetworkSettings.Networks.preview-net.IPAddress}}'
 ```
