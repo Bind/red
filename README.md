@@ -110,7 +110,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 Repo-level helper scripts.
 
-- `scripts/redc`: shell wrapper for the root CLI.
+- `scripts/redc`: shell wrapper for the root CLI implementation under `apps/ctl/cli/shell/`.
 
 ## Documentation setup
 

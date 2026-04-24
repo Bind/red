@@ -36,8 +36,9 @@ are auditing clearly depends on an external contract.
 - `base/`
   - `compose.yml` is the immutable-image runtime layer shared by preview and
     production deploys
-  - `redc`, `commands/`, and `lib.sh` are shared shell entrypoints/helpers
   - Dockerfiles here are shared container build primitives
+- `ci/`
+  - owns CI/bootstrap helpers such as env seeding and Codex auth setup
 - `host/`
   - owns Caddy, gateway, Packer, and other machine-facing bootstrap assets
   - `preview-caddy.yml` defines the permanent wildcard ingress for preview
@@ -70,7 +71,7 @@ are auditing clearly depends on an external contract.
   `.git`, `.sst`, or equivalent host-resident state.
 - Preview stacks are isolated per PR via `COMPOSE_PROJECT_NAME`, while
   sharing only the intentionally shared preview ingress/network surface.
-- Scripts under `infra/base/`, `infra/dev/`, `infra/preview/`, and
+- Scripts under `infra/ci/`, `infra/dev/`, `infra/preview/`, and
   `infra/prod/` must be safe for unattended use in CI:
   fail fast, avoid hidden prompts, and keep behavior explicit.
 - Shell scripts should centralize shared logic in `lib.sh` and avoid copy-paste
