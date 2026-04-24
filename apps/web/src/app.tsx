@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router";
 import { Layout } from "@/components/layout";
+import { Dashboard } from "@/routes/dashboard";
 import { HostedRepoPage } from "@/routes/hosted-repo";
 import { HostedRepoCommitPage } from "@/routes/hosted-repo-commit";
 import { ChangeDetailPage } from "@/routes/change";
@@ -7,7 +8,9 @@ import { TriagePage } from "@/routes/triage";
 import { StatusPage } from "@/routes/status";
 import { Demo } from "@/components/demo";
 import { AuthSessionProvider } from "@/lib/auth";
+import { AuthEnrollPage } from "@/routes/auth-enroll";
 import { MagicLinkPage } from "@/routes/auth-magic-link";
+import { AuthYubikeyPage } from "@/routes/auth-yubikey";
 
 export function App() {
   return (
@@ -15,11 +18,14 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<HostedRepoPage />} />
+            <Route index element={<Dashboard />} />
+            <Route path="hosted-repo" element={<HostedRepoPage />} />
             <Route path="hosted-repo/commits/:sha" element={<HostedRepoCommitPage />} />
             <Route path="changes/:id" element={<ChangeDetailPage />} />
             <Route path="triage" element={<TriagePage />} />
             <Route path="status" element={<StatusPage />} />
+            <Route path="auth/enroll" element={<AuthEnrollPage />} />
+            <Route path="auth/yubikey" element={<AuthYubikeyPage />} />
             <Route path="auth/magic-link" element={<MagicLinkPage />} />
             <Route path="theme" element={<Demo />} />
           </Route>

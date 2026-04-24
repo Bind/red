@@ -391,6 +391,19 @@ export async function verifyTotp(code: string, kind: "totp" | "backup_code" = "t
   });
 }
 
+export async function loginWithTotp(email: string, code: string) {
+  return requestJson("/rpc/auth/user/totp-login", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      code,
+    }),
+  });
+}
+
 export async function completeOnboarding() {
   return requestJson("/rpc/auth/user/onboarding/complete", {
     method: "POST",

@@ -25,6 +25,25 @@ function optionalString(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function defaultSeedUserId(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function parseStealthTotpSeedUser(env: NodeJS.ProcessEnv) {
+  const email = optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_EMAIL);
+  const totpSecret = optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_SECRET);
+  if (!email || !totpSecret) {
+    return undefined;
+  }
+
+  return {
+    id: optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_USER_ID) ?? defaultSeedUserId(email),
+    email,
+    name: optionalString(env.AUTH_LAB_STEALTH_TOTP_SEED_NAME) ?? "",
+    totpSecret,
+  };
+}
+
 function parseCsv(value: string | undefined, label: string): string[] {
   const raw = requiredString(value, label);
   const items = raw
@@ -35,6 +54,17 @@ function parseCsv(value: string | undefined, label: string): string[] {
     throw new Error(`${label} must contain at least one value`);
   }
   return items;
+}
+
+function parseOptionalCsv(value: string | undefined): string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return [];
+  }
+  return trimmed
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseSingleCsvValue(value: string | undefined, label: string): string {
@@ -138,6 +168,10 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
     passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
     passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    stealthTotpEmails: parseOptionalCsv(
+      env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
+    ),
+    stealthTotpSeedUser: parseStealthTotpSeedUser(env),
     allowAnyTotpCode: env.AUTH_LAB_ALLOW_ANY_TOTP_CODE === "true",
     database: {
       kind: "sqlite",
@@ -200,6 +234,10 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     webClients: parseWebClients(env.AUTH_LAB_WEB_CLIENTS),
     passkeyOrigins: parseCsv(env.AUTH_LAB_PASSKEY_ORIGINS, "AUTH_LAB_PASSKEY_ORIGINS"),
     passkeyRpId: parseSingleCsvValue(env.AUTH_LAB_PASSKEY_RP_IDS, "AUTH_LAB_PASSKEY_RP_IDS"),
+    stealthTotpEmails: parseOptionalCsv(
+      env.AUTH_LAB_STEALTH_TOTP_EMAILS ?? "douglasjbinder@gmail.com",
+    ),
+    stealthTotpSeedUser: parseStealthTotpSeedUser(env),
     allowAnyTotpCode: requiredBoolean(
       env.AUTH_LAB_ALLOW_ANY_TOTP_CODE,
       "AUTH_LAB_ALLOW_ANY_TOTP_CODE",

@@ -430,6 +430,9 @@ export function createApp(config: BffConfig) {
     .post("/auth/user/two-factor/verify", (c) =>
       proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/verify"))
     )
+    .post("/auth/user/totp-login", (c) =>
+      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/totp-login"))
+    )
     .post("/auth/user/onboarding/complete", (c) =>
       proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
     )

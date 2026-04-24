@@ -3,6 +3,7 @@ import { createOTP } from "@better-auth/utils/otp";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import type { SessionStore } from "../store/session-store";
 import type { UserStore } from "../store/user-store";
+import { AuthError } from "../util/errors";
 
 export interface UserLifecycleService {
   completeOnboarding(sessionId: string, email: string): Promise<void>;
@@ -16,6 +17,13 @@ export interface UserLifecycleService {
     email: string,
     input: { code: string; kind?: "totp" | "backup_code" },
   ): Promise<{ sessionKind: "active" | "recovery_challenge"; secondFactorVerified: boolean }>;
+  verifyTotpLogin(
+    email: string,
+    input: {
+      code: string;
+      allowlistedEmails: string[];
+    },
+  ): Promise<void>;
 }
 
 export interface UserLifecycleServiceConfig {
@@ -209,6 +217,40 @@ export function createUserLifecycleService(
       });
 
       return { sessionKind: nextSessionKind, secondFactorVerified: true };
+    },
+    async verifyTotpLogin(
+      email: string,
+      input: {
+        code: string;
+        allowlistedEmails: string[];
+      },
+    ): Promise<void> {
+      const normalizedEmail = normalizeEmail(email);
+      if (!input.allowlistedEmails.map(normalizeEmail).includes(normalizedEmail)) {
+        throw new AuthError("forbidden", "TOTP login is not enabled for this account", 403);
+      }
+
+      const user = await stores.user.findByEmail(normalizedEmail);
+      if (!user) {
+        throw new Error(`User ${email} not found`);
+      }
+      if (!user.twoFactorEnabled || !user.recoveryReady || user.onboardingState !== "active") {
+        throw new AuthError("forbidden", "Active TOTP-backed account is required", 403);
+      }
+      if (!user.recoveryTotpSecretEncrypted) {
+        throw new Error(`User ${email} does not have a recovery factor enrolled`);
+      }
+
+      const totpSecret = await symmetricDecrypt({
+        key: secret,
+        data: user.recoveryTotpSecretEncrypted,
+      });
+      const verified =
+        config.allowAnyTotpCode === true ||
+        (await createOTP(totpSecret, { digits: 6, period: 30 }).verify(input.code));
+      if (!verified) {
+        throw new AuthError("invalid_totp", "Recovery factor verification failed", 401);
+      }
     },
   };
 }

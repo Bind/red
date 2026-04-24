@@ -16,7 +16,7 @@
     "test": "bun test",
     "turbo:test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "deploy": "./infra/scripts/deploy.sh"
+    "deploy": "./infra/prod/deploy.sh"
   },
   "dependencies": {
     "hono": "^4.12.12",

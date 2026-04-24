@@ -1,0 +1,89 @@
+# Per-PR preview overlay. Apply on top of `infra/base/compose.yml`.
+#
+# `gateway` joins the external `preview-net` so the permanent Caddy in
+# front of every preview can route `<slug>.preview.red.computer` to it.
+
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required (e.g. preview-pr-42)}
+
+services:
+  gateway:
+    container_name: ${COMPOSE_PROJECT_NAME}-gateway
+    networks:
+      - default
+      - preview-net
+
+  api:
+    container_name: ${COMPOSE_PROJECT_NAME}-api
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      REDC_DB_PATH: /data/redc-preview.db
+      REDC_REPOS: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
+      GIT_STORAGE_DEFAULT_OWNER: ${PREVIEW_REPO_OWNER:-redc}
+
+  bff:
+    container_name: ${COMPOSE_PROJECT_NAME}-bff
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      BFF_HOSTED_REPO_ID: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
+
+  auth:
+    container_name: ${COMPOSE_PROJECT_NAME}-auth
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      AUTH_LAB_ISSUER: ${PREVIEW_PUBLIC_URL:?PREVIEW_PUBLIC_URL is required}
+      AUTH_LAB_WEB_CLIENTS: ${PREVIEW_WEB_CLIENTS:?PREVIEW_WEB_CLIENTS is required}
+      AUTH_LAB_PASSKEY_ORIGINS: ${PREVIEW_PASSKEY_ORIGINS:?PREVIEW_PASSKEY_ORIGINS is required}
+      AUTH_LAB_PASSKEY_RP_IDS: ${PREVIEW_PASSKEY_RP_IDS:-preview.red.computer}
+      AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-true}
+      AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-preview}
+      AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: ${AUTH_BOOTSTRAP_CLIENT_SECRET:-auth-lab-preview-client-secret}
+      AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
+
+  db-auth:
+    container_name: ${COMPOSE_PROJECT_NAME}-db-auth
+
+  s3:
+    container_name: ${COMPOSE_PROJECT_NAME}-s3
+
+  obs:
+    container_name: ${COMPOSE_PROJECT_NAME}-obs
+    env_file:
+      - /opt/redc-previews/.env
+
+  grs:
+    container_name: ${COMPOSE_PROJECT_NAME}-grs
+    env_file:
+      - /opt/redc-previews/.env
+
+  triage:
+    container_name: ${COMPOSE_PROJECT_NAME}-triage
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+
+  triage-smithers:
+    container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+
+  web:
+    container_name: ${COMPOSE_PROJECT_NAME}-web
+
+  mcp:
+    container_name: ${COMPOSE_PROJECT_NAME}-mcp
+    env_file:
+      - /opt/redc-previews/.env
+    environment:
+      MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:-mcp-preview}
+
+networks:
+  preview-net:
+    external: true
+  default:
+    driver: bridge

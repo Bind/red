@@ -1,0 +1,13 @@
+set dotenv-load
+
+default:
+    @just --list --unsorted
+
+list:
+    bun run ../../pkg/daemons/src/cli.ts list --root .
+
+show name:
+    bun run ../../pkg/daemons/src/cli.ts show {{ name }} --root .
+
+run name:
+    bun run ../../pkg/daemons/src/cli.ts run {{ name }} --root .

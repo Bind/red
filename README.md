@@ -92,10 +92,11 @@ Shared importable code lives here.
 
 Infra and local dev wiring.
 
-- `infra/compose/`: root Docker Compose stack used by `just up`, `just down`, and related commands.
-- `infra/caddy/`: local gateway/proxy configuration.
-- `infra/gateway/`: gateway-specific config and assets.
-- `infra/scripts/`: setup and deployment scripts, including the local dev bootstrap path.
+- `infra/base/`: shared runtime/build plumbing used by preview and prod, including the shared compose layer and reusable shell helpers.
+- `infra/platform/`: machine-facing ingress/bootstrap assets such as Caddy, gateway, and Packer.
+- `infra/dev/`, `infra/preview/`, `infra/prod/`: environment-specific overlays and lifecycle scripts.
+- `infra/platform/caddy/`: local gateway/proxy configuration.
+- `infra/platform/gateway/`: gateway-specific config and assets.
 
 ### `experiments/`
 
@@ -109,7 +110,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 Repo-level helper scripts.
 
-- `scripts/redc`: shell wrapper for the root CLI.
+- `scripts/redc`: shell wrapper for the root CLI implementation under `apps/ctl/cli/shell/`.
 
 ## Documentation setup
 

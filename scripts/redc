@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec ./infra/scripts/redc "$@"
+exec ./apps/ctl/cli/shell/redc "$@"

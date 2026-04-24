@@ -10,7 +10,7 @@ docker / dotenvx / sshd-on-2222 already in place, instead of running a
 ## Layout
 
 ```
-infra/packer/
+infra/platform/packer/
   redc-base.pkr.hcl          builder config (hcloud plugin)
   provisioners/
     01-apt.sh                apt update + base tools (curl, jq, rsync, …)

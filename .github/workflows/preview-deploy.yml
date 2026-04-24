@@ -101,7 +101,17 @@ jobs:
         run: echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
-        run: just deploy-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.head.sha }}" 2222
+        run: >
+          just deploy-preview
+          "pr-${{ github.event.pull_request.number }}"
+          "${{ steps.dev-ip.outputs.host }}"
+          "${{ github.event.pull_request.head.sha }}"
+          "${{ github.event.pull_request.head.sha }}"
+          "${{ github.event.pull_request.base.ref }}"
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.ref }}"
+          "${{ github.event.pull_request.number }}"
+          2222
 
       - name: Health check
         run: just preview-check "pr-${{ github.event.pull_request.number }}"

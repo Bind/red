@@ -13,7 +13,12 @@ export interface AuthDatabaseConfig {
 
 export interface AuthUserRow {
   id: string;
+  name: string;
   email: string;
+  emailVerified: boolean;
+  image?: string | null;
+  createdAt: string;
+  updatedAt: string;
   onboardingState?: string | null;
   recoveryReady?: boolean | null;
   recoveryChallengePending?: boolean | null;

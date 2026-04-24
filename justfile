@@ -4,7 +4,10 @@ set dotenv-load
 
 mod infra
 
-DEV_COMPOSE := "infra/compose/dev.yml"
+DEV_COMPOSE := "infra/dev/compose.yml"
+BASE_COMPOSE := "infra/base/compose.yml"
+PREVIEW_COMPOSE := "infra/preview/compose.yml"
+PROD_COMPOSE := "infra/prod/compose.yml"
 
 # Default: show available commands
 default:
@@ -12,19 +15,19 @@ default:
 
 # One-time local bootstrap: env, runner image, and dev services
 setup:
-    ./infra/scripts/setup-dev-env.sh
+    ./infra/dev/setup-env.sh
 
-# Start the local stack with fresh image builds and hot-reload mounts
+# Start the local stack with hot-reload mounts and reuse existing images by default
 up:
-    ./infra/scripts/setup-dev-env.sh
+    SKIP_IMAGE_BUILD=true ./infra/dev/setup-env.sh
 
-# Start the local stack without rebuilding Docker images
+# Back-compat alias for the fast dev path
 up-fast:
-    SKIP_IMAGE_BUILD=true ./infra/scripts/setup-dev-env.sh
-
-# Back-compat alias for explicit build+start
-up-build:
     just up
+
+# Explicitly rebuild local images before starting the stack
+up-build:
+    ./infra/dev/setup-env.sh
 
 # Stop all local services
 down:
@@ -39,12 +42,12 @@ build:
 # Prebuild local workspace dependency layers shared by Dockerfiles
 workspace-deps-build-local:
     docker build \
-        -f infra/Dockerfile.workspace-deps \
+        -f infra/base/Dockerfile.workspace-deps \
         --build-arg BUN_IMAGE=oven/bun:1-alpine \
         -t red-workspace-deps-alpine:dev \
         .
     docker build \
-        -f infra/Dockerfile.workspace-deps \
+        -f infra/base/Dockerfile.workspace-deps \
         --build-arg BUN_IMAGE=oven/bun:1.3.10 \
         -t red-workspace-deps-debian:dev \
         .
@@ -365,8 +368,8 @@ secrets-keys env:
 # end of the packer run; set it as REDC_BASE_SNAPSHOT_ID for future
 # `sst deploy`.
 image-build:
-    dotenvx run -f .env.ci -- packer init infra/packer
-    dotenvx run -f .env.ci -- packer build infra/packer
+    dotenvx run -f .env.ci -- packer init infra/platform/packer
+    dotenvx run -f .env.ci -- packer build infra/platform/packer
 
 # List all redc-base snapshots currently in the account.
 image-list:
@@ -383,11 +386,11 @@ deploy-infra stage="production":
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
 bootstrap-dev-box host port="2222":
-    ./infra/scripts/bootstrap-dev-box.sh {{ host }} {{ port }}
+    ./infra/preview/bootstrap-box.sh {{ host }} {{ port }}
 
-# Rsync working tree to the host and pull/start infra/compose/prod.yml over ssh
+# Rsync working tree to the host and pull/start the runtime + prod overlay over ssh
 deploy-ssh image_tag git_commit host="red.computer" port="2222":
-    ./infra/scripts/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
+    ./infra/prod/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 
 # Curl the post-deploy health endpoint and fail unless status=="ok"
 deploy-check url="https://red.computer":
@@ -402,12 +405,12 @@ deploy-check url="https://red.computer":
     fi
 
 # Deploy a per-PR preview (slug like pr-42) to the dev box
-deploy-preview slug host image_tag git_commit port="2222":
-    ./infra/scripts/deploy-preview.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
+deploy-preview slug host image_tag git_commit base_branch base_ref head_branch pr_number port="2222":
+    ./infra/preview/deploy.sh {{ slug }} {{ host }} {{ port }} {{ image_tag }} {{ git_commit }} {{ base_branch }} {{ base_ref }} {{ head_branch }} {{ pr_number }}
 
 # Tear down a per-PR preview
 teardown-preview slug host port="2222":
-    ./infra/scripts/teardown-preview.sh {{ slug }} {{ host }} {{ port }}
+    ./infra/preview/teardown.sh {{ slug }} {{ host }} {{ port }}
 
 # Smoke-check a deployed preview URL
 preview-check slug:
@@ -418,7 +421,7 @@ preview-check slug:
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
 ci-prep sha:
     bun install --frozen-lockfile
-    ./infra/scripts/ci-seed-env.sh {{ sha }}
+    ./infra/ci/ci-seed-env.sh {{ sha }}
     just auth-compose-keygen
 
 # Run the in-process health-contract tests (pkg/health unit + per-service)
