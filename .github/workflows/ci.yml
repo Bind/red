@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    name: lint, test, typecheck, build
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: extractions/setup-just@v2
+
+      - name: Cache Bun download/install state
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-install-${{ hashFiles('bun.lock', 'package.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-install-
+
+      - name: Cache Turbo local artifacts
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-ci-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-ci-${{ hashFiles('bun.lock', 'package.json', 'turbo.json', 'apps/**/package.json', 'pkg/**/package.json', 'workflows/**/package.json') }}-
+            ${{ runner.os }}-turbo-ci-
+
+      - name: Install workspace deps
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: just lint
+
+      - name: Test
+        run: bun test
+
+      - name: Build
+        env:
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: bunx turbo run build --affected
+
+      - name: Typecheck
+        env:
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: bunx turbo run typecheck --affected

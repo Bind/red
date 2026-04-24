@@ -413,14 +413,3 @@ teardown-preview slug host port="2222":
 # Smoke-check a deployed preview URL
 preview-check slug:
     just deploy-check "https://{{ slug }}.preview.red.computer"
-
-# ── CI ──────────────────────────────────────────────────
-
-# CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
-# Run the in-process health-contract tests (pkg/health unit + per-service)
-ci-health-contract sha:
-    GIT_COMMIT={{ sha }} bun test \
-        pkg/health \
-        apps/ctl/health-contract.test.ts \
-        apps/obs/src/test/health-contract.test.ts \
-        apps/triage/src/health-contract.test.ts
