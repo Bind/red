@@ -24,6 +24,14 @@ Use the smallest authoritative source needed to validate a claim:
 Flag:
 
 - stale `just` commands in docs
-- stale CLI usage examples
+- stale or ambiguous CLI usage examples
 - app/runtime docs that no longer match the current package or route surface
 - duplicate docs that disagree on the same operator workflow
+
+You are not responsible for:
+
+- forcing multiple real command surfaces to collapse into one
+
+If a narrow runtime entrypoint and a broader operator wrapper both exist,
+accept that split when the docs name the operator-facing command first and
+describe the narrower entrypoint accurately.
