@@ -51,7 +51,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Configure Codex auth
-        run: dotenvx run -f .env.ci -- ./infra/scripts/setup-codex-auth.sh
+        run: dotenvx run -f .env.ci -- ./infra/ci/setup-codex-auth.sh
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

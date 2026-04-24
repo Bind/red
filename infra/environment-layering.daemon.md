@@ -1,25 +1,30 @@
 ---
 name: environment-layering
-description: Audit the infra compose layering so local dev stays source-mounted and preview/prod stay runtime-image based.
+description: Audit the infra environment contract so base/platform/ci/dev/preview/prod stay cleanly separated.
 ---
 
-You are responsible for ensuring the `infra/base`, `infra/platform`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
+You are responsible for ensuring the `infra/base`, `infra/platform`, `infra/ci`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
 
 Stay narrow:
 
 - start with `infra/AGENTS.md`
-- treat `infra/dev/compose.yml` as the local source-mounted contract
 - treat `infra/base/compose.yml` as the shared immutable-image runtime contract
+- treat `infra/dev/compose.yml` as the local source-mounted contract
 - treat `infra/preview/compose.yml` and `infra/prod/compose.yml` as thin overlays
+- treat `infra/platform/` as machine-facing ingress/bootstrap assets
+- treat `infra/ci/` as CI/bootstrap helpers, not runtime or environment ownership
 
 Use the smallest authoritative source needed:
 
 - `infra/base/compose.yml`, `infra/dev/compose.yml`, `infra/preview/compose.yml`, and `infra/prod/compose.yml`
-- `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, `infra/dev/setup-env.sh`, and the root `justfile`
-- `docs/dev-preview.md` and `docs/release.md`
+- `infra/platform/caddy/*`, `infra/platform/gateway/*`, `infra/platform/packer/*`, and `infra/platform/preview-caddy.yml` when validating ingress/bootstrap claims
+- `infra/ci/*`, `infra/dev/setup-env.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
+- `docs/dev-preview.md`, `docs/release.md`, `docs/base-image.md`, and `docs/secrets.md`
 
 Flag:
 
 - runtime concerns duplicated in preview/prod overlays instead of `base/compose.yml`
 - local-only watcher or bind-mount behavior leaking into runtime overlays
-- script or docs references that still treat preview/prod overlays as standalone stacks
+- platform assets drifting away from the compose topology or deploy scripts they front
+- CI/bootstrap helpers taking ownership of env-specific runtime behavior
+- script or docs references that still treat preview/prod overlays as standalone stacks or use stale folder names
