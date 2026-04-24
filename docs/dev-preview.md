@@ -43,14 +43,14 @@ via docker's embedded DNS on the shared `preview-net`.
    ```
    This pushes the remote setup script over SSH, installs docker/dotenvx
    if needed, creates `/opt/redc-previews`, creates the `preview-net`
-   docker network, installs the eviction cron, persists
-   `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already has it,
-   and starts the permanent preview Caddy stack on the box.
-3. **Drop a production-style `.env`** at `/opt/redc-previews/.env` with the
-   secrets every preview needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`,
-   etc. This file is intentionally *not* rsynced from CI — previews
-   read it via the `infra/base/compose.yml` + `infra/preview/compose.yml`
-   stack.
+   docker network, installs the eviction cron, uploads `.env.preview`,
+   persists `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already
+   has it, decrypts `/opt/redc-previews/.env` automatically when that key is
+   available, and starts the permanent preview Caddy stack on the box.
+3. **Keep `.env.preview` current** with the shared preview secrets every PR
+   stack needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc. Bootstrap
+   and preview deploys decrypt that file into `/opt/redc-previews/.env` on
+   the box, and CI never rsyncs the plaintext `.env`.
 
 ## Required repo secrets
 
