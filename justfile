@@ -15,10 +15,12 @@ default:
 
 # One-time local bootstrap: env, runner image, and dev services
 setup:
+    bun install --frozen-lockfile
     ./infra/dev/run.sh
 
 # Start the local stack with hot-reload mounts and reuse existing images by default
 up:
+    bun install --frozen-lockfile
     SKIP_IMAGE_BUILD=true ./infra/dev/run.sh
 
 # Back-compat alias for the fast dev path
@@ -27,6 +29,7 @@ up-fast:
 
 # Explicitly rebuild local images before starting the stack
 up-build:
+    bun install --frozen-lockfile
     ./infra/dev/run.sh
 
 # Stop all local services
