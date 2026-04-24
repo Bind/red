@@ -419,7 +419,7 @@ preview-check slug:
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
 ci-prep sha:
     bun install --frozen-lockfile
-    ./infra/ci/seed-env.sh {{ sha }}
+    ./infra/ci/setup.sh {{ sha }}
     just auth-compose-keygen
 
 # Run the in-process health-contract tests (pkg/health unit + per-service)
