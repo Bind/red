@@ -11,7 +11,11 @@ import {
   normalizeCheckedPath,
   saveMemoryRecord,
 } from "./memory";
-import { createPiProvider } from "./providers/pi";
+import {
+  createPiProvider,
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_PROVIDER_ID,
+} from "./providers/pi";
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
@@ -109,6 +113,13 @@ function selectProvider(): AgentProvider {
   const name = process.env.AI_DAEMONS_PROVIDER ?? "pi";
   if (name === "pi") {
     return createPiProvider({ authSource: createFileCodexAuthSource() });
+  }
+  if (name === OPENROUTER_PROVIDER_ID) {
+    return createPiProvider({
+      provider: OPENROUTER_PROVIDER_ID,
+      model: process.env.AI_DAEMONS_MODEL ?? DEFAULT_OPENROUTER_MODEL,
+      apiKey: process.env.OPENROUTER_API_KEY,
+    });
   }
   throw new Error(`unsupported AI_DAEMONS_PROVIDER: ${name}`);
 }

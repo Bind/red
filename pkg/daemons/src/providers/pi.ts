@@ -1,7 +1,9 @@
 import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
 import {
+  getEnvApiKey,
   getModel,
   streamSimple,
+  type Api,
   type Model,
   type AssistantMessage,
   type Message,
@@ -19,38 +21,46 @@ import type {
 
 export const CODEX_PROVIDER_ID = "openai-codex";
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
+export const OPENROUTER_PROVIDER_ID = "openrouter";
+export const DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-chat-v3.1";
 
 export type PiProviderOptions = {
-  authSource: CodexAuthSource;
+  authSource?: CodexAuthSource;
+  apiKey?: string;
   /** Provider id recognised by pi-ai's model registry. Default: "openai-codex". */
   provider?: string;
-  /** Model id within the provider. Default: "gpt-5.4". */
+  /** Model id within the provider. Default depends on provider. */
   model?: string;
   /** Override the resolved Model instance entirely. */
-  modelOverride?: Model<"openai-codex-responses">;
+  modelOverride?: Model<Api>;
 };
 
 export function createPiProvider(opts: PiProviderOptions): AgentProvider {
-  const tokenManager = new CodexAccessTokenManager(opts.authSource);
+  const providerId = opts.provider ?? CODEX_PROVIDER_ID;
+  const modelId =
+    opts.model ??
+    (providerId === OPENROUTER_PROVIDER_ID ? DEFAULT_OPENROUTER_MODEL : DEFAULT_CODEX_MODEL);
+  const tokenManager = opts.authSource ? new CodexAccessTokenManager(opts.authSource) : null;
   const model =
     opts.modelOverride ??
     (getModel(
-      (opts.provider ?? CODEX_PROVIDER_ID) as "openai-codex",
-      (opts.model ?? DEFAULT_CODEX_MODEL) as "gpt-5.4",
-    ) as Model<"openai-codex-responses">);
+      providerId as any,
+      modelId as any,
+    ) as Model<Api>);
 
   return {
     name: "pi",
     async runUntilComplete(options: ProviderRunOptions): Promise<ProviderRunResult> {
-      return runOnce(options, model, tokenManager);
+      return runOnce(options, model, tokenManager, opts.apiKey);
     },
   };
 }
 
 async function runOnce(
   options: ProviderRunOptions,
-  model: Model<"openai-codex-responses">,
-  tokenManager: CodexAccessTokenManager,
+  model: Model<Api>,
+  tokenManager: CodexAccessTokenManager | null,
+  apiKey?: string,
 ): Promise<ProviderRunResult> {
   const capture: CompleteCapture = {};
   const tokens: ProviderTokenUsage = { input: 0, output: 0 };
@@ -66,9 +76,12 @@ async function runOnce(
       streamSimple(m, context, streamOptions),
     getApiKey: async (provider) => {
       if (provider === CODEX_PROVIDER_ID || provider === "openai-codex-responses") {
+        if (!tokenManager) {
+          throw new Error("Codex OAuth auth source is required for openai-codex providers");
+        }
         return tokenManager.getAccessToken();
       }
-      return undefined;
+      return apiKey ?? getEnvApiKey(provider);
     },
     convertToLlm: (messages) => messages as Message[],
     toolExecution: "sequential",

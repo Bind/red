@@ -94,6 +94,18 @@ The `CodexAccessTokenManager` wraps any auth source and handles transparent
 refresh via `refreshOpenAICodexToken` when the access token is within 60s of
 expiry.
 
+For CI, the same `pi` runtime can also target API-key-backed providers. The
+current supported machine-auth path is OpenRouter:
+
+```bash
+export AI_DAEMONS_PROVIDER=openrouter
+export AI_DAEMONS_MODEL=deepseek/deepseek-chat-v3.1
+export OPENROUTER_API_KEY=...
+```
+
+That uses pi-ai's built-in OpenRouter model registry and resolves auth from
+`OPENROUTER_API_KEY` instead of `~/.codex/auth.json`.
+
 ## CLI
 
 The two headline commands for MVP are `auth` and `run`. `list` and `show` are

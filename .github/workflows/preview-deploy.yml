@@ -83,21 +83,6 @@ jobs:
       - name: Install dotenvx
         run: curl -fsS https://dotenvx.sh | sh
 
-      - name: Configure Codex auth
-        run: |
-          mkdir -p "$HOME/.codex"
-          auth_json_base64="$(dotenvx get CODEX_AUTH_JSON_BASE64 -f .env.ci --format shell || true)"
-          auth_json="$(dotenvx get CODEX_AUTH_JSON -f .env.ci --format shell || true)"
-          if [ -n "$auth_json_base64" ]; then
-            printf '%s' "$auth_json_base64" | base64 --decode > "$HOME/.codex/auth.json"
-          elif [ -n "$auth_json" ]; then
-            printf '%s' "$auth_json" > "$HOME/.codex/auth.json"
-          else
-            echo "CODEX_AUTH_JSON_BASE64 or CODEX_AUTH_JSON is required" >&2
-            exit 1
-          fi
-          chmod 600 "$HOME/.codex/auth.json"
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -107,6 +92,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO_ROOT: ${{ github.workspace }}
+          AI_DAEMONS_PROVIDER: openrouter
+          AI_DAEMONS_MODEL: deepseek/deepseek-chat-v3.1
         run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts
 
   build-images:
