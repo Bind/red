@@ -13,13 +13,26 @@ export default $config({
     };
   },
   async run() {
+    const { createHash } = await import("node:crypto");
     const zoneId = process.env.CLOUDFLARE_ZONE_ID;
     if (!zoneId) throw new Error("CLOUDFLARE_ZONE_ID is required");
+    const cloudflareAccountId =
+      process.env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_DEFAULT_ACCOUNT_ID;
+    const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
+    if (!cloudflareAccountId) {
+      throw new Error("CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_DEFAULT_ACCOUNT_ID is required");
+    }
+    if (!cloudflareApiToken) {
+      throw new Error("CLOUDFLARE_API_TOKEN is required");
+    }
     const isProduction = $app.stage === "production";
     const serverName = isProduction ? "redc-server" : "redc-dev-server";
     const sshKeyName = isProduction ? "redc-ssh-key" : "redc-dev-ssh-key";
     const dnsName = isProduction ? "red.computer" : "*.preview.red.computer";
     const dnsRecordName = isProduction ? "redc-dns" : "redc-preview-wildcard";
+    const daemonMemoryBucketName = isProduction
+      ? "redc-daemon-memory"
+      : `redc-daemon-memory-${$app.stage}`;
     const sshPublicKey = isProduction
       ? process.env.HETZNER_SSH_PUBLIC_KEY
       : process.env.DEV_SSH_PUBLIC_KEY;
@@ -85,9 +98,66 @@ export default $config({
       proxied: false,
     });
 
+    const daemonMemoryBucket = new cloudflare.R2Bucket("redc-daemon-memory", {
+      accountId: cloudflareAccountId,
+      name: daemonMemoryBucketName,
+      jurisdiction: "default",
+      storageClass: "Standard",
+    });
+
+    const daemonMemoryPermissionResponse = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}/tokens/permission_groups?name=${encodeURIComponent(
+        "Workers R2 Storage Bucket Item Write",
+      )}&scope=${encodeURIComponent("com.cloudflare.edge.r2.bucket")}`,
+      {
+        headers: {
+          Authorization: `Bearer ${cloudflareApiToken}`,
+        },
+      },
+    );
+    if (!daemonMemoryPermissionResponse.ok) {
+      throw new Error(
+        `failed to resolve R2 bucket permission group: ${daemonMemoryPermissionResponse.status} ${daemonMemoryPermissionResponse.statusText}`,
+      );
+    }
+    const daemonMemoryPermissionPayload = (await daemonMemoryPermissionResponse.json()) as {
+      result?: Array<{ id?: string }>;
+    };
+    const daemonMemoryWriteGroupId = daemonMemoryPermissionPayload.result?.[0]?.id;
+    if (!daemonMemoryWriteGroupId) {
+      throw new Error("failed to resolve permission group id for Workers R2 Storage Bucket Item Write");
+    }
+
+    const daemonMemoryToken = new cloudflare.AccountToken("redc-daemon-memory-token", {
+      accountId: cloudflareAccountId,
+      name: isProduction ? "redc-daemon-memory" : `redc-daemon-memory-${$app.stage}`,
+      policies: [
+        {
+          effect: "allow",
+          permissionGroups: [{ id: daemonMemoryWriteGroupId }],
+          resources: daemonMemoryBucket.jurisdiction.apply((jurisdiction) =>
+            JSON.stringify({
+              [`com.cloudflare.edge.r2.bucket.${cloudflareAccountId}_${jurisdiction}_${daemonMemoryBucketName}`]:
+                "*",
+            }),
+          ),
+        },
+      ],
+      status: "active",
+    });
+
+    const daemonMemoryEndpoint = `https://${cloudflareAccountId}.r2.cloudflarestorage.com`;
+    const daemonMemorySecretAccessKey = daemonMemoryToken.value.apply((value) =>
+      createHash("sha256").update(value).digest("hex"),
+    );
+
     return {
       serverIp: server.ipv4Address,
       dnsRecord: dns.name,
+      daemonMemoryBucket: daemonMemoryBucket.name,
+      daemonMemoryEndpoint,
+      daemonMemoryAccessKeyId: daemonMemoryToken.id,
+      daemonMemorySecretAccessKey,
     };
   },
 });

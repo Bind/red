@@ -241,7 +241,7 @@ describe("runner", () => {
       },
     });
 
-    expect(capturedSystemPrompt).toContain("Runner-managed memory from the last successful run is available.");
+    expect(capturedSystemPrompt).toContain("Runner-managed memory from the nearest verified commit snapshot is available.");
     expect(capturedSystemPrompt).toContain("Previously checked and unchanged:");
     expect(capturedSystemPrompt).toContain("notes.txt");
   });

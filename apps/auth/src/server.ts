@@ -6,7 +6,7 @@ import {
   type ObsFields,
   obsMiddleware,
 } from "@red/obs";
-import { Hono } from "@red/server";
+import { Hono, type MiddlewareHandler } from "@red/server";
 import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
@@ -340,7 +340,10 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
 
   app.use(
     "*",
-    obsMiddleware({ service: "auth", sink: createObsSinkFromEnv({ service: "auth" }) }) as any,
+    obsMiddleware({
+      service: "auth",
+      sink: createObsSinkFromEnv({ service: "auth" }),
+    }) as MiddlewareHandler,
   );
 
   app.onError((error, c) => {

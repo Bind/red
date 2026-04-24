@@ -343,9 +343,10 @@ image-list:
 
 # ── Release / deploy ────────────────────────────────────
 
-# Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.
-deploy-infra stage="production":
+# Provision / update infra via SST and sync any exported env vars into local files.
+provision stage="production" *targets:
     bunx sst deploy --stage {{ stage }}
+    ./infra/platform/sync-sst-env.sh {{ targets }}
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
 bootstrap-dev-box host port="2222":

@@ -37,19 +37,16 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Restore daemon memory
-        uses: actions/cache/restore@v4
-        with:
-          path: .daemons-cache
-          key: ${{ runner.os }}-daemon-memory-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-          restore-keys: |
-            ${{ runner.os }}-daemon-memory-pr-${{ github.event.pull_request.number }}-
+      - uses: extractions/setup-just@v2
 
       - name: Install dotenvx
         run: curl -fsS https://dotenvx.sh | sh
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Provision daemon memory infra
+        run: dotenvx run -f .env.ci -- just provision dev .env.ci
 
       - name: Run daemon review
         env:
@@ -59,12 +56,6 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}/pr-head
           AI_DAEMONS_PROVIDER: openrouter
           AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
-          AI_DAEMONS_MEMORY_DIR: ${{ github.workspace }}/.daemons-cache
+          AI_DAEMONS_MEMORY_BACKEND: r2
+          AI_DAEMONS_MEMORY_REPO: ${{ github.repository }}
         run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts
-
-      - name: Save daemon memory
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .daemons-cache
-          key: ${{ runner.os }}-daemon-memory-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}

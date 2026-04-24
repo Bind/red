@@ -26,7 +26,7 @@ jobs:
     secrets: inherit
 
   release:
-    name: sst deploy + ssh deploy + health check
+    name: provision + deploy + health check
     needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -48,8 +48,8 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
-      - name: Provision infra (sst deploy)
-        run: dotenvx run -f .env.ci -- just deploy-infra production
+      - name: Provision infra
+        run: dotenvx run -f .env.ci -- just provision production .env.ci
 
       - name: Configure SSH (private key from .env.ci)
         run: |

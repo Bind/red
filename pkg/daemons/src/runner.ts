@@ -202,6 +202,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
         ...createEmptyMemoryRecord({
           daemon: spec.name,
           scopeRoot: spec.scopeRoot,
+          baseCommit: previousMemory?.record.commit ?? null,
         }),
         ...nextRecord,
         updatedAt: new Date().toISOString(),

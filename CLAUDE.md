@@ -2,6 +2,12 @@
 
 use the `justfile` as command runner. Run `./scripts/redc` to see available CLI commands.
 
+Prefer extending the existing lifecycle entrypoints in `justfile` over adding
+new bespoke workflow commands or one-off automation paths. Keep the repo's full
+lifecycle surface stable around the shared `just` methods (`provision`,
+`run`/local dev, `deploy-*`, `teardown-*`) so humans and agents use the same
+entrypoints.
+
 ## Integration tests
 
 For git-server live integration coverage, use the `.integration.ts` suffix so those tests stay out of the default `bun test` run.

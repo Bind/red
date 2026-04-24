@@ -31,10 +31,12 @@ via docker's embedded DNS on the shared `preview-net`.
 
 1. **Provision** the dev Hetzner box through SST:
    ```bash
-   dotenvx run -f .env.ci -- just deploy-infra dev
+   dotenvx run -f .env.ci -- just provision dev
    ```
    SST now creates the preview server and the `*.preview.red.computer`
-   wildcard DNS record directly. It uses `DEV_SSH_PUBLIC_KEY` for box access.
+   wildcard DNS record directly. It uses `DEV_SSH_PUBLIC_KEY` for box access
+   and syncs exported SST env vars like daemon-memory R2 credentials into the
+   target env file.
 2. **Run bootstrap** on the box:
    ```bash
    just bootstrap-dev-box <dev-ip>
@@ -70,7 +72,7 @@ Triage provider credentials + the Smithers bearer token live on the dev box's
 
 | PR event | job |
 |---|---|
-| opened / synchronize / reopened / ready_for_review | `deploy`: sst deploy dev (idempotent) → rsync → compose up → health check → sticky PR comment |
+| opened / synchronize / reopened / ready_for_review | `deploy`: provision dev infra (idempotent) → rsync → compose up → health check → sticky PR comment |
 | closed | `teardown`: compose down -v → rm preview dir → sticky PR comment |
 
 Concurrency is per PR (`group: preview-deploy-<pr-number>`,
