@@ -25,7 +25,7 @@ type DaemonOutcome = {
 
 function reviewParallelism(totalDaemons: number): number {
   const raw = process.env.DAEMON_REVIEW_MAX_PARALLEL;
-  const parsed = raw ? Number.parseInt(raw, 10) : 2;
+  const parsed = raw ? Number.parseInt(raw, 10) : 3;
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
   return Math.min(totalDaemons, parsed);
 }

@@ -97,6 +97,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO_ROOT: ${{ github.workspace }}
+          DAEMON_REVIEW_MAX_PARALLEL: "3"
           AI_DAEMONS_PROVIDER: openrouter
           AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
           AI_DAEMONS_MEMORY_BACKEND: r2
