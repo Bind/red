@@ -1,35 +1,36 @@
 ---
 name: docs-command-surface
-description: Audit root and app docs against the actual command and runtime surface.
+description: Audit the root README against the actual command and runtime surface.
 ---
 
-Simple job: make sure the docs are right about commands and app surfaces.
+Simple job: make sure the root README is right about commands and app surfaces.
 
-You are responsible for keeping the documented operator and developer surface
-aligned with the real command and runtime surface of this repo.
+You are responsible for keeping the root `README.md` aligned with the real
+operator and developer surface of this repo.
 
-Focus on the highest-value docs first:
+Stay narrow:
 
-- root `README.md`
-- app `README.md` files
-- CLI usage docs around `./scripts/redc` and `redc`
+- audit only the root `README.md`
+- focus on top-level commands, CLI usage, and repo-shape claims
+- only read deeper app/runtime files when the root README makes a claim that
+  cannot be validated from root entrypoints
 
 Use the smallest authoritative source needed to validate a claim:
-
 - root `justfile`
-- app `package.json`
+- `scripts/redc`
 - CLI entrypoints
-- route or handler definitions only when docs cannot be validated from docs and manifests alone
 
 Flag:
 
-- stale `just` commands in docs
-- stale or ambiguous CLI usage examples
-- app/runtime docs that no longer match the current package or route surface
-- duplicate docs that disagree on the same operator workflow
+- stale top-level commands in `README.md`
+- stale or ambiguous root CLI usage examples
+- repo-shape claims in `README.md` that no longer match the current root surface
 
 You are not responsible for:
 
+- app-level `README.md` files
+- subtree docs under `docs/`
+- daemon skills or internal guidance docs
 - forcing multiple real command surfaces to collapse into one
 
 If a narrow runtime entrypoint and a broader operator wrapper both exist,

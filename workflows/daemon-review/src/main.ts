@@ -32,12 +32,9 @@ function reviewParallelism(totalDaemons: number): number {
 
 const DOC_SURFACE_PATHS = [
   "README.md",
-  "AGENTS.md",
-  "CLAUDE.md",
   "justfile",
   "scripts/redc",
-  "docs/",
-  ".agents/skills/",
+  "apps/ctl/cli/",
 ];
 
 const INFRA_PATHS = [
