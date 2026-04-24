@@ -12,6 +12,7 @@ Stay narrow:
 - treat `infra/dev/compose.yml` as the local source-mounted contract
 - treat `infra/preview/compose.yml` and `infra/prod/compose.yml` as thin overlays
 - treat `infra/platform/` as machine-facing ingress/bootstrap assets
+- treat `.agents/skills/debug-preview/SKILL.md` and its references as part of the preview operator surface
 
 Use the smallest authoritative source needed:
 
@@ -19,6 +20,7 @@ Use the smallest authoritative source needed:
 - `infra/platform/caddy/*`, `infra/platform/gateway/*`, `infra/platform/packer/*`, and `infra/platform/preview-caddy.yml` when validating ingress/bootstrap claims
 - `infra/dev/run.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
 - `docs/dev-preview.md`, `docs/release.md`, `docs/base-image.md`, and `docs/secrets.md`
+- `.agents/skills/debug-preview/SKILL.md` and `.agents/skills/debug-preview/references/topology.md` when validating preview box paths, SSH/debug flow, service names, ports, or host-owned files
 
 Flag:
 
@@ -26,3 +28,4 @@ Flag:
 - local-only watcher or bind-mount behavior leaking into runtime overlays
 - platform assets drifting away from the compose topology or deploy scripts they front
 - script or docs references that still treat preview/prod overlays as standalone stacks or use stale folder names
+- preview-debug skill guidance that drifts from the actual preview deploy topology, host paths, container naming, or SSH/debug workflow
