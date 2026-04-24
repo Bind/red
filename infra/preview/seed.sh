@@ -216,6 +216,7 @@ run_git_push() {
     --network "${PROJECT}_default" \
     -v "${REPO_DIR}:/repo" \
     alpine/git \
+    -c safe.directory=/repo \
     -C /repo \
     push --force "${remote_url}" "${refspec}"
 }
