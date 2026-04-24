@@ -24,11 +24,14 @@ Service-specific commands:
 ```bash
 just git-server-up
 just git-server-test
+just git-server-zig-check
 just gs-integration
 
 just auth-install
 just auth-serve
 just auth-test
+just auth-lint
+just auth-format
 just auth-compose-e2e
 ```
 
@@ -125,4 +128,5 @@ The current doc layout is workable, but it should stay opinionated:
 
 - Prefer `just` commands over ad-hoc shell commands when a recipe already exists.
 - Use `.integration.ts` for git-server live integration tests so they stay out of the default `bun test` run.
+- The Bun CLI entrypoint only documents `redc status` plus `--api-url` and `--format`; use `./scripts/redc` for the broader shell CLI surface.
 - Install local hooks with `just hooks-install`.
