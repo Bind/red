@@ -3,6 +3,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import {
+  createFileCodexAuthSource,
+  createPiProvider,
   resolveDaemon,
   runDaemon,
   type CompleteFinding,
@@ -151,6 +153,9 @@ async function main() {
   const trustedRoot = resolve(process.cwd());
   const prRoot = resolve(requiredEnv("REPO_ROOT"));
   const githubToken = requiredEnv("GITHUB_TOKEN");
+  const provider = createPiProvider({
+    authSource: createFileCodexAuthSource(),
+  });
 
   const changedFiles = await fetchChangedFiles(githubToken, owner, repo, prNumber);
   const daemonNames = selectDaemons(changedFiles);
@@ -175,6 +180,7 @@ async function main() {
       root: prRoot,
       maxTurns: 12,
       maxWallclockMs: 180_000,
+      provider,
     });
 
     if (!result.ok) {
