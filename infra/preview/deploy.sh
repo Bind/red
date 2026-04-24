@@ -27,7 +27,7 @@ PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
 PREVIEW_HOSTED_REPO_ID="redc/red"
 PREVIEW_REPO_OWNER="${PREVIEW_HOSTED_REPO_ID%%/*}"
-MIN_FREE_KB=$((8 * 1024 * 1024))
+MIN_FREE_KB=$((16 * 1024 * 1024))
 SEED_TMP="$(mktemp -d)"
 BASE_EXPORT_DIR="${SEED_TMP}/base"
 HEAD_EXPORT_DIR="${SEED_TMP}/head"
@@ -120,19 +120,58 @@ preview_root="/var/lib/containerd"
 if [ ! -d "\${preview_root}" ]; then
   preview_root="/"
 fi
-free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
-if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
-  echo "==> Low disk on \${preview_root} (\${free_kb} KB free); pruning unused Docker state"
+free_space_kb() {
+  df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }'
+}
+
+prune_unused_docker_state() {
+  echo "==> Pruning unused Docker state on \${preview_root}"
   docker system df || true
   COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down --remove-orphans || true
   docker system prune -af --volumes || true
   docker builder prune -af || true
-  free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
+  free_kb=\$(free_space_kb)
   echo "==> Free space after prune: \${free_kb} KB"
-fi
+}
+
+ensure_preview_disk_headroom() {
+  free_kb=\$(free_space_kb)
+  if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
+    echo "==> Low disk on \${preview_root} (\${free_kb} KB free; require ${MIN_FREE_KB} KB)"
+    prune_unused_docker_state
+    free_kb=\$(free_space_kb)
+  fi
+
+  if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
+    echo "error: insufficient free space on \${preview_root} after prune (\${free_kb} KB free; require ${MIN_FREE_KB} KB)" >&2
+    exit 1
+  fi
+}
+
+compose_pull_with_recovery() {
+  pull_log=\$(mktemp)
+  if COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml pull 2>&1 | tee "\${pull_log}"; then
+    rm -f "\${pull_log}"
+    return 0
+  fi
+
+  if grep -q "no space left on device" "\${pull_log}"; then
+    echo "==> Compose pull hit ENOSPC; pruning and retrying once"
+    prune_unused_docker_state
+    ensure_preview_disk_headroom
+    COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml pull
+    rm -f "\${pull_log}"
+    return 0
+  fi
+
+  rm -f "\${pull_log}"
+  return 1
+}
+
+ensure_preview_disk_headroom
 
 export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS PREVIEW_HOSTED_REPO_ID PREVIEW_REPO_OWNER
-COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml pull
+compose_pull_with_recovery
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d
 
 "${REMOTE_DIR}/infra/preview/seed-repo.sh" \
