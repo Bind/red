@@ -46,7 +46,7 @@ are auditing clearly depends on an external contract.
 - `dev/`
   - `compose.yml` is the local development override used by root `just up` /
     `just down`
-  - owns local bootstrap helpers such as `setup-env.sh`
+  - owns local run helpers such as `run.sh`
 - `preview/`
   - `compose.yml` is the per-PR preview overlay applied on top of
     `base/compose.yml`

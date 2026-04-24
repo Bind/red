@@ -174,7 +174,7 @@ export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSK
 compose_pull_with_recovery
 COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d
 
-"${REMOTE_DIR}/infra/preview/seed-repo.sh" \
+"${REMOTE_DIR}/infra/preview/seed.sh" \
   "${PROJECT}" \
   "${REMOTE_DIR}" \
   "${PREVIEW_HOSTED_REPO_ID}" \

@@ -11,7 +11,7 @@ deployment target only needs its own decryption key.
 | `.env.ci` | yes, encrypted | GitHub Actions | `DOTENV_PRIVATE_KEY_CI` |
 | `.env.production` | yes, encrypted | prod Hetzner box (decrypted in `infra/prod/deploy.sh`) | `DOTENV_PRIVATE_KEY_PRODUCTION` |
 | `.env.preview` | yes, encrypted | dev Hetzner box (decrypted in `infra/preview/deploy.sh`) | `DOTENV_PRIVATE_KEY_PREVIEW` |
-| `.env.development` | yes, encrypted | local dev via `infra/dev/setup-env.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
+| `.env.development` | yes, encrypted | local dev via `infra/dev/run.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
 | `.env.keys` | **never** — gitignored | local developer toolchain | holds every private key |
 | `.env` | gitignored | local/prod runtime plaintext | produced by local bootstrap or `dotenvx decrypt` |
 

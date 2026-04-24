@@ -29,7 +29,7 @@ const RELEVANT_CONTEXT_FILES = [
 	"justfile",
 	"sst.config.ts",
 	"infra/base/compose.yml",
-	"infra/dev/setup-env.sh",
+	"infra/dev/run.sh",
 	"infra/prod/deploy.sh",
 	"infra/preview/deploy.sh",
 	"infra/dev/compose.yml",

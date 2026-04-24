@@ -5,7 +5,7 @@
 # Prerequisites: root SSH access.
 #
 # Usage (run on the dev box):
-#   sudo bash setup-box.sh
+#   sudo bash setup-host.sh
 # Optional env:
 #   DOTENV_PRIVATE_KEY_PREVIEW=...   write preview dotenvx key into /root/.bashrc
 #   BOOTSTRAP_PREVIEW_ENV=1          decrypt /opt/redc-previews/.env.preview → /opt/redc-previews/.env
@@ -13,8 +13,8 @@ set -euo pipefail
 
 PREVIEWS_DIR="/opt/redc-previews"
 PREVIEW_NET="preview-net"
-CRON_FILE="/etc/cron.d/redc-preview-evict"
-EVICT_SCRIPT="${PREVIEWS_DIR}/preview-evict.sh"
+CRON_FILE="/etc/cron.d/redc-preview-cleanup"
+EVICT_SCRIPT="${PREVIEWS_DIR}/preview-cleanup.sh"
 CADDY_DIR="/opt/redc-preview-caddy"
 CADDY_COMPOSE="${CADDY_DIR}/compose.yml"
 CADDY_CONFIG_DIR="${CADDY_DIR}/caddy"
@@ -127,7 +127,7 @@ chmod +x "${EVICT_SCRIPT}"
 echo "==> Installing nightly cron at ${CRON_FILE}"
 cat > "${CRON_FILE}" <<CRON
 # m h dom mon dow user command
-17 3 * * * root ${EVICT_SCRIPT} 14 >> /var/log/redc-preview-evict.log 2>&1
+17 3 * * * root ${EVICT_SCRIPT} 14 >> /var/log/redc-preview-cleanup.log 2>&1
 CRON
 chmod 644 "${CRON_FILE}"
 

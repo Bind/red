@@ -75,7 +75,7 @@ services:
     ports:
       - "${WIDE_EVENTS_PORT}:4090"
     command: >
-      sh -lc "/app/infra/dev/bun-install-if-needed.sh /app &&
+      sh -lc "/app/infra/dev/install-deps-if-needed.sh /app &&
       cd /app/apps/obs &&
       bun run --watch src/index.ts"
     volumes:
@@ -182,7 +182,7 @@ services:
     ports:
       - "${AUTH_PORT:-4020}:4020"
     command: >
-      sh -lc "/app/infra/dev/bun-install-if-needed.sh /app &&
+      sh -lc "/app/infra/dev/install-deps-if-needed.sh /app &&
       cd /app/apps/auth &&
       bun run dev"
     volumes:
@@ -245,7 +245,7 @@ services:
       - "3000:3000"
     working_dir: /app
     command: >
-      sh -lc "/app/infra/dev/bun-install-if-needed.sh /app &&
+      sh -lc "/app/infra/dev/install-deps-if-needed.sh /app &&
       bun run --watch apps/ctl/index.ts"
     volumes:
       - ../..:/app
@@ -299,7 +299,7 @@ services:
       - "3001:3001"
     command: >
       sh -lc "apk add --no-cache git &&
-      /app/infra/dev/bun-install-if-needed.sh /app &&
+      /app/infra/dev/install-deps-if-needed.sh /app &&
       bun run --watch apps/bff/src/index.ts"
     volumes:
       - ../..:/app
@@ -329,7 +329,7 @@ services:
     ports:
       - "5173:5173"
     command: >
-      sh -lc "/app/infra/dev/bun-install-if-needed.sh /app &&
+      sh -lc "/app/infra/dev/install-deps-if-needed.sh /app &&
       cd /app/apps/web &&
       bun run dev --host 0.0.0.0 --port 5173"
     volumes:
@@ -366,7 +366,7 @@ services:
       - "${TRIAGE_PORT:-7000}:7000"
     command: >
       sh -lc "apk add --no-cache git ca-certificates &&
-      /app/infra/dev/bun-install-if-needed.sh /app &&
+      /app/infra/dev/install-deps-if-needed.sh /app &&
       cd /app/apps/triage &&
       bun run --watch src/index.ts"
     volumes:
@@ -411,7 +411,7 @@ services:
     command: >
       sh -lc "apk add --no-cache git ca-certificates npm &&
       npm install -g @openai/codex@0.117.0 &&
-      /app/infra/dev/bun-install-if-needed.sh /app &&
+      /app/infra/dev/install-deps-if-needed.sh /app &&
       cd /app/apps/triage &&
       bun run src/smithers-server.ts"
     volumes:

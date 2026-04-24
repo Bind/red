@@ -18,7 +18,7 @@ Use the smallest authoritative source needed:
 
 - `infra/base/compose.yml`, `infra/dev/compose.yml`, `infra/preview/compose.yml`, and `infra/prod/compose.yml`
 - `infra/platform/caddy/*`, `infra/platform/gateway/*`, `infra/platform/packer/*`, and `infra/platform/preview-caddy.yml` when validating ingress/bootstrap claims
-- `infra/ci/*`, `infra/dev/setup-env.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
+- `infra/ci/*`, `infra/dev/run.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
 - `docs/dev-preview.md`, `docs/release.md`, `docs/base-image.md`, and `docs/secrets.md`
 
 Flag:

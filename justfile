@@ -15,11 +15,11 @@ default:
 
 # One-time local bootstrap: env, runner image, and dev services
 setup:
-    ./infra/dev/setup-env.sh
+    ./infra/dev/run.sh
 
 # Start the local stack with hot-reload mounts and reuse existing images by default
 up:
-    SKIP_IMAGE_BUILD=true ./infra/dev/setup-env.sh
+    SKIP_IMAGE_BUILD=true ./infra/dev/run.sh
 
 # Back-compat alias for the fast dev path
 up-fast:
@@ -27,7 +27,7 @@ up-fast:
 
 # Explicitly rebuild local images before starting the stack
 up-build:
-    ./infra/dev/setup-env.sh
+    ./infra/dev/run.sh
 
 # Stop all local services
 down:
@@ -381,7 +381,7 @@ deploy-infra stage="production":
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
 bootstrap-dev-box host port="2222":
-    ./infra/preview/bootstrap-box.sh {{ host }} {{ port }}
+    ./infra/preview/setup.sh {{ host }} {{ port }}
 
 # Rsync working tree to the host and pull/start the runtime + prod overlay over ssh
 deploy-ssh image_tag git_commit host="red.computer" port="2222":
@@ -416,7 +416,7 @@ preview-check slug:
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
 ci-prep sha:
     bun install --frozen-lockfile
-    ./infra/ci/ci-seed-env.sh {{ sha }}
+    ./infra/ci/seed-env.sh {{ sha }}
     just auth-compose-keygen
 
 # Run the in-process health-contract tests (pkg/health unit + per-service)

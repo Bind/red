@@ -93,7 +93,7 @@ PR-specific overlay in `infra/preview/compose.yml`.
 
 ## Nightly eviction
 
-`infra/preview/evict-old.sh` runs at 03:17 UTC via cron
+`infra/preview/cleanup.sh` runs at 03:17 UTC via cron
 (`/etc/cron.d/redc-preview-evict`) and tears down any preview whose
 working directory was last modified >14 days ago.
 

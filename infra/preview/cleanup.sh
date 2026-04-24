@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Nightly cron: evict preview stacks older than MAX_AGE_DAYS.
-# Runs ON the dev box (not from CI). Installed by setup-box.sh.
+# Nightly cron: clean preview stacks older than MAX_AGE_DAYS.
+# Runs ON the dev box (not from CI). Installed by setup-host.sh.
 #
-# Usage: ./infra/preview/evict-old.sh [max-age-days]
+# Usage: ./infra/preview/cleanup.sh [max-age-days]
 set -euo pipefail
 
 MAX_AGE_DAYS="${1:-14}"
