@@ -124,7 +124,7 @@ free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
 if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
   echo "==> Low disk on \${preview_root} (\${free_kb} KB free); pruning unused Docker state"
   docker system df || true
-  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml down --remove-orphans || true
+  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down --remove-orphans || true
   docker system prune -af --volumes || true
   docker builder prune -af || true
   free_kb=\$(df -Pk "\${preview_root}" | awk 'NR==2 { print \$4 }')
@@ -132,8 +132,8 @@ if [ "\${free_kb:-0}" -lt "${MIN_FREE_KB}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT PREVIEW_PUBLIC_URL PREVIEW_WEB_CLIENTS PREVIEW_PASSKEY_ORIGINS PREVIEW_PASSKEY_RP_IDS PREVIEW_HOSTED_REPO_ID PREVIEW_REPO_OWNER
-COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml pull
-COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml up -d
+COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml pull
+COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml up -d
 
 "${REMOTE_DIR}/infra/scripts/seed-preview-repo.sh" \
   "${PROJECT}" \

@@ -75,7 +75,7 @@ find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}"
     project="preview-${slug}"
     echo "Evicting ${slug}"
     if [ -f "${dir}/infra/compose/preview.yml" ]; then
-      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/preview.yml down -v --remove-orphans) || true
+      (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans) || true
     else
       docker compose -p "${project}" down -v --remove-orphans 2>/dev/null || true
     fi

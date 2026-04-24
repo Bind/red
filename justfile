@@ -5,6 +5,9 @@ set dotenv-load
 mod infra
 
 DEV_COMPOSE := "infra/compose/dev.yml"
+RUNTIME_COMPOSE := "infra/compose/runtime.yml"
+PREVIEW_COMPOSE := "infra/compose/preview.yml"
+PROD_COMPOSE := "infra/compose/prod.yml"
 
 # Default: show available commands
 default:
@@ -14,17 +17,17 @@ default:
 setup:
     ./infra/scripts/setup-dev-env.sh
 
-# Start the local stack with fresh image builds and hot-reload mounts
+# Start the local stack with hot-reload mounts and reuse existing images by default
 up:
-    ./infra/scripts/setup-dev-env.sh
-
-# Start the local stack without rebuilding Docker images
-up-fast:
     SKIP_IMAGE_BUILD=true ./infra/scripts/setup-dev-env.sh
 
-# Back-compat alias for explicit build+start
-up-build:
+# Back-compat alias for the fast dev path
+up-fast:
     just up
+
+# Explicitly rebuild local images before starting the stack
+up-build:
+    ./infra/scripts/setup-dev-env.sh
 
 # Stop all local services
 down:
@@ -385,7 +388,7 @@ deploy-infra stage="production":
 bootstrap-dev-box host port="2222":
     ./infra/scripts/bootstrap-dev-box.sh {{ host }} {{ port }}
 
-# Rsync working tree to the host and pull/start infra/compose/prod.yml over ssh
+# Rsync working tree to the host and pull/start the runtime + prod overlay over ssh
 deploy-ssh image_tag git_commit host="red.computer" port="2222":
     ./infra/scripts/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
 

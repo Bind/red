@@ -47,7 +47,8 @@ via docker's embedded DNS on the shared `preview-net`.
 3. **Drop a production-style `.env`** at `/opt/redc-previews/.env` with the
    secrets every preview needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`,
    etc. This file is intentionally *not* rsynced from CI — previews
-   read it via `env_file` in `infra/compose/preview.yml`.
+   read it via the `infra/compose/runtime.yml` + `infra/compose/preview.yml`
+   stack.
 
 ## Required repo secrets
 
@@ -85,10 +86,10 @@ Preview stacks now include every service with a Dockerfile:
 - `api` (ctl), `auth`, `grs`, `bff`, `obs`, `triage`, `triage-smithers`, `web`
 - supporting: `gateway` (envoy), `db-auth` (postgres), `s3` (minio)
 
-This is intentionally **broader** than `infra/compose/prod.yml`, which today
-only ships the `api` + `gateway` + `caddy` trio. Preview catches build and
-wiring issues for services before they make it into prod. When a service
-enters prod, preview already proves it deploys cleanly.
+This is intentionally **broader** than production. Preview catches build and
+wiring issues for services before they make it into prod. The shared
+immutable-image runtime lives in `infra/compose/runtime.yml`; preview adds the
+PR-specific overlay in `infra/compose/preview.yml`.
 
 ## Nightly eviction
 
@@ -100,6 +101,6 @@ working directory was last modified >14 days ago.
 
 ```bash
 # On the dev box (or any docker host with preview-net created):
-COMPOSE_PROJECT_NAME=preview-pr-local docker compose -f infra/compose/preview.yml up -d --build
+COMPOSE_PROJECT_NAME=preview-pr-local docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml up -d --build
 docker inspect preview-pr-local-gateway --format '{{.NetworkSettings.Networks.preview-net.IPAddress}}'
 ```

@@ -56,8 +56,8 @@ if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT
-docker compose -f infra/compose/prod.yml pull
-docker compose -f infra/compose/prod.yml up -d
+docker compose -f infra/compose/runtime.yml -f infra/compose/prod.yml pull
+docker compose -f infra/compose/runtime.yml -f infra/compose/prod.yml up -d
 REMOTE
 
 echo "==> Deployed to https://${HOST}"

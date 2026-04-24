@@ -75,8 +75,7 @@ services:
     ports:
       - "${WIDE_EVENTS_PORT}:4090"
     command: >
-      sh -lc "cd /app &&
-      bun install --frozen-lockfile &&
+      sh -lc "/app/infra/scripts/bun-install-if-needed.sh /app &&
       cd /app/apps/obs &&
       bun run --watch src/index.ts"
     volumes:
@@ -163,6 +162,10 @@ services:
       AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-redc-web=http://localhost:5173}
       AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-http://localhost:5173}
       AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-localhost}
+      AUTH_LAB_STEALTH_TOTP_EMAILS: ${AUTH_LAB_STEALTH_TOTP_EMAILS:-douglasjbinder@gmail.com}
+      AUTH_LAB_STEALTH_TOTP_SEED_EMAIL: ${AUTH_LAB_STEALTH_TOTP_SEED_EMAIL:-douglasjbinder@gmail.com}
+      AUTH_LAB_STEALTH_TOTP_SEED_NAME: ${AUTH_LAB_STEALTH_TOTP_SEED_NAME:-Douglas Binder}
+      AUTH_LAB_STEALTH_TOTP_SEED_SECRET: ${AUTH_LAB_STEALTH_TOTP_SEED_SECRET:-JBSWY3DPEHPK3PXP}
       AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-true}
       AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@db-auth:5432/${AUTH_DB_NAME:-auth_lab}
       AUTH_LAB_BETTER_AUTH_SECRET: ${AUTH_BETTER_AUTH_SECRET:-auth-lab-compose-secret}
@@ -179,8 +182,8 @@ services:
     ports:
       - "${AUTH_PORT:-4020}:4020"
     command: >
-      sh -lc "cd /app/apps/auth &&
-      bun install --frozen-lockfile &&
+      sh -lc "/app/infra/scripts/bun-install-if-needed.sh /app &&
+      cd /app/apps/auth &&
       bun run dev"
     volumes:
       - ../..:/app
@@ -242,7 +245,7 @@ services:
       - "3000:3000"
     working_dir: /app
     command: >
-      sh -lc "bun install --frozen-lockfile &&
+      sh -lc "/app/infra/scripts/bun-install-if-needed.sh /app &&
       bun run --watch apps/ctl/index.ts"
     volumes:
       - ../..:/app
@@ -296,7 +299,7 @@ services:
       - "3001:3001"
     command: >
       sh -lc "apk add --no-cache git &&
-      bun install --frozen-lockfile &&
+      /app/infra/scripts/bun-install-if-needed.sh /app &&
       bun run --watch apps/bff/src/index.ts"
     volumes:
       - ../..:/app
@@ -326,8 +329,7 @@ services:
     ports:
       - "5173:5173"
     command: >
-      sh -lc "cd /app &&
-      bun install --frozen-lockfile &&
+      sh -lc "/app/infra/scripts/bun-install-if-needed.sh /app &&
       cd /app/apps/web &&
       bun run dev --host 0.0.0.0 --port 5173"
     volumes:
@@ -364,8 +366,7 @@ services:
       - "${TRIAGE_PORT:-7000}:7000"
     command: >
       sh -lc "apk add --no-cache git ca-certificates &&
-      cd /app &&
-      bun install --frozen-lockfile &&
+      /app/infra/scripts/bun-install-if-needed.sh /app &&
       cd /app/apps/triage &&
       bun run --watch src/index.ts"
     volumes:
@@ -410,8 +411,7 @@ services:
     command: >
       sh -lc "apk add --no-cache git ca-certificates npm &&
       npm install -g @openai/codex@0.117.0 &&
-      cd /app &&
-      bun install --frozen-lockfile &&
+      /app/infra/scripts/bun-install-if-needed.sh /app &&
       cd /app/apps/triage &&
       bun run src/smithers-server.ts"
     volumes:

@@ -16,7 +16,7 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" "bash -s
 set -euo pipefail
 if [ -d "${REMOTE_DIR}" ]; then
   cd "${REMOTE_DIR}"
-  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/preview.yml down -v --remove-orphans || true
+  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans || true
   cd /
   rm -rf "${REMOTE_DIR}"
   echo "==> Removed ${REMOTE_DIR}"

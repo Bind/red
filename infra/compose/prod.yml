@@ -1,3 +1,5 @@
+# Production overlay. Apply on top of `infra/compose/runtime.yml`.
+
 services:
   caddy:
     image: caddy:2-alpine
@@ -9,235 +11,49 @@ services:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks:
-      - redc-net
     depends_on:
       - gateway
 
-  gateway:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-gateway:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    environment:
-      API_HOST: api
-      AUTH_HOST: auth
-      BFF_HOST: bff
-      OBS_HOST: obs
-      TRIAGE_HOST: triage
-      GRS_HOST: grs
-      WEB_HOST: web
-      MCP_HOST: mcp
-    networks:
-      - redc-net
-    depends_on:
-      - api
-      - auth
-      - bff
-      - obs
-      - triage
-      - grs
-      - web
-      - mcp
-
   api:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-api:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
     env_file:
       - ../../.env
-    environment:
-      REDC_PORT: 3000
-      REDC_DB_PATH: /data/redc.db
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
-      MINIO_PORT: ${MINIO_PORT:-9000}
-      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
-      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    volumes:
-      - redc-data:/data
-    networks:
-      - redc-net
 
   bff:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-bff:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - api
-      - auth
-      - obs
-      - grs
-    environment:
-      BFF_PORT: 3001
-      REDC_API_BASE_URL: http://api:3000
-      AUTH_BASE_URL: http://auth:4020
-      OBS_BASE_URL: http://obs:4090
-      TRIAGE_BASE_URL: http://triage:7000
-      BFF_GIT_STORAGE_PUBLIC_URL: http://grs:8080
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     env_file:
       - ../../.env
-    networks:
-      - redc-net
 
   auth:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-auth:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - db-auth
+    env_file:
+      - ../../.env
     environment:
-      AUTH_LAB_HOST: 0.0.0.0
-      AUTH_LAB_PORT: 4020
       AUTH_LAB_ISSUER: ${AUTH_ISSUER:-https://red.computer}
-      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-redc-api}
       AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-redc-web=https://red.computer}
       AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-https://red.computer}
       AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-red.computer}
-      AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-false}
-      AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@db-auth:5432/${AUTH_DB_NAME:-auth_lab}
-      AUTH_LAB_BETTER_AUTH_SECRET: ${AUTH_BETTER_AUTH_SECRET:?AUTH_BETTER_AUTH_SECRET is required}
       AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-prod}
       AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: ${AUTH_BOOTSTRAP_CLIENT_SECRET:-auth-lab-prod-client-secret}
-      AUTH_LAB_BOOTSTRAP_SCOPES: ${AUTH_BOOTSTRAP_SCOPES:-prs:create changes:read}
-      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
-      AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
       AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-false}
-      AUTH_LAB_SIGNING_PRIVATE_JWK: ${AUTH_LAB_SIGNING_PRIVATE_JWK:?AUTH_LAB_SIGNING_PRIVATE_JWK is required}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    env_file:
-      - ../../.env
-    networks:
-      - redc-net
-
-  db-auth:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${AUTH_DB_NAME:-auth_lab}
-      POSTGRES_USER: ${AUTH_DB_USER:-auth_lab}
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth_lab_password}
-    volumes:
-      - db-auth-data:/var/lib/postgresql/data
-    networks:
-      - redc-net
-
-  s3:
-    image: minio/minio:latest
-    restart: unless-stopped
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    command: server /data --console-address ":9001"
-    volumes:
-      - s3-data:/data
-    networks:
-      - redc-net
-
-  obs:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-obs:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    environment:
-      WIDE_EVENTS_HOST: 0.0.0.0
-      WIDE_EVENTS_PORT: 4090
-      WIDE_EVENTS_STORAGE_BACKEND: file
-      WIDE_EVENTS_DATA_DIR: /data/wide-events
-      WIDE_EVENTS_RAW_EVENTS_DIR: /data/wide-events/raw
-      WIDE_EVENTS_ROLLUP_DIR: /data/wide-events/rollup
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    env_file:
-      - ../../.env
-    volumes:
-      - obs-data:/data
-    networks:
-      - redc-net
 
   grs:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-grs:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - s3
-    environment:
-      GIT_SERVER_PORT: 8080
-      GIT_SERVER_S3_ENDPOINT: http://s3:9000
-      GIT_SERVER_S3_REGION: ${GIT_SERVER_S3_REGION:-us-east-1}
-      GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-grs-repos}
-      GIT_SERVER_S3_PREFIX: ${GIT_SERVER_S3_PREFIX:-repos}
-      GIT_SERVER_S3_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
-      GIT_SERVER_S3_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
-      GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
-      GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     env_file:
       - ../../.env
-    networks:
-      - redc-net
+
+  obs:
+    env_file:
+      - ../../.env
 
   triage:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - triage-smithers
-    environment:
-      TRIAGE_PORT: 7000
-      TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
-      TRIAGE_SMITHERS_BASE_URL: http://triage-smithers:7331
-      TRIAGE_WORKFLOW_PATH: /app/apps/triage/src/workflows/triage.tsx
-      TRIAGE_SMITHERS_DB_PATH: /smithers-data/smithers.db
-      REDC_API_BASE_URL: http://api:3000
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     env_file:
       - ../../.env
-    volumes:
-      - smithers-data:/smithers-data
-    networks:
-      - redc-net
 
   triage-smithers:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    command: ["bun", "run", "apps/triage/src/smithers-server.ts"]
-    environment:
-      SMITHERS_SERVER_PORT: 7331
-      SMITHERS_DB_PATH: /smithers-data/smithers.db
-      SMITHERS_ROOT_DIR: /app
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     env_file:
       - ../../.env
-    volumes:
-      - smithers-data:/smithers-data
-    networks:
-      - redc-net
-
-  web:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-web:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    networks:
-      - redc-net
 
   mcp:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-mcp:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - auth
-    environment:
-      MCP_PORT: 3002
-      MCP_AUTH_BASE_URL: http://auth:4020
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
     env_file:
       - ../../.env
-    networks:
-      - redc-net
 
 volumes:
   caddy-data:
   caddy-config:
-  redc-data:
-  db-auth-data:
-  s3-data:
-  obs-data:
-  smithers-data:
-
-networks:
-  redc-net:
-    driver: bridge

@@ -34,10 +34,15 @@ are auditing clearly depends on an external contract.
 ## Folder Map
 
 - `compose/`
-  - `dev.yml` is the local development stack used by root `just up` /
+  - `dev.yml` is the local development override used by root `just up` /
     `just down`
-  - `preview.yml` and `preview-caddy.yml` define the per-PR preview topology
-  - `prod.yml` defines the production compose stack used by deploy scripts
+  - `runtime.yml` is the immutable-image runtime layer shared by preview and
+    production deploys
+  - `preview.yml` is the per-PR preview overlay applied on top of
+    `runtime.yml`
+  - `prod.yml` is the production overlay applied on top of `runtime.yml`
+  - `preview-caddy.yml` defines the permanent wildcard ingress for preview
+    stacks
 - `scripts/`
   - owns bootstrap, deploy, preview lifecycle, env seeding, and the `redc`
     shell entrypoint under `infra/scripts/redc`
@@ -55,11 +60,13 @@ are auditing clearly depends on an external contract.
 ## Core Invariants
 
 - `infra/compose/dev.yml` remains the source of truth for the root local
-  docker compose workflow.
-- `infra/compose/prod.yml` stays intentionally narrower than preview unless a
-  service is explicitly promoted to production.
-- `infra/compose/preview.yml` should exercise a broader surface than prod so
-  preview catches wiring issues before production rollout.
+  docker compose workflow and should stay source-mounted / hot-reload-first.
+- `infra/compose/runtime.yml` is the shared immutable-image runtime contract
+  for preview and production.
+- `infra/compose/prod.yml` and `infra/compose/preview.yml` are thin overlays
+  on top of `runtime.yml`, not standalone stacks.
+- Preview should still exercise a broader surface than production so it
+  catches wiring issues before production rollout.
 - Preview and production deploy paths must preserve server-owned state.
   Deploy automation must not overwrite long-lived `.env`, sqlite files,
   `.git`, `.sst`, or equivalent host-resident state.
@@ -94,6 +101,9 @@ When auditing `infra/`, check for:
   or env files
 - scripts that assume files, directories, or env vars no longer provisioned
 - preview/prod drift that looks accidental rather than intentional
+- shared runtime concerns duplicated in `preview.yml` or `prod.yml` instead
+  of living in `runtime.yml`
+- local dev concerns leaking into `runtime.yml`, `preview.yml`, or `prod.yml`
 - ingress config that disagrees with compose topology
 - docs or `just` recipes that no longer match the actual operator flow
 - duplicated shell logic that should be consolidated in `lib.sh`
