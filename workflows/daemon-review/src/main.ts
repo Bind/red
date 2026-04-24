@@ -33,12 +33,6 @@ const DOC_SURFACE_PATHS = [
   ".agents/skills/",
 ];
 
-const HEALTH_CONTRACT_PATHS = [
-  "pkg/health/",
-  "apps/",
-  "docs/",
-];
-
 const INFRA_PATHS = [
   "infra/",
   "docs/dev-preview.md",
@@ -96,13 +90,10 @@ function selectDaemons(changedFiles: string[]): string[] {
     selected.add("docs-command-surface");
   }
 
-  if (changedFiles.some((path) => matchesAnyPrefix(path, HEALTH_CONTRACT_PATHS))) {
-    selected.add("health-contract");
-  }
-
   if (changedFiles.some((path) => matchesAnyPrefix(path, INFRA_PATHS))) {
     selected.add("compose-contract");
     selected.add("environment-layering");
+    selected.add("infra-audit");
   }
 
   return [...selected];

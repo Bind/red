@@ -33,7 +33,7 @@ Create repo daemons using the current redc pattern:
 - State what the daemon is responsible for.
 - State the narrowest canonical source or contract.
 - Tell it how to stay narrow.
-- State what it should not be used for.
+- State what it is not responsible for.
 - List the main mismatch classes to flag.
 - Do not include instructions for calling `track` or `complete`; the runner already owns that protocol.
 
