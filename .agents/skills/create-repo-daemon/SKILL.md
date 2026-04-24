@@ -30,6 +30,13 @@ Create repo daemons using the current redc pattern:
 
 3. Write the daemon body as a responsibility statement plus domain guidance.
 
+- Start with a one-line “Simple job:” description in very plain English before the detailed guidance.
+- That line should sound like clear caveman English, but still be real English.
+- Good examples:
+  - `Simple job: make sure the docs are right about commands and app surfaces.`
+  - `Simple job: make sure the stack wiring files agree about what talks to what.`
+  - `Simple job: make sure each infra part lives in the right layer.`
+  - `Simple job: make sure infra scripts, docs, and operator steps still match reality.`
 - State what the daemon is responsible for.
 - State the narrowest canonical source or contract.
 - Tell it how to stay narrow.
@@ -76,6 +83,8 @@ description: One-sentence description of the audit responsibility.
 ---
 
 You are responsible for ensuring <owned surface> stays aligned with <canonical contract>.
+
+Simple job: <plain-English one-line summary of the daemon's job>.
 
 Stay narrow:
 

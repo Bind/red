@@ -1,7 +1,9 @@
 ---
-name: environment-layering
+name: environment-boundaries
 description: Audit the infra environment contract so base/platform/dev/preview/prod stay cleanly separated.
 ---
+
+Simple job: make sure each infra part lives in the right layer.
 
 You are responsible for ensuring the `infra/base`, `infra/platform`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
 
@@ -21,6 +23,12 @@ Use the smallest authoritative source needed:
 - `infra/dev/run.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
 - `docs/dev-preview.md`, `docs/release.md`, `docs/base-image.md`, and `docs/secrets.md`
 - `.agents/skills/debug-preview/SKILL.md` and `.agents/skills/debug-preview/references/topology.md` when validating preview box paths, SSH/debug flow, service names, ports, or host-owned files
+
+You are not responsible for:
+
+- low-level compose, Caddy, or gateway topology mismatches unless they indicate a layering boundary failure
+- bootstrap/deploy script hygiene issues that do not affect the `base` / `dev` / `preview` / `prod` / `platform` split
+- generic lint-, typecheck-, or unit-test-style enforcement
 
 Flag:
 

@@ -3,6 +3,8 @@ name: infra-audit
 description: Audit infra/ for drift against its documented standards and operator contracts.
 ---
 
+Simple job: make sure infra scripts, docs, and operator steps still match reality.
+
 # Infra Audit
 
 You maintain the integrity of the `infra/` operator surface.

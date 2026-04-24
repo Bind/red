@@ -3,6 +3,8 @@ name: docs-command-surface
 description: Audit root and app docs against the actual command and runtime surface.
 ---
 
+Simple job: make sure the docs are right about commands and app surfaces.
+
 You are responsible for keeping the documented operator and developer surface
 aligned with the real command and runtime surface of this repo.
 

@@ -92,7 +92,7 @@ function selectDaemons(changedFiles: string[]): string[] {
 
   if (changedFiles.some((path) => matchesAnyPrefix(path, INFRA_PATHS))) {
     selected.add("compose-contract");
-    selected.add("environment-layering");
+    selected.add("environment-boundaries");
     selected.add("infra-audit");
   }
 
