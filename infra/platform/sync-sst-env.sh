@@ -46,6 +46,8 @@ daemon_memory_endpoint="$(jq -er '.daemonMemoryEndpoint' "${OUTPUTS_FILE}")"
 daemon_memory_access_key_id="$(jq -er '.daemonMemoryAccessKeyId' "${OUTPUTS_FILE}")"
 daemon_memory_secret_access_key="$(jq -er '.daemonMemorySecretAccessKey' "${OUTPUTS_FILE}")"
 daemon_memory_repo="$(repo_from_origin)"
+server_ip="$(jq -er '.serverIp' "${OUTPUTS_FILE}")"
+dns_record="$(jq -er '.dnsRecord' "${OUTPUTS_FILE}")"
 
 if [[ "$#" -eq 0 ]]; then
   set -- "${ROOT_DIR}/.env" "${ROOT_DIR}/.env.ci"
@@ -63,4 +65,6 @@ for target in "$@"; do
   dotenvx set AI_DAEMONS_R2_ENDPOINT "${daemon_memory_endpoint}" -f "${env_file}"
   dotenvx set AI_DAEMONS_R2_ACCESS_KEY_ID "${daemon_memory_access_key_id}" -f "${env_file}"
   dotenvx set AI_DAEMONS_R2_SECRET_ACCESS_KEY "${daemon_memory_secret_access_key}" -f "${env_file}"
+  dotenvx set REDC_SERVER_IP "${server_ip}" -f "${env_file}"
+  dotenvx set REDC_DNS_RECORD "${dns_record}" -f "${env_file}"
 done

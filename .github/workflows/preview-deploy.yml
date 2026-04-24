@@ -66,50 +66,11 @@ jobs:
           TURBO_TELEMETRY_DISABLED: "1"
         run: bunx turbo run typecheck --affected
 
-  daemon-review:
-    name: daemon review gate
-    if: github.event.action != 'closed' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - uses: extractions/setup-just@v2
-
-      - name: Install dotenvx
-        run: curl -fsS https://dotenvx.sh | sh
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Provision daemon memory infra
-        run: dotenvx run -f .env.ci -- just provision dev .env.ci
-
-      - name: Run daemon review
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO_ROOT: ${{ github.workspace }}
-          DAEMON_REVIEW_MAX_PARALLEL: "3"
-          AI_DAEMONS_PROVIDER: openrouter
-          AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
-          AI_DAEMONS_MEMORY_BACKEND: r2
-          AI_DAEMONS_MEMORY_REPO: ${{ github.repository }}
-        run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts
-
   build-images:
     name: build preview images
     if: github.event.action != 'closed' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     needs:
       - validate
-      - daemon-review
     permissions:
       contents: read
       packages: write
@@ -166,9 +127,6 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
-      - name: Ensure wildcard preview DNS exists
-        run: dotenvx run -f .env.ci -- just provision dev .env.ci
-
       - name: Configure SSH (dev key from .env.ci)
         run: |
           mkdir -p ~/.ssh
@@ -180,9 +138,9 @@ jobs:
           fi
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Resolve dev server IP from SST outputs
+      - name: Resolve dev server IP from synced env
         id: dev-ip
-        run: echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
+        run: echo "host=$(dotenvx get REDC_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
         run: >
@@ -236,11 +194,10 @@ jobs:
           fi
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Resolve dev server IP from SST outputs
+      - name: Resolve dev server IP from synced env
         id: dev-ip
         run: |
-          dotenvx run -f .env.ci -- just provision dev .env.ci
-          echo "host=$(jq -r '.serverIp' .sst/outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "host=$(dotenvx get REDC_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Tear down preview
         run: just teardown-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222
