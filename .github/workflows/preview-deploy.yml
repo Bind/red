@@ -93,7 +93,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO_ROOT: ${{ github.workspace }}
           AI_DAEMONS_PROVIDER: openrouter
-          AI_DAEMONS_MODEL: deepseek/deepseek-chat-v3.1
+          AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
         run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts
 
   build-images:

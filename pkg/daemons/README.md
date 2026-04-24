@@ -99,7 +99,7 @@ current supported machine-auth path is OpenRouter:
 
 ```bash
 export AI_DAEMONS_PROVIDER=openrouter
-export AI_DAEMONS_MODEL=deepseek/deepseek-chat-v3.1
+export AI_DAEMONS_MODEL=deepseek/deepseek-v4-pro
 export OPENROUTER_API_KEY=...
 ```
 
