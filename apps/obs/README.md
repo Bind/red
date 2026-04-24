@@ -5,6 +5,9 @@ Dedicated Bun/Hono collector service for request-wide events.
 ## Endpoints
 
 - `GET /health`
+- `GET /v1/rollups`
+- `GET /v1/rollups/stats`
+- `GET /v1/rollups/:request_id`
 - `POST /v1/events`
 
 ## Behavior

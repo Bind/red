@@ -29,7 +29,7 @@ Use this skill for per-PR preview issues on the shared dev box.
 
 4. Stay narrow to one preview stack.
 
-- Prefer `preview-<slug>-*` containers only.
+- Prefer `preview-${slug}-*` containers only, for example `preview-pr-9-gateway`.
 - Use the compose files in `/opt/redc-previews/<slug>/infra/base/compose.yml` and `/opt/redc-previews/<slug>/infra/preview/compose.yml`.
 - Avoid global cleanup unless the problem is clearly host-wide.
 
@@ -45,7 +45,7 @@ Use this skill for per-PR preview issues on the shared dev box.
 
 - Is `preview-caddy` up?
 - Does `/opt/redc-preview-caddy/caddy/sites/<slug>.caddy` exist?
-- Are `preview-<slug>-gateway` and the target service containers running?
+- Are `preview-${slug}-gateway` and the target service containers running?
 - Is `/opt/redc-previews/.env` present?
 - Is `/opt/redc-previews/<slug>` populated with the current repo checkout?
 - Are disk, memory, or image-pull failures blocking startup?
