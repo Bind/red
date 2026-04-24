@@ -104,7 +104,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 - `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
 - Current experiments live under:
-  `ci-runner-lab/`, `durable-workflow-lab/`, `git-mirror-canary/`, and `smithers-lab/`.
+  `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 
 ### `scripts/`
 
