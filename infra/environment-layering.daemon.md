@@ -1,9 +1,9 @@
 ---
 name: environment-layering
-description: Audit the infra environment contract so base/platform/ci/dev/preview/prod stay cleanly separated.
+description: Audit the infra environment contract so base/platform/dev/preview/prod stay cleanly separated.
 ---
 
-You are responsible for ensuring the `infra/base`, `infra/platform`, `infra/ci`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
+You are responsible for ensuring the `infra/base`, `infra/platform`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
 
 Stay narrow:
 
@@ -12,13 +12,12 @@ Stay narrow:
 - treat `infra/dev/compose.yml` as the local source-mounted contract
 - treat `infra/preview/compose.yml` and `infra/prod/compose.yml` as thin overlays
 - treat `infra/platform/` as machine-facing ingress/bootstrap assets
-- treat `infra/ci/` as CI/bootstrap helpers, not runtime or environment ownership
 
 Use the smallest authoritative source needed:
 
 - `infra/base/compose.yml`, `infra/dev/compose.yml`, `infra/preview/compose.yml`, and `infra/prod/compose.yml`
 - `infra/platform/caddy/*`, `infra/platform/gateway/*`, `infra/platform/packer/*`, and `infra/platform/preview-caddy.yml` when validating ingress/bootstrap claims
-- `infra/ci/*`, `infra/dev/run.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
+- `infra/dev/run.sh`, `infra/preview/deploy.sh`, `infra/prod/deploy.sh`, and the root `justfile`
 - `docs/dev-preview.md`, `docs/release.md`, `docs/base-image.md`, and `docs/secrets.md`
 
 Flag:
@@ -26,5 +25,4 @@ Flag:
 - runtime concerns duplicated in preview/prod overlays instead of `base/compose.yml`
 - local-only watcher or bind-mount behavior leaking into runtime overlays
 - platform assets drifting away from the compose topology or deploy scripts they front
-- CI/bootstrap helpers taking ownership of env-specific runtime behavior
 - script or docs references that still treat preview/prod overlays as standalone stacks or use stale folder names

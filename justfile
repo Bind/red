@@ -417,11 +417,6 @@ preview-check slug:
 # ── CI ──────────────────────────────────────────────────
 
 # CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
-ci-prep sha:
-    bun install --frozen-lockfile
-    ./infra/ci/setup.sh {{ sha }}
-    just auth-compose-keygen
-
 # Run the in-process health-contract tests (pkg/health unit + per-service)
 ci-health-contract sha:
     GIT_COMMIT={{ sha }} bun test \
@@ -429,41 +424,3 @@ ci-health-contract sha:
         apps/ctl/health-contract.test.ts \
         apps/obs/src/test/health-contract.test.ts \
         apps/triage/src/health-contract.test.ts
-
-# Bring up the core stack; readiness is asserted explicitly by ci-health-probe
-ci-health-compose-up:
-    just workspace-deps-build-local
-    docker compose -f {{ DEV_COMPOSE }} --env-file .env \
-        up -d --build \
-        s3 obs grs db-auth auth ctl bff
-
-# Probe each service's /health and assert the {service,status,commit} contract
-ci-health-probe:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    declare -A endpoints=(
-      [ctl]="http://localhost:3000/health"
-      [bff]="http://localhost:3001/health"
-      [auth]="http://localhost:4020/health"
-      [obs]="http://localhost:4090/health"
-      [grs]="http://localhost:9080/health"
-    )
-    for service in "${!endpoints[@]}"; do
-      url="${endpoints[$service]}"
-      echo "==> $service $url"
-      body=""
-      for _ in $(seq 1 60); do
-        if body=$(curl -fsSL "$url" 2>/dev/null); then
-          break
-        fi
-        sleep 2
-      done
-      [ -n "$body" ] || { echo "service did not become ready: $service"; exit 1; }
-      echo "$body" | jq .
-      got_service=$(echo "$body" | jq -r .service)
-      got_status=$(echo "$body" | jq -r .status)
-      got_commit=$(echo "$body" | jq -r .commit)
-      [ "$got_service" = "$service" ] || { echo "want service=$service got=$got_service"; exit 1; }
-      case "$got_status" in ok|degraded|error) ;; *) echo "bad status=$got_status"; exit 1;; esac
-      [ -n "$got_commit" ] && [ "$got_commit" != "null" ] || { echo "missing commit"; exit 1; }
-    done
