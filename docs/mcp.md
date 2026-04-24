@@ -12,7 +12,7 @@ call tools against the redc system.
 | Transport | [Streamable HTTP](https://spec.modelcontextprotocol.io/specification/2025-03-26/basic/transports/#streamable-http) |
 | Stateless? | Yes. Each `POST /mcp` is self-contained; no session IDs. |
 | Auth | OAuth 2.1 Bearer tokens, introspected by `apps/auth` |
-| Health | `GET /health` returns the standard `{service, status, commit}` contract |
+| Health | The service itself exposes `GET /health`; the public gateway does not currently publish a dedicated `/mcp/health` route |
 
 Path-based routing in `infra/platform/gateway/envoy.yaml.template` sends any request
 matching `/mcp*` to the `redc_mcp` cluster (`${MCP_HOST}:3002`). TLS is
@@ -141,8 +141,10 @@ All production values land in `.env.production` (encrypted via dotenvx).
 
 ## Operational checks
 
-- `curl https://red.computer/mcp/health` (routed by envoy to api's /health; for
-  MCP's own /health hit `https://red.computer/mcp` directly — note the envoy
-  route matches prefix `/mcp` so `/mcp/health` goes to the MCP service)
+- Direct service health: `curl http://localhost:3002/health` in local dev, or
+  `docker compose ... exec mcp curl -fsS http://127.0.0.1:3002/health` inside
+  a compose stack
+- Public gateway smoke: `curl -i https://red.computer/mcp` should reach the MCP
+  endpoint (it will still reject malformed or unauthorized requests)
 - `service-health` CI already covers every service's `/health` contract;
   MCP is in the rotation via `apps/mcp/src/health-contract.test.ts`.

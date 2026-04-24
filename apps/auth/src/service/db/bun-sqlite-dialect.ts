@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { QueryExecutorProvider } from "kysely";
 import {
   CompiledQuery,
   DEFAULT_MIGRATION_LOCK_TABLE,
@@ -20,8 +21,15 @@ type TransactionConnection = {
   executeQuery(compiledQuery: CompiledQuery): Promise<unknown>;
 };
 
-type IntrospectionDb = {
-  selectFrom(table: unknown): any;
+type IntrospectionQuery<T = Record<string, unknown>> = {
+  where(...args: readonly unknown[]): IntrospectionQuery<T>;
+  select<S = T>(selection: unknown): IntrospectionQuery<S>;
+  $castTo<S>(): IntrospectionQuery<S>;
+  execute(): Promise<T[]>;
+};
+
+type IntrospectionDb = QueryExecutorProvider & {
+  selectFrom(table: unknown): IntrospectionQuery;
 };
 
 type TableColumnMetadata = {
@@ -154,7 +162,7 @@ class BunSqliteIntrospector {
       .selectFrom("sqlite_schema")
       .where("type", "=", "table")
       .where("name", "not like", "sqlite_%")
-      .select("name");
+      .select<{ name: string }>("name");
 
     if (!options.withInternalKyselyTables) {
       query = query
@@ -175,13 +183,13 @@ class BunSqliteIntrospector {
   }
 
   async #getTableMetadata(table: string) {
-    const db = this.#db as any;
+    const db = this.#db;
     const autoIncrementCol = (
       await db
         .selectFrom("sqlite_master")
         .where("name", "=", table)
-        .select("sql")
-        .$castTo()
+        .select<{ sql: string | null }>("sql")
+        .$castTo<{ sql: string | null }>()
         .execute()
     )[0]?.sql
       ?.split(/[(),]/)
@@ -191,12 +199,12 @@ class BunSqliteIntrospector {
 
     const columns = await db
       .selectFrom(sql`pragma_table_info(${table})`.as("table_info"))
-      .select(["name", "type", "notnull", "dflt_value"])
+      .select<TableColumnMetadata>(["name", "type", "notnull", "dflt_value"])
       .execute();
 
     return {
       name: table,
-      columns: (columns as TableColumnMetadata[]).map((column) => ({
+      columns: columns.map((column) => ({
         name: column.name,
         dataType: column.type,
         isNullable: !column.notnull,

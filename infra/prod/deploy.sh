@@ -33,6 +33,14 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
 set -euo pipefail
 cd /opt/redc
 
+if [ -z "${DOTENV_PRIVATE_KEY_PRODUCTION:-}" ] && [ -f /root/.bashrc ]; then
+  # Load just the persisted production dotenvx key without evaluating interactive shell setup.
+  production_key_line=$(grep -E '^export DOTENV_PRIVATE_KEY_PRODUCTION=' /root/.bashrc | tail -n1 || true)
+  if [ -n "${production_key_line}" ]; then
+    export "${production_key_line#export }"
+  fi
+fi
+
 if [ -z "${DOTENV_PRIVATE_KEY_PRODUCTION:-}" ]; then
   echo "error: DOTENV_PRIVATE_KEY_PRODUCTION is not set on the host." >&2
   echo "       export it in /root/.bashrc or a systemd env file." >&2

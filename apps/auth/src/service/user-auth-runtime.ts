@@ -2,6 +2,7 @@ import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { jwt, magicLink } from "better-auth/plugins";
+import type { QueryExecutorProvider } from "kysely";
 import { sql } from "kysely";
 import { createLoginAttemptStore, type LoginAttemptStore } from "../store/login-attempt-store";
 import { createSessionStore, type SessionStore } from "../store/session-store";
@@ -29,7 +30,7 @@ type SchemaCapableDb = {
   schema?: {
     createTable(name: string): CustomTableBuilder;
   };
-};
+} & QueryExecutorProvider;
 
 type BetterAuthWithSchemaDb = {
   options?: {
@@ -112,11 +113,9 @@ async function ensureCustomTables(auth: BetterAuthWithSchemaDb) {
     .addColumn("updatedAt", "text", (column) => column.notNull())
     .execute();
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(
-    db as any,
-  );
+  await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_email ON login_attempt(email)`.execute(db);
   await sql`CREATE INDEX IF NOT EXISTS idx_login_attempt_status ON login_attempt(status)`.execute(
-    db as any,
+    db,
   );
 }
 

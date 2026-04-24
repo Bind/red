@@ -6,7 +6,7 @@ import {
   type ObsFields,
   obsMiddleware,
 } from "@red/obs";
-import { Hono } from "@red/server";
+import { Hono, type MiddlewareHandler } from "@red/server";
 import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
@@ -162,6 +162,22 @@ function withRequestIdHeaders(requestId: string, init?: HeadersInit): Headers {
   const headers = new Headers(init);
   headers.set("x-request-id", requestId);
   return headers;
+}
+
+const SESSION_COOKIE_NAMES = [
+  "__Secure-better-auth.session_token",
+  "better-auth.session_token",
+] as const;
+
+function resolveSessionCookie(setCookieHeader: string): { name: string; value: string } | null {
+  const cookies = parseSetCookieHeader(setCookieHeader);
+  for (const name of SESSION_COOKIE_NAMES) {
+    const value = cookies.get(name)?.value;
+    if (value) {
+      return { name, value };
+    }
+  }
+  return null;
 }
 
 export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
@@ -324,7 +340,10 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
 
   app.use(
     "*",
-    obsMiddleware({ service: "auth", sink: createObsSinkFromEnv({ service: "auth" }) }) as any,
+    obsMiddleware({
+      service: "auth",
+      sink: createObsSinkFromEnv({ service: "auth" }),
+    }) as MiddlewareHandler,
   );
 
   app.onError((error, c) => {
@@ -541,9 +560,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       throw new AuthError("server_error", "Stealth login did not produce a session cookie", 500);
     }
 
-    const sessionCookie = parseSetCookieHeader(setCookieHeader).get(
-      "better-auth.session_token",
-    )?.value;
+    const sessionCookie = resolveSessionCookie(setCookieHeader);
     if (!sessionCookie) {
       throw new AuthError("server_error", "Stealth login did not yield a session token", 500);
     }
@@ -556,7 +573,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       new Request(`${config.issuer}/api/auth/get-session`, {
         headers: withRequestIdHeaders(requestId, {
           origin: config.issuer,
-          cookie: `better-auth.session_token=${sessionCookie}`,
+          cookie: `${sessionCookie.name}=${sessionCookie.value}`,
         }),
       }),
     );
@@ -827,9 +844,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     }
 
     const setCookie = verifyResponse.headers.get("set-cookie");
-    const sessionCookie = parseSetCookieHeader(setCookie ?? "").get(
-      "better-auth.session_token",
-    )?.value;
+    const sessionCookie = setCookie ? resolveSessionCookie(setCookie) : null;
     if (!setCookie || !sessionCookie) {
       throw new AuthError("server_error", "Magic link verification did not create a session", 500);
     }
@@ -837,7 +852,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     const sessionResult = await authAdapter.getSession(
       new Request(`${config.issuer}/api/auth/get-session`, {
         headers: withRequestIdHeaders(requestId, {
-          cookie: `better-auth.session_token=${sessionCookie}`,
+          cookie: `${sessionCookie.name}=${sessionCookie.value}`,
         }),
       }),
     );

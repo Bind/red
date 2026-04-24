@@ -17,6 +17,7 @@ The important separation is:
 ## Runtime Surface
 
 - `GET /health`
+- `GET /me`
 - `GET /.well-known/jwks.json`
 - `GET /.well-known/openid-configuration`
 - `ALL /api/auth/*`
@@ -26,8 +27,16 @@ The important separation is:
 - `POST /oauth/revoke`
 - `POST /user/two-factor/enroll`
 - `POST /user/two-factor/verify`
+- `POST /user/totp-login`
 - `POST /user/onboarding/complete`
 - `POST /user/recovery/start`
+- `POST /login-attempts`
+- `GET /login-attempts/:id`
+- `POST /login-attempts/redeem`
+- `POST /magic-link/complete`
+
+Test-only when enabled:
+- `GET /__test__/mailbox/latest`
 
 ## Local Use
 
@@ -36,6 +45,7 @@ just auth-install
 just auth-serve
 just auth-test
 just auth-lint
+just auth-format
 just auth-compose-e2e
 ```
 

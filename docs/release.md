@@ -6,7 +6,8 @@ triggers `.github/workflows/release.yml`, which:
 1. Checks out the tag.
 2. Builds and pushes the controlled service images to GHCR, tagged by commit SHA
    and the release version.
-3. Runs `just deploy-infra production` → `sst deploy` against Cloudflare + Hetzner.
+3. Runs `just provision production` → `sst deploy` against Cloudflare + Hetzner,
+   then syncs exported SST env vars into the target env file.
 4. Writes the SSH private key from secrets.
 5. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
    working tree to `/opt/redc`, decrypts `.env.production`, pulls the tagged GHCR

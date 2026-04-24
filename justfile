@@ -15,11 +15,13 @@ default:
 
 # One-time local bootstrap: env, runner image, and dev services
 setup:
-    ./infra/dev/setup-env.sh
+    bun install --frozen-lockfile
+    ./infra/dev/run.sh
 
 # Start the local stack with hot-reload mounts and reuse existing images by default
 up:
-    SKIP_IMAGE_BUILD=true ./infra/dev/setup-env.sh
+    bun install --frozen-lockfile
+    SKIP_IMAGE_BUILD=true ./infra/dev/run.sh
 
 # Back-compat alias for the fast dev path
 up-fast:
@@ -27,7 +29,8 @@ up-fast:
 
 # Explicitly rebuild local images before starting the stack
 up-build:
-    ./infra/dev/setup-env.sh
+    bun install --frozen-lockfile
+    ./infra/dev/run.sh
 
 # Stop all local services
 down:
@@ -45,11 +48,6 @@ workspace-deps-build-local:
         -f infra/base/Dockerfile.workspace-deps \
         --build-arg BUN_IMAGE=oven/bun:1-alpine \
         -t red-workspace-deps-alpine:dev \
-        .
-    docker build \
-        -f infra/base/Dockerfile.workspace-deps \
-        --build-arg BUN_IMAGE=oven/bun:1.3.10 \
-        -t red-workspace-deps-debian:dev \
         .
 
 # Show local service status
@@ -109,12 +107,10 @@ typecheck:
 # Run repository formatters
 fmt:
     just auth-format
-    just git-mirror-canary-format
 
 # Run repository linters
 lint:
     just auth-lint
-    just git-mirror-canary-lint
 
 # Build the production frontend bundle inside Docker
 web-build:
@@ -245,39 +241,6 @@ repos:
         | fzf --delimiter='\t' --with-nth=1 --preview='echo "Queued changes: {2}"' \
         | cut -f1
 
-# Install dependencies for the git mirror canary experiment
-git-mirror-canary-install:
-    cd experiments/git-mirror-canary && bun install
-
-# Start the git mirror canary experiment locally
-git-mirror-canary-serve:
-    cd experiments/git-mirror-canary && bun run src/index.ts
-
-# Run tests for the git mirror canary experiment
-git-mirror-canary-test:
-    cd experiments/git-mirror-canary && bun test
-
-# Lint the git mirror canary experiment
-git-mirror-canary-lint:
-    cd experiments/git-mirror-canary && bun run lint
-
-# Format the git mirror canary experiment
-git-mirror-canary-format:
-    cd experiments/git-mirror-canary && bun run format
-
-# Bring up the git mirror canary compose stack
-git-mirror-canary-compose-up:
-    docker compose -f experiments/git-mirror-canary/docker-compose.yml up --build -d
-    until curl -fsS http://127.0.0.1:$${GIT_MIRROR_CANARY_PUBLISHED_PORT:-4080}/health >/dev/null; do sleep 1; done
-
-# Tear down the git mirror canary compose stack
-git-mirror-canary-compose-down:
-    docker compose -f experiments/git-mirror-canary/docker-compose.yml down -v --remove-orphans
-
-# Run compose E2E for the git mirror canary experiment
-git-mirror-canary-compose-e2e:
-    cd experiments/git-mirror-canary && ./compose/e2e.sh
-
 # ── Triage ──────────────────────────────────────────────
 
 # Start the triage service and its Smithers server alongside the dev stack
@@ -380,13 +343,14 @@ image-list:
 
 # ── Release / deploy ────────────────────────────────────
 
-# Provision / update infra via SST; requires HCLOUD_TOKEN, CLOUDFLARE_API_TOKEN, etc.
-deploy-infra stage="production":
+# Provision / update infra via SST and sync any exported env vars into local files.
+provision stage="production" *targets:
     bunx sst deploy --stage {{ stage }}
+    ./infra/platform/sync-sst-env.sh {{ targets }}
 
 # Bootstrap the preview/dev box over SSH using credentials from .env.ci/.env.keys.
 bootstrap-dev-box host port="2222":
-    ./infra/preview/bootstrap-box.sh {{ host }} {{ port }}
+    ./infra/preview/setup.sh {{ host }} {{ port }}
 
 # Rsync working tree to the host and pull/start the runtime + prod overlay over ssh
 deploy-ssh image_tag git_commit host="red.computer" port="2222":
@@ -415,57 +379,3 @@ teardown-preview slug host port="2222":
 # Smoke-check a deployed preview URL
 preview-check slug:
     just deploy-check "https://{{ slug }}.preview.red.computer"
-
-# ── CI ──────────────────────────────────────────────────
-
-# CI setup: bun install, write .env with GIT_COMMIT={{sha}}, and keygen
-ci-prep sha:
-    bun install --frozen-lockfile
-    ./infra/ci/ci-seed-env.sh {{ sha }}
-    just auth-compose-keygen
-
-# Run the in-process health-contract tests (pkg/health unit + per-service)
-ci-health-contract sha:
-    GIT_COMMIT={{ sha }} bun test \
-        pkg/health \
-        apps/ctl/health-contract.test.ts \
-        apps/obs/src/test/health-contract.test.ts \
-        apps/triage/src/health-contract.test.ts
-
-# Bring up the core stack; readiness is asserted explicitly by ci-health-probe
-ci-health-compose-up:
-    just workspace-deps-build-local
-    docker compose -f {{ DEV_COMPOSE }} --env-file .env \
-        up -d --build \
-        s3 obs grs db-auth auth ctl bff
-
-# Probe each service's /health and assert the {service,status,commit} contract
-ci-health-probe:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    declare -A endpoints=(
-      [ctl]="http://localhost:3000/health"
-      [bff]="http://localhost:3001/health"
-      [auth]="http://localhost:4020/health"
-      [obs]="http://localhost:4090/health"
-      [grs]="http://localhost:9080/health"
-    )
-    for service in "${!endpoints[@]}"; do
-      url="${endpoints[$service]}"
-      echo "==> $service $url"
-      body=""
-      for _ in $(seq 1 60); do
-        if body=$(curl -fsSL "$url" 2>/dev/null); then
-          break
-        fi
-        sleep 2
-      done
-      [ -n "$body" ] || { echo "service did not become ready: $service"; exit 1; }
-      echo "$body" | jq .
-      got_service=$(echo "$body" | jq -r .service)
-      got_status=$(echo "$body" | jq -r .status)
-      got_commit=$(echo "$body" | jq -r .commit)
-      [ "$got_service" = "$service" ] || { echo "want service=$service got=$got_service"; exit 1; }
-      case "$got_status" in ok|degraded|error) ;; *) echo "bad status=$got_status"; exit 1;; esac
-      [ -n "$got_commit" ] && [ "$got_commit" != "null" ] || { echo "missing commit"; exit 1; }
-    done

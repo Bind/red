@@ -94,6 +94,59 @@ The `CodexAccessTokenManager` wraps any auth source and handles transparent
 refresh via `refreshOpenAICodexToken` when the access token is within 60s of
 expiry.
 
+For CI, the same `pi` runtime can also target API-key-backed providers. The
+current supported machine-auth path is OpenRouter:
+
+```bash
+export AI_DAEMONS_PROVIDER=openrouter
+export AI_DAEMONS_MODEL=deepseek/deepseek-v4-pro
+export OPENROUTER_API_KEY=...
+```
+
+That uses pi-ai's built-in OpenRouter model registry and resolves auth from
+`OPENROUTER_API_KEY` instead of `~/.codex/auth.json`.
+
+## Commit-anchored daemon memory
+
+Runner-managed daemon memory is now stored as commit snapshots rather than a
+single mutable "last run" blob. Each daemon reuses the nearest ancestor
+snapshot it can find for the current `HEAD`, invalidates tracked facts whose
+dependencies changed, and writes a fresh snapshot for the current commit.
+
+Local runs default to a file-backed store under `.daemons-cache/`. To share the
+same commit snapshots between local runs and CI, provision infra through SST
+with:
+
+```bash
+just provision dev .env .env.ci
+```
+
+That deploys the infra stack and syncs the exported daemon-memory R2 vars from
+`.sst/outputs.json` into the requested env files. Once those env vars are
+present, both local runs and CI can use the R2-backed store with:
+
+```bash
+export AI_DAEMONS_MEMORY_BACKEND=r2
+export AI_DAEMONS_MEMORY_REPO=Bind/red
+export AI_DAEMONS_R2_BUCKET=...
+export AI_DAEMONS_R2_ACCESS_KEY_ID=...
+export AI_DAEMONS_R2_SECRET_ACCESS_KEY=...
+```
+
+Optional:
+
+```bash
+export AI_DAEMONS_R2_ENDPOINT=...
+export AI_DAEMONS_MEMORY_PREFIX=daemon-memory/v1
+export AI_DAEMONS_R2_REGION=auto
+```
+
+If `AI_DAEMONS_R2_ENDPOINT` is omitted and `CLOUDFLARE_ACCOUNT_ID` is set, the
+runner defaults to `https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com`.
+
+If `AI_DAEMONS_MEMORY_BACKEND` is unset, the runner stays on the local
+filesystem backend.
+
 ## CLI
 
 The two headline commands for MVP are `auth` and `run`. `list` and `show` are
@@ -169,8 +222,6 @@ these caps.
 
 - `on:` event triggers and `cron:` — frontmatter is MVP two-field.
 - Claude Agent SDK provider — same `AgentProvider` interface, swap in later.
-- Persistent memory store — daemons can read/write `<scope>/.daemons/*`
-  through the standard file tools for now.
 - Hot reload, per-daemon budgets, per-daemon tool allowlists.
 
 ## Library use

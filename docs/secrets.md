@@ -11,9 +11,9 @@ deployment target only needs its own decryption key.
 | `.env.ci` | yes, encrypted | GitHub Actions | `DOTENV_PRIVATE_KEY_CI` |
 | `.env.production` | yes, encrypted | prod Hetzner box (decrypted in `infra/prod/deploy.sh`) | `DOTENV_PRIVATE_KEY_PRODUCTION` |
 | `.env.preview` | yes, encrypted | dev Hetzner box (decrypted in `infra/preview/deploy.sh`) | `DOTENV_PRIVATE_KEY_PREVIEW` |
-| `.env.development` | yes, encrypted | local dev via `infra/dev/setup-env.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
+| `.env.development` | yes, encrypted | local dev via `infra/dev/run.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
 | `.env.keys` | **never** — gitignored | local developer toolchain | holds every private key |
-| `.env` | gitignored | docker compose (runtime plaintext) | produced by `dotenvx decrypt` |
+| `.env` | gitignored | local/prod runtime plaintext | produced by local bootstrap or `dotenvx decrypt` |
 
 ## One-time bootstrap (maintainer)
 
@@ -93,10 +93,12 @@ workflow uses `dotenvx get <KEY> -f .env.ci` to emit it.
 
 `infra/prod/deploy.sh` / `infra/preview/deploy.sh` now:
 1. rsync the encrypted `.env.<env>` up along with the rest of the tree
-2. ssh into the box and run `dotenvx decrypt -f .env.<env> -o .env`
-3. `docker compose up` reads the plaintext `.env` normally
-4. Plaintext `.env` sits on the box filesystem (root-readable only,
-   `chmod 600`). It's gitignored and rsync-excluded so local edits
+2. ssh into the box and decrypt on-host:
+   - prod: `dotenvx decrypt -f .env.production -o .env`
+   - preview: `dotenvx decrypt -f .env.preview --stdout > /opt/redc-previews/.env`
+3. compose reads the resulting plaintext env file normally
+4. Plaintext env files stay on the box filesystem (root-readable only,
+   `chmod 600`). They're gitignored and rsync-excluded so local edits
    never propagate back.
 
 If `DOTENV_PRIVATE_KEY_<ENV>` isn't exported on the box, the deploy

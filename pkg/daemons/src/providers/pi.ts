@@ -1,7 +1,9 @@
 import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
 import {
+  getEnvApiKey,
   getModel,
   streamSimple,
+  type Api,
   type Model,
   type AssistantMessage,
   type Message,
@@ -19,38 +21,100 @@ import type {
 
 export const CODEX_PROVIDER_ID = "openai-codex";
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
+export const OPENROUTER_PROVIDER_ID = "openrouter";
+export const DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
+export const OPENROUTER_FALLBACK_MODEL = "deepseek/deepseek-chat-v3.1";
+
+function resolveModel(opts: PiProviderOptions): Model<Api> {
+  const providerId = opts.provider ?? CODEX_PROVIDER_ID;
+  const modelId =
+    opts.model ??
+    (providerId === OPENROUTER_PROVIDER_ID ? DEFAULT_OPENROUTER_MODEL : DEFAULT_CODEX_MODEL);
+
+  if (opts.modelOverride) {
+    return opts.modelOverride;
+  }
+
+  if (providerId === OPENROUTER_PROVIDER_ID && modelId === DEFAULT_OPENROUTER_MODEL) {
+    return {
+      id: "deepseek/deepseek-v4-pro",
+      name: "DeepSeek: DeepSeek V4 Pro",
+      api: "openai-completions",
+      provider: OPENROUTER_PROVIDER_ID,
+      baseUrl: "https://openrouter.ai/api/v1",
+      reasoning: true,
+      input: ["text"],
+      cost: {
+        input: 1.74,
+        output: 3.48,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      contextWindow: 1_048_576,
+      maxTokens: 32_768,
+      compat: {
+        thinkingFormat: "openrouter",
+      },
+    };
+  }
+
+  if (providerId === OPENROUTER_PROVIDER_ID && modelId === OPENROUTER_FALLBACK_MODEL) {
+    return getModel(OPENROUTER_PROVIDER_ID as any, OPENROUTER_FALLBACK_MODEL as any) as Model<Api>;
+  }
+
+  return getModel(providerId as any, modelId as any) as Model<Api>;
+}
+
+function shouldFallbackOpenRouterModel(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("temporarily rate-limited upstream") ||
+    (normalized.includes("429") && normalized.includes("rate-limit"))
+  );
+}
 
 export type PiProviderOptions = {
-  authSource: CodexAuthSource;
+  authSource?: CodexAuthSource;
+  apiKey?: string;
   /** Provider id recognised by pi-ai's model registry. Default: "openai-codex". */
   provider?: string;
-  /** Model id within the provider. Default: "gpt-5.4". */
+  /** Model id within the provider. Default depends on provider. */
   model?: string;
   /** Override the resolved Model instance entirely. */
-  modelOverride?: Model<"openai-codex-responses">;
+  modelOverride?: Model<Api>;
 };
 
 export function createPiProvider(opts: PiProviderOptions): AgentProvider {
-  const tokenManager = new CodexAccessTokenManager(opts.authSource);
-  const model =
-    opts.modelOverride ??
-    (getModel(
-      (opts.provider ?? CODEX_PROVIDER_ID) as "openai-codex",
-      (opts.model ?? DEFAULT_CODEX_MODEL) as "gpt-5.4",
-    ) as Model<"openai-codex-responses">);
+  const tokenManager = opts.authSource ? new CodexAccessTokenManager(opts.authSource) : null;
+  const primaryModel = resolveModel(opts);
+  const fallbackModel =
+    (opts.provider ?? CODEX_PROVIDER_ID) === OPENROUTER_PROVIDER_ID &&
+    (opts.model ?? DEFAULT_OPENROUTER_MODEL) === DEFAULT_OPENROUTER_MODEL
+      ? resolveModel({ ...opts, model: OPENROUTER_FALLBACK_MODEL })
+      : null;
 
   return {
     name: "pi",
     async runUntilComplete(options: ProviderRunOptions): Promise<ProviderRunResult> {
-      return runOnce(options, model, tokenManager);
+      const result = await runOnce(options, primaryModel, tokenManager, opts.apiKey);
+      if (
+        fallbackModel &&
+        !result.ok &&
+        result.reason === "provider_error" &&
+        shouldFallbackOpenRouterModel(result.message)
+      ) {
+        return runOnce(options, fallbackModel, tokenManager, opts.apiKey);
+      }
+      return result;
     },
   };
 }
 
 async function runOnce(
   options: ProviderRunOptions,
-  model: Model<"openai-codex-responses">,
-  tokenManager: CodexAccessTokenManager,
+  model: Model<Api>,
+  tokenManager: CodexAccessTokenManager | null,
+  apiKey?: string,
 ): Promise<ProviderRunResult> {
   const capture: CompleteCapture = {};
   const tokens: ProviderTokenUsage = { input: 0, output: 0 };
@@ -66,9 +130,12 @@ async function runOnce(
       streamSimple(m, context, streamOptions),
     getApiKey: async (provider) => {
       if (provider === CODEX_PROVIDER_ID || provider === "openai-codex-responses") {
+        if (!tokenManager) {
+          throw new Error("Codex OAuth auth source is required for openai-codex providers");
+        }
         return tokenManager.getAccessToken();
       }
-      return undefined;
+      return apiKey ?? getEnvApiKey(provider);
     },
     convertToLlm: (messages) => messages as Message[],
     toolExecution: "sequential",

@@ -10,14 +10,16 @@ SSH_PORT="${3:-2222}"
 REMOTE_DIR="/opt/redc-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
 CADDY_SITE_FILE="/opt/redc-preview-caddy/caddy/sites/${SLUG}.caddy"
+PREVIEW_UTILS_CONTENT="$(cat "$(dirname "$0")/../platform/utils.sh")"
 
 echo "==> Tearing down preview ${SLUG} on ${HOST}"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" "bash -s" <<REMOTE
 set -euo pipefail
+
+${PREVIEW_UTILS_CONTENT}
+
 if [ -d "${REMOTE_DIR}" ]; then
-  cd "${REMOTE_DIR}"
-  COMPOSE_PROJECT_NAME=${PROJECT} docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down -v --remove-orphans || true
-  cd /
+  teardown_preview_project "${REMOTE_DIR}" "${PROJECT}"
   rm -rf "${REMOTE_DIR}"
   echo "==> Removed ${REMOTE_DIR}"
 else

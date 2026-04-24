@@ -34,7 +34,6 @@ jobs:
       packages: write
     outputs:
       alpine_image: ${{ steps.meta.outputs.alpine_image }}
-      debian_image: ${{ steps.meta.outputs.debian_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,17 +71,15 @@ jobs:
             } | sha256sum | cut -d' ' -f1
           )"
           alpine_image="ghcr.io/${OWNER}/red-workspace-deps-alpine:${manifest_hash}"
-          debian_image="ghcr.io/${OWNER}/red-workspace-deps-debian:${manifest_hash}"
           {
             echo "alpine_image=${alpine_image}"
-            echo "debian_image=${debian_image}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push alpine workspace deps
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: infra/Dockerfile.workspace-deps
+          file: infra/base/Dockerfile.workspace-deps
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.alpine_image }}
@@ -94,22 +91,6 @@ jobs:
           cache-to: |
             type=gha,mode=max,scope=workspace-deps-alpine
 
-      - name: Build and push debian workspace deps
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: infra/Dockerfile.workspace-deps
-          platforms: ${{ inputs.platforms }}
-          push: true
-          tags: ${{ steps.meta.outputs.debian_image }}
-          build-args: |
-            BUN_IMAGE=oven/bun:1.3.10
-          cache-from: |
-            type=gha,scope=workspace-deps-debian
-            type=registry,ref=${{ steps.meta.outputs.debian_image }}
-          cache-to: |
-            type=gha,mode=max,scope=workspace-deps-debian
-
   build:
     name: Build and push ${{ matrix.image_name }}
     needs: workspace_deps
@@ -119,12 +100,12 @@ jobs:
       matrix:
         include:
           - image_name: red-gateway
-            context: infra/gateway
-            dockerfile: infra/gateway/Dockerfile
+            context: infra/platform/gateway
+            dockerfile: infra/platform/gateway/Dockerfile
             workspace_deps_flavor: none
           - image_name: red-api
             context: .
-            dockerfile: infra/Dockerfile
+            dockerfile: infra/base/Dockerfile
             workspace_deps_flavor: alpine
           - image_name: red-bff
             context: .
@@ -133,11 +114,11 @@ jobs:
           - image_name: red-auth
             context: .
             dockerfile: apps/auth/Dockerfile
-            workspace_deps_flavor: debian
+            workspace_deps_flavor: alpine
           - image_name: red-obs
             context: .
             dockerfile: apps/obs/Dockerfile
-            workspace_deps_flavor: debian
+            workspace_deps_flavor: alpine
           - image_name: red-grs
             context: apps/grs
             dockerfile: apps/grs/docker/gitty/Dockerfile
@@ -209,6 +190,6 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             GIT_COMMIT=${{ inputs.git_commit }}
-            WORKSPACE_DEPS_IMAGE=${{ matrix.workspace_deps_flavor == 'debian' && needs.workspace_deps.outputs.debian_image || needs.workspace_deps.outputs.alpine_image }}
+            WORKSPACE_DEPS_IMAGE=${{ needs.workspace_deps.outputs.alpine_image }}
           cache-from: type=gha,scope=${{ matrix.image_name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image_name }}

@@ -31,24 +31,26 @@ via docker's embedded DNS on the shared `preview-net`.
 
 1. **Provision** the dev Hetzner box through SST:
    ```bash
-   dotenvx run -f .env.ci -- just deploy-infra dev
+   dotenvx run -f .env.ci -- just provision dev
    ```
    SST now creates the preview server and the `*.preview.red.computer`
-   wildcard DNS record directly. It uses `DEV_SSH_PUBLIC_KEY` for box access.
+   wildcard DNS record directly. It uses `DEV_SSH_PUBLIC_KEY` for box access
+   and syncs exported SST env vars like daemon-memory R2 credentials into the
+   target env file.
 2. **Run bootstrap** on the box:
    ```bash
    just bootstrap-dev-box <dev-ip>
    ```
    This pushes the remote setup script over SSH, installs docker/dotenvx
    if needed, creates `/opt/redc-previews`, creates the `preview-net`
-   docker network, installs the eviction cron, persists
-   `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already has it,
-   and starts the permanent preview Caddy stack on the box.
-3. **Drop a production-style `.env`** at `/opt/redc-previews/.env` with the
-   secrets every preview needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`,
-   etc. This file is intentionally *not* rsynced from CI — previews
-   read it via the `infra/base/compose.yml` + `infra/preview/compose.yml`
-   stack.
+   docker network, installs the eviction cron, uploads `.env.preview`,
+   persists `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already
+   has it, decrypts `/opt/redc-previews/.env` automatically when that key is
+   available, and starts the permanent preview Caddy stack on the box.
+3. **Keep `.env.preview` current** with the shared preview secrets every PR
+   stack needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc. Bootstrap
+   and preview deploys decrypt that file into `/opt/redc-previews/.env` on
+   the box, and CI never rsyncs the plaintext `.env`.
 
 ## Required repo secrets
 
@@ -70,7 +72,7 @@ Triage provider credentials + the Smithers bearer token live on the dev box's
 
 | PR event | job |
 |---|---|
-| opened / synchronize / reopened / ready_for_review | `deploy`: sst deploy dev (idempotent) → rsync → compose up → health check → sticky PR comment |
+| opened / synchronize / reopened / ready_for_review | `deploy`: provision dev infra (idempotent) → rsync → compose up → health check → sticky PR comment |
 | closed | `teardown`: compose down -v → rm preview dir → sticky PR comment |
 
 Concurrency is per PR (`group: preview-deploy-<pr-number>`,
@@ -93,14 +95,21 @@ PR-specific overlay in `infra/preview/compose.yml`.
 
 ## Nightly eviction
 
-`infra/preview/evict-old.sh` runs at 03:17 UTC via cron
-(`/etc/cron.d/redc-preview-evict`) and tears down any preview whose
-working directory was last modified >14 days ago.
+`infra/preview/setup-host.sh` installs `/opt/redc-previews/preview-cleanup.sh`
+at 03:17 UTC via `/etc/cron.d/redc-preview-cleanup`, and that host-owned
+script tears down any preview whose working directory was last modified more
+than 14 days ago.
 
 ## Local testing
 
 ```bash
-# On the dev box (or any docker host with preview-net created):
-COMPOSE_PROJECT_NAME=preview-pr-local docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d --build
+# On the dev box (or any docker host with preview-net created and
+# /opt/redc-previews/.env already present), using an image tag that exists in GHCR:
+IMAGE_TAG=<existing-ghcr-tag> \
+PREVIEW_PUBLIC_URL=https://pr-local.preview.red.computer \
+PREVIEW_WEB_CLIENTS=redc-web=https://pr-local.preview.red.computer \
+PREVIEW_PASSKEY_ORIGINS=https://pr-local.preview.red.computer \
+COMPOSE_PROJECT_NAME=preview-pr-local \
+docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d
 docker inspect preview-pr-local-gateway --format '{{.NetworkSettings.Networks.preview-net.IPAddress}}'
 ```

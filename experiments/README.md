@@ -47,20 +47,6 @@ Conventions:
 
 ## Current experiments
 
-### `git-mirror-canary`
-
-Long-running mirror canary with a stricter experiment layout:
-
-- `src/service/`
-- `src/store/`
-- `src/util/`
-- `src/test/`
-- `compose/`
-- `Dockerfile`
-- `docker-compose.yml`
-
-Use this as the main reference when bootstrapping a more fully-shaped experiment.
-
 ### `ci-runner-lab`
 
 GitHub Actions-style runner lab:

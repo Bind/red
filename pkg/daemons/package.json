@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.913.0",
     "@mariozechner/pi-agent-core": "^0.68.1",
     "@mariozechner/pi-ai": "^0.68.1",
     "@mariozechner/pi-coding-agent": "^0.68.1",

@@ -6,8 +6,20 @@ cd "$repo_root"
 
 staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-echo "pre-commit: running root bun test"
-bun test
+needs_repo_checks_pattern='^(apps|pkg|workflows)/|^\.github/workflows/|^(package\.json|bun\.lock|turbo\.json|justfile)$'
+
+if echo "$staged_files" | rg -q "$needs_repo_checks_pattern"; then
+  echo "pre-commit: running repo lint"
+  just lint
+
+  echo "pre-commit: running repo typecheck"
+  bun run typecheck
+
+  echo "pre-commit: running root bun test"
+  bun test
+else
+  echo "pre-commit: skipping repo lint/typecheck/test (no staged changes in checked surfaces)"
+fi
 
 if echo "$staged_files" | rg -q '^apps/auth/'; then
   echo "pre-commit: formatting and linting apps/auth"
@@ -19,8 +31,8 @@ if echo "$staged_files" | rg -q '^apps/auth/'; then
   git add apps/auth
 fi
 
-if echo "$staged_files" | rg -q '^apps/gs/zig/'; then
-  echo "pre-commit: formatting and verifying apps/gs/zig"
+if echo "$staged_files" | rg -q '^apps/grs/zig/'; then
+  echo "pre-commit: formatting and verifying apps/grs/zig"
   just git-server-zig-check
-  git add apps/gs/zig
+  git add apps/grs/zig
 fi

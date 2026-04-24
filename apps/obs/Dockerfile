@@ -1,5 +1,5 @@
-ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-debian:dev
-FROM oven/bun:1.3.10 AS base
+ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
+FROM oven/bun:1-alpine AS base
 WORKDIR /app
 
 FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps

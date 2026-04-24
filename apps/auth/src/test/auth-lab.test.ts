@@ -68,6 +68,17 @@ function basicAuthHeader(clientId: string, clientSecret: string): string {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
 
+function resolveSessionCookieHeader(setCookieHeader: string): string | null {
+  const cookies = parseSetCookieHeader(setCookieHeader);
+  for (const name of ["__Secure-better-auth.session_token", "better-auth.session_token"]) {
+    const value = cookies.get(name)?.value;
+    if (value) {
+      return `${name}=${value}`;
+    }
+  }
+  return null;
+}
+
 async function mintToken(
   server: Awaited<ReturnType<typeof createAuthServer>>,
   clientId: string,
@@ -131,14 +142,11 @@ async function bootstrapMagicLinkSession(
   );
   expect([200, 302]).toContain(verifyResponse.status);
 
-  const cookies = parseSetCookieHeader(verifyResponse.headers.get("set-cookie") ?? "");
-  const sessionCookie = cookies.get("better-auth.session_token")?.value;
+  const sessionCookie = resolveSessionCookieHeader(verifyResponse.headers.get("set-cookie") ?? "");
   expect(sessionCookie).toBeTruthy();
 
   const resolved = await server.userRuntime.auth.api.getSession({
-    headers: new Headers({
-      cookie: `better-auth.session_token=${sessionCookie}`,
-    }),
+    headers: new Headers({ cookie: sessionCookie ?? "" }),
     returnHeaders: true,
   });
   expect(resolved.response).toBeTruthy();
@@ -152,7 +160,7 @@ async function bootstrapMagicLinkSession(
   expect(resolvedSession.user.recoveryReady).toBe(false);
 
   return {
-    cookie: `better-auth.session_token=${sessionCookie}`,
+    cookie: sessionCookie ?? "",
     sessionId: resolvedSession.session.id,
   };
 }
@@ -760,6 +768,50 @@ describe("auth lab", () => {
     expect(sessionBody.user.email).toBe("douglasjbinder@gmail.com");
     expect(sessionBody.user.onboardingState).toBe("active");
     expect(sessionBody.user.recoveryReady).toBe(true);
+  });
+
+  test("seeded stealth TOTP user can create a session with an https issuer", async () => {
+    const totpSecret = "JBSWY3DPEHPK3PXP";
+    const server = await createAuthServer({
+      ...baseConfig,
+      issuer: "https://preview.red.computer",
+      hostname: "preview.red.computer",
+      stealthTotpSeedUser: {
+        id: "seeded-douglas-https",
+        email: "douglasjbinder@gmail.com",
+        name: "Douglas Binder",
+        totpSecret,
+      },
+    });
+    const code = await createOTP(totpSecret, { digits: 6, period: 30 }).totp();
+
+    const loginResponse = await server.fetch(
+      new Request(`https://preview.red.computer/user/totp-login`, {
+        method: "POST",
+        headers: {
+          origin: "https://preview.red.computer",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "douglasjbinder@gmail.com",
+          code,
+        }),
+      }),
+    );
+    expect(loginResponse.status).toBe(200);
+
+    const sessionCookie = resolveSessionCookieHeader(loginResponse.headers.get("set-cookie") ?? "");
+    expect(sessionCookie).toContain("__Secure-better-auth.session_token=");
+
+    const sessionResponse = await server.fetch(
+      new Request(`https://preview.red.computer/api/auth/get-session`, {
+        headers: {
+          origin: "https://preview.red.computer",
+          cookie: sessionCookie ?? "",
+        },
+      }),
+    );
+    expect(sessionResponse.status).toBe(200);
   });
 
   test("downstream verifier validates exchanged JWT by JWKS", async () => {

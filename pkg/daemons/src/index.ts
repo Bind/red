@@ -25,7 +25,6 @@ export {
   createEmptyMemoryRecord,
   findRepoRoot,
   loadMemorySnapshot,
-  memoryFilePath,
   normalizeCheckedPath,
   resolveMemoryDir,
   saveMemoryRecord,
