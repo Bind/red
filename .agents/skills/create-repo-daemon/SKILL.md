@@ -1,6 +1,6 @@
 ---
 name: create-repo-daemon
-description: Create or update repo daemons for this codebase. Use when adding a new `*.daemon.md` audit agent, adding supporting `AGENTS.md` guidance for a subtree, or tightening an existing daemon so it stays narrow, memory-friendly, and compatible with the runner-owned `track` and `complete` protocol.
+description: Create or update repo daemons for high-judgment, non-overlapping best-practice audits in this codebase. Use when adding a new `*.daemon.md` audit agent, adding supporting `AGENTS.md` guidance for a subtree, or tightening an existing daemon so it stays narrow, memory-friendly, and focused on consistency and operator-review concerns rather than lint-style checks.
 ---
 
 # Create Repo Daemon
@@ -8,6 +8,9 @@ description: Create or update repo daemons for this codebase. Use when adding a 
 Create repo daemons using the current redc pattern:
 
 - keep daemon bodies simple and responsibility-focused
+- make each daemon own one primary axis only: docs surface, shared contract, topology wiring, environment layering, or operator workflow
+- require explicit out-of-scope guidance so daemon responsibilities do not overlap
+- use daemons to enforce best practices and consistency for high-judgment concerns, not to reimplement lint or typecheck rules
 - keep `track` / `complete` protocol guidance out of the daemon body
 - put universal daemon behavior in the runner prompt pre/postamble
 - add only concise domain-specific narrowing guidance in the daemon file
@@ -30,6 +33,7 @@ Create repo daemons using the current redc pattern:
 - State what the daemon is responsible for.
 - State the narrowest canonical source or contract.
 - Tell it how to stay narrow.
+- State what it should not be used for.
 - List the main mismatch classes to flag.
 - Do not include instructions for calling `track` or `complete`; the runner already owns that protocol.
 
@@ -41,9 +45,19 @@ Create repo daemons using the current redc pattern:
 
 5. Bias toward the smallest authoritative source needed.
 
-- For docs daemons: start from docs, validate against `justfile`, manifests, CLI entrypoints, then handler code only if needed.
-- For contract daemons: start from the shared package or canonical module, then per-app tests and handler wiring.
-- For infra daemons: start from local `AGENTS.md`, compose manifests, scripts, ingress config, and only pull adjacent repo files when an infra contract points there.
+- Pick one narrow authority chain and stay on it unless that chain cannot resolve the claim.
+- Good examples:
+  - a documentation daemon should ensure `README.md` or other owned docs stay aligned with the real command, manifest, or route surface
+  - a logging or observability daemon should ensure apps use the shared middleware or instrumentation entrypoint rather than ad hoc request logging
+  - a contract daemon should start from the shared package or canonical module, then validate tests and handler wiring
+
+Use daemons for mushy but important review surfaces such as:
+
+- documentation that should stay current with the actual repo surface
+- consistency across microservices, such as shared middleware, health behavior, or instrumentation patterns
+- operator workflows and conventions that should stay aligned across scripts, docs, and entrypoints
+
+Do not use daemons for checks that should be a linter, typechecker, or unit test.
 
 6. Make the daemon memory-friendly.
 
@@ -109,6 +123,7 @@ State what the directory owns and why changes there are risky.
 Good daemon body:
 
 - responsibility-focused
+- explicit about what it does not own
 - specific about source-of-truth files
 - explicit about the highest-value mismatch classes
 - short enough that the daemon does not waste tokens on restated protocol
@@ -118,10 +133,5 @@ Bad daemon body:
 - repeats how `track` works
 - repeats how `complete` works
 - tells the daemon to audit the whole repo without a narrow authority order
+- mixes docs drift, topology drift, and layering drift without explicit out-of-scope exclusions
 - mixes universal runner behavior with domain-specific guidance
-
-## Repo Notes
-
-- Keep repo-owned skills under `.agents/skills/`.
-- Do not create repo skills under `.codex/`.
-- For redc daemons, favor `AGENTS.md` in ownership subtrees that have meaningful local invariants, especially under `infra/`.
