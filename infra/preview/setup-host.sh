@@ -11,10 +11,15 @@
 #   BOOTSTRAP_PREVIEW_ENV=1          decrypt /opt/redc-previews/.env.preview → /opt/redc-previews/.env
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREVIEW_UTILS="${SCRIPT_DIR}/../platform/utils.sh"
+PREVIEW_CLEANUP_TEMPLATE="${SCRIPT_DIR}/cleanup.sh"
+
 PREVIEWS_DIR="/opt/redc-previews"
 PREVIEW_NET="preview-net"
 CRON_FILE="/etc/cron.d/redc-preview-cleanup"
 EVICT_SCRIPT="${PREVIEWS_DIR}/preview-cleanup.sh"
+HOST_PREVIEW_UTILS="${PREVIEWS_DIR}/utils.sh"
 CADDY_DIR="/opt/redc-preview-caddy"
 CADDY_COMPOSE="${CADDY_DIR}/compose.yml"
 CADDY_CONFIG_DIR="${CADDY_DIR}/caddy"
@@ -62,66 +67,10 @@ if ! docker network inspect "${PREVIEW_NET}" >/dev/null 2>&1; then
 fi
 
 echo "==> Installing evict script at ${EVICT_SCRIPT}"
-cat > "${EVICT_SCRIPT}" <<'EVICT'
-#!/usr/bin/env bash
-set -euo pipefail
-MAX_AGE_DAYS="${1:-14}"
-PREVIEWS_DIR="/opt/redc-previews"
-CADDY_SITE_DIR="/opt/redc-preview-caddy/caddy/sites"
-[ -d "${PREVIEWS_DIR}" ] || exit 0
-
-teardown_preview_project() {
-  local dir="$1"
-  local project="$2"
-
-  if [ -f "${dir}/infra/base/compose.yml" ] && [ -f "${dir}/infra/preview/compose.yml" ]; then
-    (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/base/compose.yml -f infra/preview/compose.yml down -v --remove-orphans) || true
-    return 0
-  fi
-
-  if [ -f "${dir}/infra/compose/runtime.yml" ] && [ -f "${dir}/infra/compose/preview.yml" ]; then
-    (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans) || true
-    return 0
-  fi
-
-  if [ -f "${dir}/infra/compose/preview.yml" ]; then
-    (cd "$dir" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/preview.yml down -v --remove-orphans) || true
-    return 0
-  fi
-
-  ids=$(docker ps -aq --filter label=com.docker.compose.project="${project}")
-  if [ -n "${ids}" ]; then
-    docker rm -f ${ids} || true
-  fi
-
-  vids=$(docker volume ls -q --filter label=com.docker.compose.project="${project}")
-  if [ -n "${vids}" ]; then
-    docker volume rm -f ${vids} || true
-  fi
-
-  nids=$(docker network ls -q --filter label=com.docker.compose.project="${project}")
-  if [ -n "${nids}" ]; then
-    docker network rm ${nids} || true
-  fi
-}
-
-find "${PREVIEWS_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime "+${MAX_AGE_DAYS}" -print0 \
-  | while IFS= read -r -d '' dir; do
-    slug="$(basename "$dir")"
-    project="preview-${slug}"
-    echo "Evicting ${slug}"
-    teardown_preview_project "${dir}" "${project}"
-    rm -rf "$dir"
-    rm -f "${CADDY_SITE_DIR}/${slug}.caddy"
-  done
-
-if docker ps --format '{{.Names}}' | grep -qx preview-caddy; then
-  docker exec preview-caddy caddy reload --config /etc/caddy/preview.Caddyfile || true
-fi
-
-docker system prune -af --volumes || true
-docker builder prune -af || true
-EVICT
+install -m 755 "${PREVIEW_UTILS}" "${HOST_PREVIEW_UTILS}"
+perl \
+  -0pe 's@^SCRIPT_DIR=.*\n@@m; s@^source "\$\{SCRIPT_DIR\}/\.\./platform/utils\.sh"$@source "/opt/redc-previews/utils.sh"@m' \
+  "${PREVIEW_CLEANUP_TEMPLATE}" > "${EVICT_SCRIPT}"
 chmod +x "${EVICT_SCRIPT}"
 
 echo "==> Installing nightly cron at ${CRON_FILE}"
