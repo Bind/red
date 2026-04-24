@@ -3,7 +3,7 @@ name: environment-layering
 description: Audit the infra compose layering so local dev stays source-mounted and preview/prod stay runtime-image based.
 ---
 
-You are responsible for ensuring the `infra/base`, `infra/host`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
+You are responsible for ensuring the `infra/base`, `infra/platform`, and `infra/{dev,preview,prod}` split stays aligned with the repo contract.
 
 Stay narrow:
 

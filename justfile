@@ -368,8 +368,8 @@ secrets-keys env:
 # end of the packer run; set it as REDC_BASE_SNAPSHOT_ID for future
 # `sst deploy`.
 image-build:
-    dotenvx run -f .env.ci -- packer init infra/host/packer
-    dotenvx run -f .env.ci -- packer build infra/host/packer
+    dotenvx run -f .env.ci -- packer init infra/platform/packer
+    dotenvx run -f .env.ci -- packer build infra/platform/packer
 
 # List all redc-base snapshots currently in the account.
 image-list:

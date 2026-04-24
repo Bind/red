@@ -14,7 +14,7 @@ call tools against the redc system.
 | Auth | OAuth 2.1 Bearer tokens, introspected by `apps/auth` |
 | Health | `GET /health` returns the standard `{service, status, commit}` contract |
 
-Path-based routing in `infra/gateway/envoy.yaml.template` sends any request
+Path-based routing in `infra/platform/gateway/envoy.yaml.template` sends any request
 matching `/mcp*` to the `redc_mcp` cluster (`${MCP_HOST}:3002`). TLS is
 terminated one hop above by the production Caddy / preview Caddy.
 

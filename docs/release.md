@@ -10,7 +10,7 @@ triggers `.github/workflows/release.yml`, which:
 4. Writes the SSH private key from secrets.
 5. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
    working tree to `/opt/redc`, decrypts `.env.production`, pulls the tagged GHCR
-   images on the server, then `docker compose -f infra/compose/runtime.yml -f infra/compose/prod.yml up -d`.
+   images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
 6. Runs `just deploy-check https://red.computer` → curl `/health` and fail
    the workflow unless `status == "ok"`.
 

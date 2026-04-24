@@ -93,10 +93,10 @@ Shared importable code lives here.
 Infra and local dev wiring.
 
 - `infra/base/`: shared runtime/build plumbing used by preview and prod, including the shared compose layer and reusable shell helpers.
-- `infra/host/`: host-owned ingress/bootstrap assets such as Caddy, gateway, and Packer.
+- `infra/platform/`: machine-facing ingress/bootstrap assets such as Caddy, gateway, and Packer.
 - `infra/dev/`, `infra/preview/`, `infra/prod/`: environment-specific overlays and lifecycle scripts.
-- `infra/host/caddy/`: local gateway/proxy configuration.
-- `infra/host/gateway/`: gateway-specific config and assets.
+- `infra/platform/caddy/`: local gateway/proxy configuration.
+- `infra/platform/gateway/`: gateway-specific config and assets.
 
 ### `experiments/`
 

@@ -9,9 +9,9 @@ deployment target only needs its own decryption key.
 | file | committed | consumed by | decryption key |
 |---|---|---|---|
 | `.env.ci` | yes, encrypted | GitHub Actions | `DOTENV_PRIVATE_KEY_CI` |
-| `.env.production` | yes, encrypted | prod Hetzner box (decrypted in `deploy.sh`) | `DOTENV_PRIVATE_KEY_PRODUCTION` |
-| `.env.preview` | yes, encrypted | dev Hetzner box (decrypted in `deploy-preview.sh`) | `DOTENV_PRIVATE_KEY_PREVIEW` |
-| `.env.development` | yes, encrypted | local dev via `setup-dev-env.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
+| `.env.production` | yes, encrypted | prod Hetzner box (decrypted in `infra/prod/deploy.sh`) | `DOTENV_PRIVATE_KEY_PRODUCTION` |
+| `.env.preview` | yes, encrypted | dev Hetzner box (decrypted in `infra/preview/deploy.sh`) | `DOTENV_PRIVATE_KEY_PREVIEW` |
+| `.env.development` | yes, encrypted | local dev via `infra/dev/setup-env.sh` | `DOTENV_PRIVATE_KEY_DEVELOPMENT` |
 | `.env.keys` | **never** — gitignored | local developer toolchain | holds every private key |
 | `.env` | gitignored | docker compose (runtime plaintext) | produced by `dotenvx decrypt` |
 
@@ -91,7 +91,7 @@ workflow uses `dotenvx get <KEY> -f .env.ci` to emit it.
 
 ## Box-side decryption
 
-`deploy.sh` / `deploy-preview.sh` now:
+`infra/prod/deploy.sh` / `infra/preview/deploy.sh` now:
 1. rsync the encrypted `.env.<env>` up along with the rest of the tree
 2. ssh into the box and run `dotenvx decrypt -f .env.<env> -o .env`
 3. `docker compose up` reads the plaintext `.env` normally

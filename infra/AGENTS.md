@@ -17,7 +17,7 @@ Start from the narrowest relevant area:
 - `compose/` for service topology, ports, volumes, env wiring, and runtime
   dependencies
 - `scripts/` for bootstrap, deploy, teardown, and operator workflows
-- `caddy/` for public HTTP entrypoints and host/path routing
+- `platform/caddy/` for public HTTP entrypoints and host/path routing
 - `gateway/` for Envoy config and gateway container behavior
 - `packer/` for base image provisioning and snapshot build concerns
 
@@ -39,7 +39,7 @@ are auditing clearly depends on an external contract.
   - Dockerfiles here are shared container build primitives
 - `ci/`
   - owns CI/bootstrap helpers such as env seeding and Codex auth setup
-- `host/`
+- `platform/`
   - owns Caddy, gateway, Packer, and other machine-facing bootstrap assets
   - `preview-caddy.yml` defines the permanent wildcard ingress for preview
     stacks
