@@ -1,5 +1,5 @@
 import { buildHealth, statusHttpCode } from "@red/health";
-import type { DaemonMemoryRecord, DaemonRunIndexEntry } from "@red/daemons";
+import type { DaemonMemoryRecord, DaemonRunIndexEntry, DaemonRunRecord } from "@red/daemons";
 import { Hono } from "@red/server";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
@@ -24,6 +24,7 @@ function renderDaemonDebugPage(
 	daemon: string,
 	memory: DaemonMemoryRecord | null,
 	runs: DaemonRunIndexEntry[],
+	latestRun: DaemonRunRecord | null,
 ): string {
 	const trackedRows = Object.values(memory?.tracked ?? {})
 		.map((entry) => entry as DaemonMemoryRecord["tracked"][string])
@@ -83,6 +84,19 @@ function renderDaemonDebugPage(
 				runRows
 					? `<table><thead><tr><th>Run</th><th>Status</th><th>Started</th><th>Finished</th><th>Result</th></tr></thead><tbody>${runRows}</tbody></table>`
 					: `<p class="muted">No persisted runs found yet.</p>`
+			}
+    </section>
+    <section>
+      <h2>Latest Kickoff Prompt</h2>
+      ${
+				latestRun
+					? `<p>run: <code>${escapeHtml(latestRun.runId)}</code></p>
+         <p class="muted">System prompt rendered by the runner, plus the initial input passed to the provider.</p>
+         <h3>System Prompt</h3>
+         <pre>${escapeHtml(latestRun.systemPrompt ?? "(not recorded for this run)")}</pre>
+         <h3>Initial Input</h3>
+         <pre>${escapeHtml(latestRun.input ?? "(none)")}</pre>`
+					: `<p class="muted">No persisted run found yet.</p>`
 			}
     </section>
   </body>
@@ -211,7 +225,10 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			deps.daemonQuery.getMemory(daemon).catch(() => null),
 			deps.daemonQuery.listRuns(daemon).catch(() => []),
 		]);
-		return c.html(renderDaemonDebugPage(daemon, memory, runs));
+		const latestRun = runs[0]
+			? await deps.daemonQuery.getRun(daemon, runs[0].runId).catch(() => null)
+			: null;
+		return c.html(renderDaemonDebugPage(daemon, memory, runs, latestRun));
 	});
 
 	app.post("/v1/events", async (c) => {

@@ -67,6 +67,14 @@ Work in a delta-first way:
 - read the minimum source material needed to confirm or reject a contract
 - do not keep exploring after you have enough evidence for real findings
 
+If the runner provides structured review context in the initial input:
+
+- start with the listed changed files
+- treat listed authority files as the default source of truth
+- avoid exploring outside that set unless a specific mismatch requires it
+- prefer file reads over shell commands whenever the files can answer the question
+- once one clear mismatch explains an invariant, classify it and move on
+
 Use the \`track\` tool for daemon-local structured memory:
 
 - start by looking up stable subjects relevant to this daemon
@@ -141,6 +149,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   const memoryStore = await createDaemonMemoryStore(spec.name, spec.scopeRoot, opts.memoryDir);
   const readPaths = new Set<string>();
   const events: WideEvent[] = [];
+  const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(previousMemory));
 
   const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
     const full = createWideEvent(event);
@@ -162,7 +171,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
 
   const result = await provider.runUntilComplete({
     cwd: spec.scopeRoot,
-    systemPrompt: buildSystemPrompt(spec, buildMemoryPrompt(previousMemory)),
+    systemPrompt,
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
@@ -253,6 +262,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
         file: spec.file,
         runId,
         provider: provider.name,
+        systemPrompt,
         input: opts.input ?? null,
         startedAt,
         finishedAt: new Date().toISOString(),
@@ -295,6 +305,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       file: spec.file,
       runId,
       provider: provider.name,
+      systemPrompt,
       input: opts.input ?? null,
       startedAt,
       finishedAt: new Date().toISOString(),

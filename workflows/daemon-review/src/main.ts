@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import {
+  loadMemorySnapshot,
   resolveDaemon,
   runDaemon,
   type CompleteFinding,
@@ -26,6 +27,11 @@ type DaemonOutcome = {
     files: string[];
     patch: string;
   };
+};
+
+type DaemonReviewConfig = {
+  authorityPaths: string[];
+  maxTurns: number;
 };
 
 function reviewParallelism(totalDaemons: number): number {
@@ -53,6 +59,54 @@ const INFRA_PATHS = [
   ".github/workflows/build-images.yml",
   ".agents/skills/debug-preview/",
 ];
+
+const DAEMON_CONFIG: Record<string, DaemonReviewConfig> = {
+  "docs-command-surface": {
+    authorityPaths: ["README.md", "justfile", "scripts/redc", "apps/ctl/cli/"],
+    maxTurns: 12,
+  },
+  "compose-contract": {
+    authorityPaths: [
+      "infra/base/",
+      "infra/dev/",
+      "infra/preview/",
+      "infra/prod/",
+      "infra/platform/caddy/",
+      "infra/platform/gateway/",
+      "justfile",
+    ],
+    maxTurns: 18,
+  },
+  "environment-boundaries": {
+    authorityPaths: [
+      "infra/AGENTS.md",
+      "infra/base/",
+      "infra/dev/",
+      "infra/preview/",
+      "infra/prod/",
+      "infra/platform/",
+      "docs/dev-preview.md",
+      "docs/release.md",
+      "docs/base-image.md",
+      "docs/secrets.md",
+      ".agents/skills/debug-preview/",
+      "justfile",
+    ],
+    maxTurns: 18,
+  },
+  "infra-audit": {
+    authorityPaths: [
+      "infra/",
+      "docs/dev-preview.md",
+      "docs/release.md",
+      "docs/base-image.md",
+      "docs/secrets.md",
+      "justfile",
+      "sst.config.ts",
+    ],
+    maxTurns: 18,
+  },
+};
 
 async function fetchChangedFiles(
   githubToken: string,
@@ -90,6 +144,10 @@ async function fetchChangedFiles(
 
 function matchesAnyPrefix(path: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
 function selectDaemons(changedFiles: string[]): string[] {
@@ -178,6 +236,74 @@ async function runCommand(
   return { ok: false, stdout, stderr };
 }
 
+function matchAuthorityPaths(paths: string[], authorityPaths: string[]): string[] {
+  return uniqueSorted(paths.filter((path) => matchesAnyPrefix(path, authorityPaths)));
+}
+
+async function buildDaemonReviewInput(
+  daemonName: string,
+  prRoot: string,
+  changedFiles: string[],
+): Promise<string> {
+  const config = DAEMON_CONFIG[daemonName] ?? { authorityPaths: [], maxTurns: 18 };
+  const relevantChangedFiles =
+    config.authorityPaths.length > 0
+      ? matchAuthorityPaths(changedFiles, config.authorityPaths)
+      : uniqueSorted(changedFiles);
+  const snapshot = await loadMemorySnapshot(daemonName, prRoot);
+  const unchangedAuthorityFiles = snapshot
+    ? matchAuthorityPaths(
+        snapshot.unchangedFiles.map((file) => file.path),
+        config.authorityPaths,
+      )
+    : [];
+  const changedAuthorityFiles = snapshot
+    ? matchAuthorityPaths(
+        [...snapshot.changedFiles, ...snapshot.newFiles, ...snapshot.changedScopeFiles].map((file) => file.path),
+        config.authorityPaths,
+      )
+    : [];
+  const lines = [
+    "PR review guidance:",
+    "- Start with the changed files listed below.",
+    "- Treat the listed authority files as the default source of truth.",
+    "- Do not explore outside that set unless a specific mismatch requires it.",
+    "- Prefer file reads over shell commands.",
+    "- Once one clear mismatch explains an invariant, classify it and move on.",
+  ];
+
+  if (proposalModeEnabled()) {
+    lines.push("- Proposal mode is active: do not rely on mutating the real checkout.");
+  }
+
+  lines.push("", "Changed files relevant to this daemon:");
+  for (const path of relevantChangedFiles.length > 0 ? relevantChangedFiles : ["(none matched authority paths)"]) {
+    lines.push(`- ${path}`);
+  }
+
+  if (config.authorityPaths.length > 0) {
+    lines.push("", "Authority files and paths for this daemon:");
+    for (const path of config.authorityPaths) lines.push(`- ${path}`);
+  }
+
+  if (unchangedAuthorityFiles.length > 0) {
+    lines.push("", "Authority files unchanged since the nearest verified snapshot:");
+    for (const path of unchangedAuthorityFiles) lines.push(`- ${path}`);
+  }
+
+  if (changedAuthorityFiles.length > 0) {
+    lines.push("", "Authority files changed or newly present since the nearest verified snapshot:");
+    for (const path of changedAuthorityFiles) lines.push(`- ${path}`);
+  }
+
+  if (snapshot?.staleTrackedSubjects.length) {
+    lines.push("", "Tracked subjects invalidated since the nearest verified snapshot:");
+    for (const subject of snapshot.staleTrackedSubjects.slice(0, 12)) lines.push(`- ${subject}`);
+  }
+
+  return lines.join("\n");
+}
+
 async function buildProposalPatch(baseRoot: string, proposalRoot: string): Promise<string> {
   const diff = await runCommand(process.cwd(), [
     "git",
@@ -204,11 +330,17 @@ function extractPatchedFiles(patch: string): string[] {
   return [...files];
 }
 
-async function runSingleDaemon(daemonName: string, prRoot: string): Promise<DaemonOutcome> {
+async function runSingleDaemon(
+  daemonName: string,
+  prRoot: string,
+  changedFiles: string[],
+): Promise<DaemonOutcome> {
   const proposalMode = proposalModeEnabled();
   const workingRoot = proposalMode
     ? await mkdtemp(join(tmpdir(), `daemon-review-${daemonName}-`))
     : prRoot;
+  const reviewInput = await buildDaemonReviewInput(daemonName, prRoot, changedFiles);
+  const config = DAEMON_CONFIG[daemonName] ?? { authorityPaths: [], maxTurns: 18 };
 
   if (proposalMode) {
     await copyRepoTree(prRoot, workingRoot);
@@ -217,7 +349,8 @@ async function runSingleDaemon(daemonName: string, prRoot: string): Promise<Daem
   console.log(`running daemon ${daemonName} against ${workingRoot}`);
   const result = await runDaemon(daemonName, {
     root: workingRoot,
-    maxTurns: 24,
+    input: reviewInput,
+    maxTurns: config.maxTurns,
     maxWallclockMs: 180_000,
   });
 
@@ -258,7 +391,11 @@ async function runSingleDaemon(daemonName: string, prRoot: string): Promise<Daem
   };
 }
 
-async function runDaemonsInParallel(daemonNames: string[], prRoot: string): Promise<DaemonOutcome[]> {
+async function runDaemonsInParallel(
+  daemonNames: string[],
+  prRoot: string,
+  changedFiles: string[],
+): Promise<DaemonOutcome[]> {
   const outcomes = new Array<DaemonOutcome>(daemonNames.length);
   const parallelism = reviewParallelism(daemonNames.length);
   let nextIndex = 0;
@@ -268,7 +405,7 @@ async function runDaemonsInParallel(daemonNames: string[], prRoot: string): Prom
       const index = nextIndex;
       if (index >= daemonNames.length) return;
       nextIndex += 1;
-      outcomes[index] = await runSingleDaemon(daemonNames[index], prRoot);
+      outcomes[index] = await runSingleDaemon(daemonNames[index], prRoot, changedFiles);
     }
   }
 
@@ -368,7 +505,7 @@ async function main() {
     await syncTrustedDaemonIntoPrCheckout(daemonName, trustedRoot, prRoot);
   }
 
-  const outcomes = await runDaemonsInParallel(daemonNames, prRoot);
+  const outcomes = await runDaemonsInParallel(daemonNames, prRoot, changedFiles);
 
   const summaryLines = [
     "# Daemon Review",

@@ -327,7 +327,7 @@ describe("wide-events collector app", () => {
 				},
 				async getRun() {
 					return {
-						version: 1,
+						version: 2,
 						daemon: "docs-command-surface",
 						repoId: "Bind/red",
 						repoRoot: "/repo",
@@ -335,6 +335,7 @@ describe("wide-events collector app", () => {
 						file: "/repo/docs-command-surface.daemon.md",
 						runId: "run_1",
 						provider: "openrouter",
+						systemPrompt: "Rendered system prompt",
 						input: null,
 						commit: "abc123",
 						startedAt: "2026-04-24T22:00:00.000Z",

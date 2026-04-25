@@ -9,7 +9,7 @@ import type { CompletePayload } from "./schema";
 import { findRepoRoot, resolveMemoryDir } from "./memory";
 import type { WideEvent } from "./wide-events";
 
-const RUN_HISTORY_VERSION = 1;
+const RUN_HISTORY_VERSION = 2;
 const RUN_HISTORY_LIMIT = 100;
 const DEFAULT_MEMORY_PREFIX = "daemon-memory/v1";
 
@@ -22,6 +22,7 @@ export type DaemonRunRecord = {
   file: string;
   runId: string;
   provider: string;
+  systemPrompt?: string;
   input: string | null;
   commit: string | null;
   startedAt: string;
