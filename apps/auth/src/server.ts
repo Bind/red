@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  type ObsFields,
   collectHealthReport,
   createObsSinkFromEnv,
   getEnvelope,
+  type ObsFields,
   obsMiddleware,
 } from "@red/obs";
 import { Hono, type MiddlewareHandler } from "@red/server";
@@ -11,7 +11,7 @@ import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies"
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
-import { type MachineClientSeed, createMachineClientRegistry } from "./service/m2m/registry";
+import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
 import { createTokenAuthority } from "./service/m2m/service";
 import { createSessionExchangeService } from "./service/session-exchange-service";
 import { createUserAuthRuntime } from "./service/user-auth-runtime";
