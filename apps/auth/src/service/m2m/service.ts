@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
+  type JWK,
+  type JWTPayload,
+  SignJWT,
   calculateJwkThumbprint,
   createLocalJWKSet,
   exportJWK,
   generateKeyPair,
   importJWK,
-  type JWK,
-  type JWTPayload,
   jwtVerify,
-  SignJWT,
 } from "jose";
 import { AuthError } from "../../util/errors";
 import {
@@ -16,7 +16,7 @@ import {
   normalizeRequestedScopes,
   resolveRequestedAudience,
 } from "./registry";
-import { createInMemoryRevokedJtiStore, type RevokedJtiStore } from "./revoked-jti-store";
+import { type RevokedJtiStore, createInMemoryRevokedJtiStore } from "./revoked-jti-store";
 
 export interface OAuthTokenResponse {
   access_token: string;

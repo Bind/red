@@ -10,7 +10,7 @@
  *
  * This exists purely to drive auth-lab tests without a browser.
  */
-import { createHash, generateKeyPairSync, type KeyObject, randomBytes, sign } from "node:crypto";
+import { type KeyObject, createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { type CBORType, encodeCBOR } from "@levischuck/tiny-cbor";
 import type {
   AuthenticationResponseJSON,
