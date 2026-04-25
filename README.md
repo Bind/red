@@ -115,7 +115,8 @@ Infra and local dev wiring.
 
 - `infra/base/`: shared runtime/build plumbing used by preview and prod, including the shared compose layer and reusable shell helpers.
 - `infra/platform/`: machine-facing ingress/bootstrap assets such as Caddy, gateway, and Packer.
-- `infra/dev/`, `infra/preview/`, `infra/prod/`: environment-specific overlays and lifecycle scripts.
+Current experiments live under:
+  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 - `infra/platform/caddy/`: local gateway/proxy configuration.
 - `infra/platform/gateway/`: gateway-specific config and assets.
 
