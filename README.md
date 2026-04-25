@@ -9,16 +9,17 @@ Use the root `justfile` as the command runner.
 Common commands:
 
 ```bash
+```bash
 just
 just setup
 just up
 just down
-just tezt
-just typechek
-just check
-Common commands:
-
-```bash
+just test
+just typecheck
+just verify
+# broader operator shell CLI
+./scripts/redc help
+```
 just
 just setup
 just up
