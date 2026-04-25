@@ -566,6 +566,7 @@ type FixupResult = {
   branchName: string;
   branchUrl: string;
   stackedPrUrl: string | null;
+  stackedPrError: string | null;
   applied: FixupContribution[];
   skipped: Array<{ contribution: FixupContribution; reason: string }>;
 };
@@ -706,6 +707,7 @@ async function pushFixupBranch(
   await rm(fixupRoot, { recursive: true, force: true });
 
   let stackedPrUrl: string | null = null;
+  let stackedPrError: string | null = null;
   try {
     stackedPrUrl = await ensureStackedPr(
       owner,
@@ -717,6 +719,7 @@ async function pushFixupBranch(
       githubToken,
     );
   } catch (error) {
+    stackedPrError = error instanceof Error ? error.message : String(error);
     console.error("failed to ensure stacked fixup PR:", error);
   }
 
@@ -724,6 +727,7 @@ async function pushFixupBranch(
     branchName,
     branchUrl: `https://github.com/${owner}/${repo}/tree/${branchName}`,
     stackedPrUrl,
+    stackedPrError,
     applied,
     skipped,
   };
@@ -756,6 +760,17 @@ function buildReviewBody(
           }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
       ),
     );
+    if (!fixup.stackedPrUrl && fixup.stackedPrError) {
+      lines.push(
+        "",
+        `<details><summary>Stacked PR creation failed (debug)</summary>`,
+        "",
+        "```",
+        fixup.stackedPrError,
+        "```",
+        "</details>",
+      );
+    }
   }
   return lines.join("\n");
 }
