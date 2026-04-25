@@ -107,7 +107,10 @@ Main product and runtime surfaces live here.
 
 Shared importable code lives here.
 
+- `pkg/daemons/`: shared daemon runtime and support code.
+- `pkg/health/`: shared health/reporting helpers.
 - `pkg/obs/`: shared observability package used by multiple apps.
+- `pkg/server/`: shared server/runtime helpers.
 
 ### `infra/`
 
@@ -125,7 +128,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 - `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
 - Current experiments live under:
-  `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
+  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 
 ### `scripts/`
 
