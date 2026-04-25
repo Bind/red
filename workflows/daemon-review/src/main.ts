@@ -566,7 +566,7 @@ type FixupResult = {
   branchName: string;
   branchUrl: string;
   stackedPrUrl: string | null;
-  stackedPrError: string | null;
+  stackedPrTrace: string[];
   applied: FixupContribution[];
   skipped: Array<{ contribution: FixupContribution; reason: string }>;
 };
@@ -580,6 +580,11 @@ function orderForApply(contributions: FixupContribution[]): FixupContribution[] 
   });
 }
 
+type StackedPrAttempt = {
+  url: string | null;
+  trace: string[];
+};
+
 async function ensureStackedPr(
   owner: string,
   repo: string,
@@ -588,25 +593,31 @@ async function ensureStackedPr(
   prNumber: number,
   contributions: FixupContribution[],
   githubToken: string,
-): Promise<string | null> {
+): Promise<StackedPrAttempt> {
   const headers = {
     authorization: `Bearer ${githubToken}`,
     accept: "application/vnd.github+json",
     "user-agent": "redc-daemon-review",
   } as const;
+  const trace: string[] = [];
+  trace.push(`branch=${branchName}`);
+  trace.push(`baseRef=${baseRef}`);
 
-  const listResponse = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&head=${owner}:${branchName}&base=${encodeURIComponent(baseRef)}`,
-    { headers },
-  );
+  const listUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&head=${owner}:${branchName}&base=${encodeURIComponent(baseRef)}`;
+  trace.push(`LIST ${listUrl}`);
+  const listResponse = await fetch(listUrl, { headers });
+  trace.push(`LIST status=${listResponse.status}`);
   if (!listResponse.ok) {
-    throw new Error(
-      `failed to list stacked PRs for ${branchName}: ${listResponse.status} ${await listResponse.text()}`,
-    );
+    const text = await listResponse.text();
+    trace.push(`LIST body=${text.slice(0, 400)}`);
+    return { url: null, trace };
   }
-  const existingList = (await listResponse.json()) as Array<{ html_url: string; number: number }>;
+  const existingList = (await listResponse.json()) as Array<{ html_url?: string; number?: number }>;
+  trace.push(`LIST count=${existingList.length}`);
   if (existingList.length > 0) {
-    return existingList[0].html_url;
+    trace.push(`LIST first=${JSON.stringify(existingList[0]).slice(0, 200)}`);
+    const url = existingList[0].html_url ?? null;
+    return { url, trace };
   }
 
   const bodyLines = [
@@ -623,6 +634,7 @@ async function ensureStackedPr(
     `Merge this PR into \`${baseRef}\` to land the heals on top of #${prNumber}.`,
   ];
 
+  trace.push(`CREATE head=${branchName} base=${baseRef}`);
   const createResponse = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/pulls`,
     {
@@ -637,13 +649,15 @@ async function ensureStackedPr(
       }),
     },
   );
+  trace.push(`CREATE status=${createResponse.status}`);
   if (!createResponse.ok) {
-    throw new Error(
-      `failed to create stacked PR ${branchName} → ${baseRef}: ${createResponse.status} ${await createResponse.text()}`,
-    );
+    const text = await createResponse.text();
+    trace.push(`CREATE body=${text.slice(0, 400)}`);
+    return { url: null, trace };
   }
-  const created = (await createResponse.json()) as { html_url: string };
-  return created.html_url;
+  const created = (await createResponse.json()) as { html_url?: string };
+  trace.push(`CREATE response=${JSON.stringify(created).slice(0, 200)}`);
+  return { url: created.html_url ?? null, trace };
 }
 
 async function pushFixupBranch(
@@ -707,9 +721,9 @@ async function pushFixupBranch(
   await rm(fixupRoot, { recursive: true, force: true });
 
   let stackedPrUrl: string | null = null;
-  let stackedPrError: string | null = null;
+  let stackedPrTrace: string[] = [];
   try {
-    stackedPrUrl = await ensureStackedPr(
+    const attempt = await ensureStackedPr(
       owner,
       repo,
       branchName,
@@ -718,8 +732,11 @@ async function pushFixupBranch(
       applied,
       githubToken,
     );
+    stackedPrUrl = attempt.url;
+    stackedPrTrace = attempt.trace;
   } catch (error) {
-    stackedPrError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    stackedPrTrace = [`THROW ${message}`];
     console.error("failed to ensure stacked fixup PR:", error);
   }
 
@@ -727,7 +744,7 @@ async function pushFixupBranch(
     branchName,
     branchUrl: `https://github.com/${owner}/${repo}/tree/${branchName}`,
     stackedPrUrl,
-    stackedPrError,
+    stackedPrTrace,
     applied,
     skipped,
   };
@@ -760,13 +777,13 @@ function buildReviewBody(
           }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
       ),
     );
-    if (!fixup.stackedPrUrl && fixup.stackedPrError) {
+    if (fixup.stackedPrTrace.length > 0) {
       lines.push(
         "",
-        `<details><summary>Stacked PR creation failed (debug)</summary>`,
+        `<details><summary>Stacked PR trace (debug)</summary>`,
         "",
         "```",
-        fixup.stackedPrError,
+        ...fixup.stackedPrTrace,
         "```",
         "</details>",
       );
