@@ -304,20 +304,27 @@ async function buildDaemonReviewInput(
   return lines.join("\n");
 }
 
-async function buildProposalPatch(baseRoot: string, proposalRoot: string): Promise<string> {
-  const diff = await runCommand(process.cwd(), [
+async function initProposalRepo(workingRoot: string): Promise<void> {
+  await runCommand(workingRoot, ["git", "init", "-q"]);
+  await runCommand(workingRoot, ["git", "add", "-A"]);
+  await runCommand(workingRoot, [
     "git",
-    "diff",
-    "--no-index",
-    "--relative",
-    "--",
-    baseRoot,
-    proposalRoot,
+    "-c",
+    "user.email=daemon@local",
+    "-c",
+    "user.name=daemon",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "baseline",
   ]);
+}
+
+async function buildProposalPatch(workingRoot: string): Promise<string> {
+  await runCommand(workingRoot, ["git", "add", "-A"]);
+  const diff = await runCommand(workingRoot, ["git", "diff", "HEAD"]);
   if (diff.ok) return diff.stdout;
-  const failure = diff as { ok: false; stdout: string; stderr: string };
-  const combined = `${failure.stdout}${failure.stderr}`;
-  if (combined.includes("diff --git")) return combined;
   return "";
 }
 
@@ -344,6 +351,7 @@ async function runSingleDaemon(
 
   if (proposalMode) {
     await copyRepoTree(prRoot, workingRoot);
+    await initProposalRepo(workingRoot);
   }
 
   console.log(`running daemon ${daemonName} against ${workingRoot}`);
@@ -356,7 +364,7 @@ async function runSingleDaemon(
 
   const proposalPatch =
     proposalMode && result.ok
-      ? await buildProposalPatch(prRoot, workingRoot)
+      ? await buildProposalPatch(workingRoot)
       : "";
   const proposalFiles = proposalPatch ? extractPatchedFiles(proposalPatch) : [];
   const proposal =
@@ -525,7 +533,11 @@ async function main() {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
+  try {
+    await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
+  } catch (error) {
+    console.error("daemon review proposal comment failed:", error);
+  }
 
   const blockingFailures = outcomes.filter(
     (outcome) =>
