@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { createProposeTool, type ProposalCapture } from "../tools/propose";
 
+function textOf(part: unknown): string {
+  if (
+    part !== null &&
+    typeof part === "object" &&
+    "type" in part &&
+    (part as { type: unknown }).type === "text" &&
+    "text" in part &&
+    typeof (part as { text: unknown }).text === "string"
+  ) {
+    return (part as { text: string }).text;
+  }
+  return "";
+}
+
 describe("propose tool", () => {
   test("captures a single-line replacement with default endLine", async () => {
     const capture: ProposalCapture = { proposals: [] };
@@ -20,7 +34,7 @@ describe("propose tool", () => {
         reason: "fix typo",
       },
     ]);
-    expect(result.content[0]?.text).toContain("README.md lines 17-17");
+    expect(textOf(result.content[0])).toContain("README.md lines 17-17");
   });
 
   test("captures multi-line ranges and accumulates across calls", async () => {
@@ -53,7 +67,7 @@ describe("propose tool", () => {
       replacement: "x",
     });
     expect(capture.proposals).toEqual([]);
-    expect(result.content[0]?.text).toContain("propose rejected");
+    expect(textOf(result.content[0])).toContain("propose rejected");
     expect((result.details as { error: string }).error).toBe("endLine_before_line");
   });
 
