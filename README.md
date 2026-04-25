@@ -13,7 +13,7 @@ just
 just setup
 just up
 just down
-just test
+just tezt
 just typechek
 just check
 # broader operator shell CLI
