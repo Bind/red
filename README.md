@@ -15,7 +15,7 @@ just up
 just down
 just test
 just typecheck
-just check
+just verify
 # broader operator shell CLI
 ./scripts/redc help
 ```
@@ -107,10 +107,7 @@ Main product and runtime surfaces live here.
 
 Shared importable code lives here.
 
-- `pkg/daemons/`: shared daemon runtime and support code.
-- `pkg/health/`: shared health/reporting helpers.
 - `pkg/obs/`: shared observability package used by multiple apps.
-- `pkg/server/`: shared server/runtime helpers.
 
 ### `infra/`
 
@@ -128,7 +125,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 - `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
 - Current experiments live under:
-  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
+  `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 
 ### `scripts/`
 
