@@ -8,6 +8,7 @@ import {
   resolveDaemon,
   runDaemon,
   type CompleteFinding,
+  type Proposal,
 } from "../../../pkg/daemons/src/index";
 
 function requiredEnv(name: string): string {
@@ -23,10 +24,7 @@ type DaemonOutcome = {
   findings: CompleteFinding[];
   reason?: string;
   message?: string;
-  proposal?: {
-    files: string[];
-    patch: string;
-  };
+  proposals: Proposal[];
 };
 
 type DaemonReviewConfig = {
@@ -200,8 +198,9 @@ function renderOutcome(outcome: DaemonOutcome): string {
     const note = finding.note ? `: ${finding.note}` : "";
     lines.push(`  - ${finding.invariant}${target} -> ${finding.status}${note}`);
   }
-  if (outcome.proposal) {
-    lines.push(`- proposal: ${outcome.proposal.files.length} file(s) would be changed`);
+  if (outcome.proposals.length > 0) {
+    const files = new Set(outcome.proposals.map((p) => p.file));
+    lines.push(`- proposals: ${outcome.proposals.length} edit(s) across ${files.size} file(s)`);
   }
   return lines.join("\n");
 }
@@ -215,25 +214,6 @@ async function copyRepoTree(source: string, dest: string): Promise<void> {
     recursive: true,
     filter: (path) => !path.endsWith("/.git") && !path.includes("/.git/"),
   });
-}
-
-async function runCommand(
-  cwd: string,
-  cmd: string[],
-): Promise<{ ok: true; stdout: string } | { ok: false; stdout: string; stderr: string }> {
-  const proc = Bun.spawn({
-    cmd,
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (exitCode === 0) return { ok: true, stdout };
-  return { ok: false, stdout, stderr };
 }
 
 function matchAuthorityPaths(paths: string[], authorityPaths: string[]): string[] {
@@ -273,7 +253,9 @@ async function buildDaemonReviewInput(
   ];
 
   if (proposalModeEnabled()) {
-    lines.push("- Proposal mode is active: do not rely on mutating the real checkout.");
+    lines.push(
+      "- Proposal mode is active: when you can confidently apply a heal, register it via the `propose` tool with structured (file, line, replacement) data. Proposals are surfaced as inline review suggestions; the real checkout is not modified.",
+    );
   }
 
   lines.push("", "Changed files relevant to this daemon:");
@@ -304,39 +286,6 @@ async function buildDaemonReviewInput(
   return lines.join("\n");
 }
 
-async function initProposalRepo(workingRoot: string): Promise<void> {
-  await runCommand(workingRoot, ["git", "init", "-q"]);
-  await runCommand(workingRoot, ["git", "add", "-A"]);
-  await runCommand(workingRoot, [
-    "git",
-    "-c",
-    "user.email=daemon@local",
-    "-c",
-    "user.name=daemon",
-    "commit",
-    "-q",
-    "--allow-empty",
-    "-m",
-    "baseline",
-  ]);
-}
-
-async function buildProposalPatch(workingRoot: string): Promise<string> {
-  await runCommand(workingRoot, ["git", "add", "-A"]);
-  const diff = await runCommand(workingRoot, ["git", "diff", "HEAD"]);
-  if (diff.ok) return diff.stdout;
-  return "";
-}
-
-function extractPatchedFiles(patch: string): string[] {
-  const files = new Set<string>();
-  for (const line of patch.split("\n")) {
-    const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    if (match?.[2]) files.add(match[2]);
-  }
-  return [...files];
-}
-
 async function runSingleDaemon(
   daemonName: string,
   prRoot: string,
@@ -351,7 +300,6 @@ async function runSingleDaemon(
 
   if (proposalMode) {
     await copyRepoTree(prRoot, workingRoot);
-    await initProposalRepo(workingRoot);
   }
 
   console.log(`running daemon ${daemonName} against ${workingRoot}`);
@@ -361,19 +309,6 @@ async function runSingleDaemon(
     maxTurns: config.maxTurns,
     maxWallclockMs: 180_000,
   });
-
-  const proposalPatch =
-    proposalMode && result.ok
-      ? await buildProposalPatch(workingRoot)
-      : "";
-  const proposalFiles = proposalPatch ? extractPatchedFiles(proposalPatch) : [];
-  const proposal =
-    proposalPatch && proposalFiles.length > 0
-      ? {
-          files: proposalFiles,
-          patch: proposalPatch,
-        }
-      : undefined;
 
   if (proposalMode) {
     await rm(workingRoot, { recursive: true, force: true });
@@ -385,6 +320,7 @@ async function runSingleDaemon(
       ok: false,
       summary: "",
       findings: [],
+      proposals: [],
       reason: result.reason,
       message: result.message,
     };
@@ -395,7 +331,7 @@ async function runSingleDaemon(
     ok: true,
     summary: result.payload.summary,
     findings: result.payload.findings,
-    proposal,
+    proposals: result.proposals,
   };
 }
 
@@ -421,21 +357,6 @@ async function runDaemonsInParallel(
   return outcomes;
 }
 
-type ProposalHunk = {
-  oldStart: number;
-  oldCount: number;
-  newStart: number;
-  newCount: number;
-  newLines: string[];
-};
-
-type ParsedProposalFile = {
-  path: string;
-  isNewFile: boolean;
-  isDeletedFile: boolean;
-  hunks: ProposalHunk[];
-};
-
 function parseHunkHeader(line: string): {
   oldStart: number;
   oldCount: number;
@@ -450,47 +371,6 @@ function parseHunkHeader(line: string): {
     newStart: Number.parseInt(match[3], 10),
     newCount: match[4] ? Number.parseInt(match[4], 10) : 1,
   };
-}
-
-function parseProposalPatch(patch: string): ParsedProposalFile[] {
-  const files: ParsedProposalFile[] = [];
-  const lines = patch.split("\n");
-  let current: ParsedProposalFile | null = null;
-  let currentHunk: ProposalHunk | null = null;
-
-  const flushHunk = () => {
-    if (current && currentHunk) current.hunks.push(currentHunk);
-    currentHunk = null;
-  };
-  const flushFile = () => {
-    flushHunk();
-    if (current) files.push(current);
-    current = null;
-  };
-
-  for (const line of lines) {
-    if (line.startsWith("diff --git ")) {
-      flushFile();
-      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-      const path = match?.[2] ?? "";
-      current = { path, isNewFile: false, isDeletedFile: false, hunks: [] };
-      continue;
-    }
-    if (!current) continue;
-    if (line.startsWith("new file mode")) current.isNewFile = true;
-    else if (line.startsWith("deleted file mode")) current.isDeletedFile = true;
-    else if (line.startsWith("@@")) {
-      flushHunk();
-      const header = parseHunkHeader(line);
-      if (header) currentHunk = { ...header, newLines: [] };
-    } else if (currentHunk) {
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        currentHunk.newLines.push(line.slice(1));
-      }
-    }
-  }
-  flushFile();
-  return files;
 }
 
 function parsePrFilePatchRanges(patch: string): Array<{ start: number; end: number }> {
@@ -573,27 +453,22 @@ function rangeContains(
   return outer.start <= inner.start && inner.end <= outer.end;
 }
 
-function buildInlineComment(
-  daemonName: string,
-  filePath: string,
-  hunk: ProposalHunk,
-): InlineComment {
-  const oldEnd = hunk.oldStart + Math.max(hunk.oldCount, 1) - 1;
+function buildInlineComment(daemonName: string, proposal: Proposal): InlineComment {
+  const reasonBlock = proposal.reason ? `\n_${proposal.reason}_\n` : "";
   const body = [
-    `Daemon \`${daemonName}\` suggests:`,
-    "",
+    `Daemon \`${daemonName}\` suggests:${reasonBlock}`,
     "```suggestion",
-    hunk.newLines.join("\n"),
+    proposal.replacement,
     "```",
   ].join("\n");
   const comment: InlineComment = {
-    path: filePath,
-    line: oldEnd,
+    path: proposal.file,
+    line: proposal.endLine,
     side: "RIGHT",
     body,
   };
-  if (hunk.oldCount > 1) {
-    comment.start_line = hunk.oldStart;
+  if (proposal.endLine > proposal.line) {
+    comment.start_line = proposal.line;
     comment.start_side = "RIGHT";
   }
   return comment;
@@ -601,43 +476,42 @@ function buildInlineComment(
 
 function classifyProposalForInline(
   daemonName: string,
-  patch: string,
+  proposals: Proposal[],
   prFiles: Map<string, PrFileInfo>,
 ): ClassifiedProposal {
-  const parsed = parseProposalPatch(patch);
   const inlineComments: InlineComment[] = [];
-  const fallbackPieces: string[] = [];
+  const fallback: Array<{ proposal: Proposal; reason: string }> = [];
   const fallbackFiles = new Set<string>();
 
-  for (const file of parsed) {
-    const prInfo = prFiles.get(file.path);
-    const fileEligible =
-      !file.isNewFile && !file.isDeletedFile && prInfo && prInfo.ranges.length > 0;
-    for (const hunk of file.hunks) {
-      const target = {
-        start: hunk.oldStart,
-        end: hunk.oldStart + Math.max(hunk.oldCount, 1) - 1,
-      };
-      const inlineable =
-        fileEligible && hunk.oldCount > 0 && prInfo!.ranges.some((range) => rangeContains(range, target));
-      if (inlineable) {
-        inlineComments.push(buildInlineComment(daemonName, file.path, hunk));
-      } else {
-        fallbackFiles.add(file.path);
-        fallbackPieces.push(
-          [
-            `--- ${file.path} hunk @ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}`,
-            ...hunk.newLines.map((line) => `+${line}`),
-          ].join("\n"),
-        );
-      }
+  for (const proposal of proposals) {
+    const prInfo = prFiles.get(proposal.file);
+    if (!prInfo || prInfo.ranges.length === 0) {
+      fallback.push({ proposal, reason: "file is not in the PR's diff" });
+      fallbackFiles.add(proposal.file);
+      continue;
+    }
+    const target = { start: proposal.line, end: proposal.endLine };
+    const inlineable = prInfo.ranges.some((range) => rangeContains(range, target));
+    if (inlineable) {
+      inlineComments.push(buildInlineComment(daemonName, proposal));
+    } else {
+      fallback.push({ proposal, reason: "lines fall outside the PR's diff hunks" });
+      fallbackFiles.add(proposal.file);
     }
   }
+  const fallbackPatch = fallback
+    .map(({ proposal, reason }) =>
+      [
+        `--- ${proposal.file} lines ${proposal.line}-${proposal.endLine} (${reason})`,
+        ...proposal.replacement.split("\n").map((line) => `+${line}`),
+      ].join("\n"),
+    )
+    .join("\n\n");
   return {
     daemonName,
     inlineComments,
     fallbackFiles: [...fallbackFiles],
-    fallbackPatch: fallbackPieces.join("\n\n"),
+    fallbackPatch,
   };
 }
 
@@ -782,12 +656,14 @@ async function main() {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  const proposals = outcomes.filter((outcome) => outcome.ok && outcome.proposal);
-  if (proposals.length > 0) {
+  const proposingOutcomes = outcomes.filter(
+    (outcome) => outcome.ok && outcome.proposals.length > 0,
+  );
+  if (proposingOutcomes.length > 0) {
     try {
       const prFiles = await fetchPrFiles(githubToken, owner, repo, prNumber);
-      const classifications = proposals.map((outcome) =>
-        classifyProposalForInline(outcome.name, outcome.proposal!.patch, prFiles),
+      const classifications = proposingOutcomes.map((outcome) =>
+        classifyProposalForInline(outcome.name, outcome.proposals, prFiles),
       );
       for (const classification of classifications) {
         try {

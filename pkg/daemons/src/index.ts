@@ -75,3 +75,9 @@ export {
 } from "./auth";
 export { COMPLETE_TOOL_NAME, createCompleteTool, type CompleteCapture } from "./tools/complete";
 export { TRACK_TOOL_NAME, createTrackTool } from "./tools/track";
+export {
+  PROPOSE_TOOL_NAME,
+  createProposeTool,
+  type Proposal,
+  type ProposalCapture,
+} from "./tools/propose";
