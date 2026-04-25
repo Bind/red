@@ -94,7 +94,8 @@ Main product and runtime surfaces live here.
 - `apps/ctl/`: main Bun/Hono backend plus the `redc` CLI entrypoints.
   Important subfolders:
   `cli/` for the narrow Bun status client exposed as the package `redc` bin, `cli/shell/` for the broader operator shell CLI wrapped by `./scripts/redc`, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, and `repo/` for grs integration.
-- `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
+Current experiments live under:
+  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 - `apps/bff/`: backend-for-frontend service.
 - `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
 - `apps/mcp/`: MCP service surface with auth-protected tool access.
@@ -124,7 +125,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 - `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
 - Current experiments live under:
-  `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
+  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 
 ### `scripts/`
 
