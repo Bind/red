@@ -786,7 +786,7 @@ describe("auth lab", () => {
     const code = await createOTP(totpSecret, { digits: 6, period: 30 }).totp();
 
     const loginResponse = await server.fetch(
-      new Request(`https://preview.red.computer/user/totp-login`, {
+      new Request("https://preview.red.computer/user/totp-login", {
         method: "POST",
         headers: {
           origin: "https://preview.red.computer",
@@ -804,7 +804,7 @@ describe("auth lab", () => {
     expect(sessionCookie).toContain("__Secure-better-auth.session_token=");
 
     const sessionResponse = await server.fetch(
-      new Request(`https://preview.red.computer/api/auth/get-session`, {
+      new Request("https://preview.red.computer/api/auth/get-session", {
         headers: {
           origin: "https://preview.red.computer",
           cookie: sessionCookie ?? "",

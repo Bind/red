@@ -718,9 +718,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
 
-    mail.url =
-      new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString() +
-      `?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
+    mail.url = `${new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString()}?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
 
     return c.json({
       attempt_id: attempt.id,
