@@ -566,7 +566,7 @@ type FixupResult = {
   branchName: string;
   branchUrl: string;
   stackedPrUrl: string | null;
-  stackedPrTrace: string[];
+  stackedPrError: string | null;
   applied: FixupContribution[];
   skipped: Array<{ contribution: FixupContribution; reason: string }>;
 };
@@ -580,11 +580,6 @@ function orderForApply(contributions: FixupContribution[]): FixupContribution[] 
   });
 }
 
-type StackedPrAttempt = {
-  url: string | null;
-  trace: string[];
-};
-
 async function ensureStackedPr(
   owner: string,
   repo: string,
@@ -593,31 +588,23 @@ async function ensureStackedPr(
   prNumber: number,
   contributions: FixupContribution[],
   githubToken: string,
-): Promise<StackedPrAttempt> {
+): Promise<string> {
   const headers = {
     authorization: `Bearer ${githubToken}`,
     accept: "application/vnd.github+json",
     "user-agent": "redc-daemon-review",
   } as const;
-  const trace: string[] = [];
-  trace.push(`branch=${branchName}`);
-  trace.push(`baseRef=${baseRef}`);
 
   const listUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&head=${owner}:${branchName}&base=${encodeURIComponent(baseRef)}`;
-  trace.push(`LIST ${listUrl}`);
   const listResponse = await fetch(listUrl, { headers });
-  trace.push(`LIST status=${listResponse.status}`);
   if (!listResponse.ok) {
-    const text = await listResponse.text();
-    trace.push(`LIST body=${text.slice(0, 400)}`);
-    return { url: null, trace };
+    throw new Error(
+      `failed to list stacked PRs for ${branchName}: ${listResponse.status} ${await listResponse.text()}`,
+    );
   }
-  const existingList = (await listResponse.json()) as Array<{ html_url?: string; number?: number }>;
-  trace.push(`LIST count=${existingList.length}`);
+  const existingList = (await listResponse.json()) as Array<{ html_url: string }>;
   if (existingList.length > 0) {
-    trace.push(`LIST first=${JSON.stringify(existingList[0]).slice(0, 200)}`);
-    const url = existingList[0].html_url ?? null;
-    return { url, trace };
+    return existingList[0].html_url;
   }
 
   const bodyLines = [
@@ -634,7 +621,6 @@ async function ensureStackedPr(
     `Merge this PR into \`${baseRef}\` to land the heals on top of #${prNumber}.`,
   ];
 
-  trace.push(`CREATE head=${branchName} base=${baseRef}`);
   const createResponse = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/pulls`,
     {
@@ -649,15 +635,13 @@ async function ensureStackedPr(
       }),
     },
   );
-  trace.push(`CREATE status=${createResponse.status}`);
   if (!createResponse.ok) {
-    const text = await createResponse.text();
-    trace.push(`CREATE body=${text.slice(0, 400)}`);
-    return { url: null, trace };
+    throw new Error(
+      `failed to create stacked PR ${branchName} → ${baseRef}: ${createResponse.status} ${await createResponse.text()}`,
+    );
   }
-  const created = (await createResponse.json()) as { html_url?: string };
-  trace.push(`CREATE response=${JSON.stringify(created).slice(0, 200)}`);
-  return { url: created.html_url ?? null, trace };
+  const created = (await createResponse.json()) as { html_url: string };
+  return created.html_url;
 }
 
 async function pushFixupBranch(
@@ -721,9 +705,9 @@ async function pushFixupBranch(
   await rm(fixupRoot, { recursive: true, force: true });
 
   let stackedPrUrl: string | null = null;
-  let stackedPrTrace: string[] = [];
+  let stackedPrError: string | null = null;
   try {
-    const attempt = await ensureStackedPr(
+    stackedPrUrl = await ensureStackedPr(
       owner,
       repo,
       branchName,
@@ -732,11 +716,8 @@ async function pushFixupBranch(
       applied,
       githubToken,
     );
-    stackedPrUrl = attempt.url;
-    stackedPrTrace = attempt.trace;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    stackedPrTrace = [`THROW ${message}`];
+    stackedPrError = error instanceof Error ? error.message : String(error);
     console.error("failed to ensure stacked fixup PR:", error);
   }
 
@@ -744,7 +725,7 @@ async function pushFixupBranch(
     branchName,
     branchUrl: `https://github.com/${owner}/${repo}/tree/${branchName}`,
     stackedPrUrl,
-    stackedPrTrace,
+    stackedPrError,
     applied,
     skipped,
   };
@@ -777,16 +758,8 @@ function buildReviewBody(
           }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
       ),
     );
-    if (fixup.stackedPrTrace.length > 0) {
-      lines.push(
-        "",
-        `<details><summary>Stacked PR trace (debug)</summary>`,
-        "",
-        "```",
-        ...fixup.stackedPrTrace,
-        "```",
-        "</details>",
-      );
+    if (!fixup.stackedPrUrl && fixup.stackedPrError) {
+      lines.push("", `_Stacked PR creation failed: ${fixup.stackedPrError}_`);
     }
   }
   return lines.join("\n");
@@ -859,35 +832,6 @@ async function main() {
         );
       } catch (error) {
         console.error("daemon fixup branch push failed:", error);
-      }
-      try {
-        const diagSections = [
-          "## daemon-review diagnostic (debug)",
-          "",
-          "```",
-          `fixup is null: ${fixup === null}`,
-          `fixup.applied count: ${fixup?.applied.length ?? 0}`,
-          `fixup.stackedPrUrl: ${fixup?.stackedPrUrl ?? "<null>"}`,
-          `fixup.stackedPrTrace length: ${fixup?.stackedPrTrace.length ?? 0}`,
-          "stackedPrTrace:",
-          ...(fixup?.stackedPrTrace ?? []).map((line) => `  ${line}`),
-          "```",
-        ];
-        await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`,
-          {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${githubToken}`,
-              accept: "application/vnd.github+json",
-              "content-type": "application/json",
-              "user-agent": "redc-daemon-review",
-            },
-            body: JSON.stringify({ body: diagSections.join("\n") }),
-          },
-        );
-      } catch (error) {
-        console.error("diagnostic comment failed:", error);
       }
       const appliedByDaemon = new Map<string, FixupContribution[]>();
       for (const contribution of fixup?.applied ?? []) {
