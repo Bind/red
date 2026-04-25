@@ -130,7 +130,7 @@ jobs:
       - name: Configure SSH (dev key from .env.ci)
         run: |
           mkdir -p ~/.ssh
-          key="$(dotenvx get DEV_SSH_PRIVATE_KEY -f .env.ci --format shell)"
+          key="$(./infra/platform/get-required-dotenvx-value.sh DEV_SSH_PRIVATE_KEY .env.ci)"
           if printf "%s" "$key" | grep -q "^-----BEGIN "; then
             printf "%s\n" "$key" > ~/.ssh/id_ed25519
           else
@@ -140,7 +140,7 @@ jobs:
 
       - name: Resolve dev server IP from synced env
         id: dev-ip
-        run: echo "host=$(dotenvx get REDC_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
+        run: echo "host=$(./infra/platform/get-required-dotenvx-value.sh REDC_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
         run: >
@@ -186,7 +186,7 @@ jobs:
       - name: Configure SSH (dev key from .env.ci)
         run: |
           mkdir -p ~/.ssh
-          key="$(dotenvx get DEV_SSH_PRIVATE_KEY -f .env.ci --format shell)"
+          key="$(./infra/platform/get-required-dotenvx-value.sh DEV_SSH_PRIVATE_KEY .env.ci)"
           if printf "%s" "$key" | grep -q "^-----BEGIN "; then
             printf "%s\n" "$key" > ~/.ssh/id_ed25519
           else
@@ -197,7 +197,7 @@ jobs:
       - name: Resolve dev server IP from synced env
         id: dev-ip
         run: |
-          echo "host=$(dotenvx get REDC_SERVER_IP -f .env.ci)" >> "$GITHUB_OUTPUT"
+          echo "host=$(./infra/platform/get-required-dotenvx-value.sh REDC_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Tear down preview
         run: just teardown-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222
