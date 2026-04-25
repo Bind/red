@@ -1,4 +1,4 @@
-ARG BUN_IMAGE=oven/bun:1-alpine
+ARG BUN_IMAGE=oven/bun:1.3.10-alpine
 FROM ${BUN_IMAGE} AS deps
 
 WORKDIR /app
@@ -16,7 +16,10 @@ COPY pkg/daemons/package.json ./pkg/daemons/
 COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/server/package.json ./pkg/server/
-COPY workflows/docs-review/package.json ./workflows/docs-review/
-COPY workflows/pr-pattern-review/package.json ./workflows/pr-pattern-review/
+COPY experiments/ai-daemons-lab/package.json ./experiments/ai-daemons-lab/
+COPY experiments/bash-runtime-lab/package.json ./experiments/bash-runtime-lab/
+COPY experiments/ci-runner-lab/package.json ./experiments/ci-runner-lab/
+COPY experiments/durable-workflow-lab/package.json ./experiments/durable-workflow-lab/
+COPY experiments/smithers-lab/package.json ./experiments/smithers-lab/
 
 RUN bun install --frozen-lockfile
