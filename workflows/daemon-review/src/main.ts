@@ -421,26 +421,275 @@ async function runDaemonsInParallel(
   return outcomes;
 }
 
-async function upsertProposalComment(
+type ProposalHunk = {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  newLines: string[];
+};
+
+type ParsedProposalFile = {
+  path: string;
+  isNewFile: boolean;
+  isDeletedFile: boolean;
+  hunks: ProposalHunk[];
+};
+
+function parseHunkHeader(line: string): {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+} | null {
+  const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+  if (!match) return null;
+  return {
+    oldStart: Number.parseInt(match[1], 10),
+    oldCount: match[2] ? Number.parseInt(match[2], 10) : 1,
+    newStart: Number.parseInt(match[3], 10),
+    newCount: match[4] ? Number.parseInt(match[4], 10) : 1,
+  };
+}
+
+function parseProposalPatch(patch: string): ParsedProposalFile[] {
+  const files: ParsedProposalFile[] = [];
+  const lines = patch.split("\n");
+  let current: ParsedProposalFile | null = null;
+  let currentHunk: ProposalHunk | null = null;
+
+  const flushHunk = () => {
+    if (current && currentHunk) current.hunks.push(currentHunk);
+    currentHunk = null;
+  };
+  const flushFile = () => {
+    flushHunk();
+    if (current) files.push(current);
+    current = null;
+  };
+
+  for (const line of lines) {
+    if (line.startsWith("diff --git ")) {
+      flushFile();
+      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      const path = match?.[2] ?? "";
+      current = { path, isNewFile: false, isDeletedFile: false, hunks: [] };
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("new file mode")) current.isNewFile = true;
+    else if (line.startsWith("deleted file mode")) current.isDeletedFile = true;
+    else if (line.startsWith("@@")) {
+      flushHunk();
+      const header = parseHunkHeader(line);
+      if (header) currentHunk = { ...header, newLines: [] };
+    } else if (currentHunk) {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        currentHunk.newLines.push(line.slice(1));
+      }
+    }
+  }
+  flushFile();
+  return files;
+}
+
+function parsePrFilePatchRanges(patch: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const line of patch.split("\n")) {
+    const header = parseHunkHeader(line);
+    if (!header) continue;
+    if (header.newCount === 0) continue;
+    ranges.push({ start: header.newStart, end: header.newStart + header.newCount - 1 });
+  }
+  return ranges;
+}
+
+type PrFileInfo = {
+  filename: string;
+  status: string;
+  ranges: Array<{ start: number; end: number }>;
+};
+
+async function fetchPrFiles(
   githubToken: string,
   owner: string,
   repo: string,
   pullNumber: number,
-  outcomes: DaemonOutcome[],
+): Promise<Map<string, PrFileInfo>> {
+  const result = new Map<string, PrFileInfo>();
+  let page = 1;
+  while (true) {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`,
+      {
+        headers: {
+          authorization: `Bearer ${githubToken}`,
+          accept: "application/vnd.github+json",
+          "user-agent": "redc-daemon-review",
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`failed to fetch PR files: ${response.status} ${await response.text()}`);
+    }
+    const pageFiles = (await response.json()) as Array<{
+      filename: string;
+      status: string;
+      patch?: string;
+    }>;
+    for (const file of pageFiles) {
+      result.set(file.filename, {
+        filename: file.filename,
+        status: file.status,
+        ranges: file.patch ? parsePrFilePatchRanges(file.patch) : [],
+      });
+    }
+    if (pageFiles.length < 100) break;
+    page += 1;
+  }
+  return result;
+}
+
+type InlineComment = {
+  path: string;
+  line: number;
+  start_line?: number;
+  side: "RIGHT";
+  start_side?: "RIGHT";
+  body: string;
+};
+
+type ClassifiedProposal = {
+  daemonName: string;
+  inlineComments: InlineComment[];
+  fallbackFiles: string[];
+  fallbackPatch: string;
+};
+
+function rangeContains(
+  outer: { start: number; end: number },
+  inner: { start: number; end: number },
+): boolean {
+  return outer.start <= inner.start && inner.end <= outer.end;
+}
+
+function buildInlineComment(
+  daemonName: string,
+  filePath: string,
+  hunk: ProposalHunk,
+): InlineComment {
+  const oldEnd = hunk.oldStart + Math.max(hunk.oldCount, 1) - 1;
+  const body = [
+    `Daemon \`${daemonName}\` suggests:`,
+    "",
+    "```suggestion",
+    hunk.newLines.join("\n"),
+    "```",
+  ].join("\n");
+  const comment: InlineComment = {
+    path: filePath,
+    line: oldEnd,
+    side: "RIGHT",
+    body,
+  };
+  if (hunk.oldCount > 1) {
+    comment.start_line = hunk.oldStart;
+    comment.start_side = "RIGHT";
+  }
+  return comment;
+}
+
+function classifyProposalForInline(
+  daemonName: string,
+  patch: string,
+  prFiles: Map<string, PrFileInfo>,
+): ClassifiedProposal {
+  const parsed = parseProposalPatch(patch);
+  const inlineComments: InlineComment[] = [];
+  const fallbackPieces: string[] = [];
+  const fallbackFiles = new Set<string>();
+
+  for (const file of parsed) {
+    const prInfo = prFiles.get(file.path);
+    const fileEligible =
+      !file.isNewFile && !file.isDeletedFile && prInfo && prInfo.ranges.length > 0;
+    for (const hunk of file.hunks) {
+      const target = {
+        start: hunk.oldStart,
+        end: hunk.oldStart + Math.max(hunk.oldCount, 1) - 1,
+      };
+      const inlineable =
+        fileEligible && hunk.oldCount > 0 && prInfo!.ranges.some((range) => rangeContains(range, target));
+      if (inlineable) {
+        inlineComments.push(buildInlineComment(daemonName, file.path, hunk));
+      } else {
+        fallbackFiles.add(file.path);
+        fallbackPieces.push(
+          [
+            `--- ${file.path} hunk @ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}`,
+            ...hunk.newLines.map((line) => `+${line}`),
+          ].join("\n"),
+        );
+      }
+    }
+  }
+  return {
+    daemonName,
+    inlineComments,
+    fallbackFiles: [...fallbackFiles],
+    fallbackPatch: fallbackPieces.join("\n\n"),
+  };
+}
+
+async function postProposalReview(
+  githubToken: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  daemonName: string,
+  comments: InlineComment[],
 ): Promise<void> {
-  const proposed = outcomes.filter((outcome) => outcome.ok && outcome.proposal);
-  if (proposed.length === 0) return;
+  if (comments.length === 0) return;
+  const body = `Daemon \`${daemonName}\` posted ${comments.length} healing suggestion${comments.length === 1 ? "" : "s"}.`;
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${githubToken}`,
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "user-agent": "redc-daemon-review",
+      },
+      body: JSON.stringify({ body, event: "COMMENT", comments }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `failed to post daemon review for ${daemonName}: ${response.status} ${await response.text()}`,
+    );
+  }
+}
+
+async function upsertFallbackComment(
+  githubToken: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  classifications: ClassifiedProposal[],
+): Promise<void> {
+  const fallbacks = classifications.filter((c) => c.fallbackPatch.length > 0);
+  if (fallbacks.length === 0) return;
 
   const marker = "<!-- daemon-review-proposals -->";
-  const sections = proposed.map((outcome) => {
-    const proposal = outcome.proposal!;
-    const patch = proposal.patch.length > 12_000
-      ? `${proposal.patch.slice(0, 12_000)}\n\n...diff truncated...`
-      : proposal.patch;
+  const sections = fallbacks.map((c) => {
+    const patch = c.fallbackPatch.length > 12_000
+      ? `${c.fallbackPatch.slice(0, 12_000)}\n\n...diff truncated...`
+      : c.fallbackPatch;
     return [
-      `### ${outcome.name}`,
+      `### ${c.daemonName}`,
       "",
-      `Would update: ${proposal.files.join(", ")}`,
+      `Out-of-PR-diff edits in: ${c.fallbackFiles.join(", ")}`,
       "",
       "```diff",
       patch.trim(),
@@ -449,9 +698,9 @@ async function upsertProposalComment(
   });
   const body = [
     marker,
-    "## Daemon Healing Suggestions",
+    "## Daemon Healing Suggestions (out-of-diff)",
     "",
-    "These daemon runs were executed in proposal mode against a disposable copy of the PR checkout. No files were changed in CI.",
+    "Inline `suggestion` review comments were posted on lines that overlap the PR's diff. The proposals below touch lines outside the PR's diff, so GitHub can't render them as one-click suggestions.",
     "",
     ...sections,
   ].join("\n");
@@ -533,10 +782,34 @@ async function main() {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  try {
-    await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
-  } catch (error) {
-    console.error("daemon review proposal comment failed:", error);
+  const proposals = outcomes.filter((outcome) => outcome.ok && outcome.proposal);
+  if (proposals.length > 0) {
+    try {
+      const prFiles = await fetchPrFiles(githubToken, owner, repo, prNumber);
+      const classifications = proposals.map((outcome) =>
+        classifyProposalForInline(outcome.name, outcome.proposal!.patch, prFiles),
+      );
+      for (const classification of classifications) {
+        try {
+          await postProposalReview(
+            githubToken,
+            owner,
+            repo,
+            prNumber,
+            classification.daemonName,
+            classification.inlineComments,
+          );
+        } catch (error) {
+          console.error(
+            `daemon review inline suggestions failed for ${classification.daemonName}:`,
+            error,
+          );
+        }
+      }
+      await upsertFallbackComment(githubToken, owner, repo, prNumber, classifications);
+    } catch (error) {
+      console.error("daemon review proposal comment failed:", error);
+    }
   }
 
   const blockingFailures = outcomes.filter(
