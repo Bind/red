@@ -8,7 +8,6 @@ import {
   resolveDaemon,
   runDaemon,
   type CompleteFinding,
-  type Proposal,
 } from "../../../pkg/daemons/src/index";
 
 function requiredEnv(name: string): string {
@@ -24,7 +23,7 @@ type DaemonOutcome = {
   findings: CompleteFinding[];
   reason?: string;
   message?: string;
-  proposals: Proposal[];
+  diff: string;
 };
 
 type DaemonReviewConfig = {
@@ -198,9 +197,13 @@ function renderOutcome(outcome: DaemonOutcome): string {
     const note = finding.note ? `: ${finding.note}` : "";
     lines.push(`  - ${finding.invariant}${target} -> ${finding.status}${note}`);
   }
-  if (outcome.proposals.length > 0) {
-    const files = new Set(outcome.proposals.map((p) => p.file));
-    lines.push(`- proposals: ${outcome.proposals.length} edit(s) across ${files.size} file(s)`);
+  if (outcome.diff.length > 0) {
+    const filesTouched = new Set<string>();
+    for (const line of outcome.diff.split("\n")) {
+      const match = line.match(/^\+\+\+ b\/(.+)$/);
+      if (match) filesTouched.add(match[1]);
+    }
+    lines.push(`- edits: ${filesTouched.size} file(s) touched`);
   }
   return lines.join("\n");
 }
@@ -254,7 +257,7 @@ async function buildDaemonReviewInput(
 
   if (proposalModeEnabled()) {
     lines.push(
-      "- Proposal mode is active: when you can confidently apply a heal, register it via the `propose` tool with structured (file, line, replacement) data. Proposals are surfaced as inline review suggestions; the real checkout is not modified.",
+      "- Proposal mode is active: when you can confidently apply a heal, edit the file directly with `Edit` or `Write` in your working tree. Your edits are scanned post-run and turned into inline `suggestion` review comments (or a stacked fixup PR for changes outside the PR's diff hunks). The real checkout is not modified.",
     );
   }
 
@@ -300,6 +303,20 @@ async function runSingleDaemon(
 
   if (proposalMode) {
     await copyRepoTree(prRoot, workingRoot);
+    await gitOrThrow(workingRoot, ["init", "-q", "-b", "base"]);
+    await gitOrThrow(workingRoot, ["add", "-A"]);
+    await gitOrThrow(workingRoot, [
+      "-c",
+      "user.email=daemon-review@local",
+      "-c",
+      "user.name=daemon-review",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-q",
+      "-m",
+      "baseline",
+    ]);
   }
 
   console.log(`running daemon ${daemonName} against ${workingRoot}`);
@@ -310,7 +327,13 @@ async function runSingleDaemon(
     maxWallclockMs: 180_000,
   });
 
+  let diff = "";
   if (proposalMode) {
+    try {
+      diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
+    } catch (error) {
+      console.error(`failed to capture daemon diff for ${daemonName}:`, error);
+    }
     await rm(workingRoot, { recursive: true, force: true });
   }
 
@@ -320,7 +343,7 @@ async function runSingleDaemon(
       ok: false,
       summary: "",
       findings: [],
-      proposals: [],
+      diff: "",
       reason: result.reason,
       message: result.message,
     };
@@ -331,7 +354,7 @@ async function runSingleDaemon(
     ok: true,
     summary: result.payload.summary,
     findings: result.payload.findings,
-    proposals: result.proposals,
+    diff,
   };
 }
 
@@ -439,32 +462,29 @@ type InlineComment = {
   body: string;
 };
 
-type ClassifiedProposal = {
-  daemonName: string;
-  inlineComments: InlineComment[];
-  fixupTargets: Proposal[];
+type DiffHunk = {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  newText: string;
+  raw: string;
 };
 
-function buildInlineComment(daemonName: string, proposal: Proposal): InlineComment {
-  const reasonBlock = proposal.reason ? `\n_${proposal.reason}_\n` : "";
-  const body = [
-    `Daemon \`${daemonName}\` suggests:${reasonBlock}`,
-    "```suggestion",
-    proposal.replacement,
-    "```",
-  ].join("\n");
-  const comment: InlineComment = {
-    path: proposal.file,
-    line: proposal.endLine,
-    side: "RIGHT",
-    body,
-  };
-  if (proposal.endLine > proposal.line) {
-    comment.start_line = proposal.line;
-    comment.start_side = "RIGHT";
-  }
-  return comment;
-}
+type FileDiff = {
+  oldPath: string | null;
+  newPath: string | null;
+  headerLines: string[];
+  hunks: DiffHunk[];
+};
+
+type DaemonClassified = {
+  daemonName: string;
+  inlineComments: InlineComment[];
+  fixupHunks: number;
+  fixupFiles: string[];
+  fixupPatchSegments: string[];
+};
 
 function rangeContains(
   outer: { start: number; end: number },
@@ -473,25 +493,153 @@ function rangeContains(
   return outer.start <= inner.start && inner.end <= outer.end;
 }
 
-function classifyProposalForInline(
+function parseUnifiedDiff(patch: string): FileDiff[] {
+  const files: FileDiff[] = [];
+  if (patch.trim().length === 0) return files;
+  const lines = patch.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    if (!lines[i].startsWith("diff --git ")) {
+      i += 1;
+      continue;
+    }
+    const headerLines: string[] = [lines[i]];
+    let oldPath: string | null = null;
+    let newPath: string | null = null;
+    i += 1;
+    while (i < lines.length && !lines[i].startsWith("@@") && !lines[i].startsWith("diff --git ")) {
+      headerLines.push(lines[i]);
+      if (lines[i].startsWith("--- ")) {
+        const value = lines[i].slice(4);
+        oldPath = value === "/dev/null" ? null : value.replace(/^a\//, "");
+      } else if (lines[i].startsWith("+++ ")) {
+        const value = lines[i].slice(4);
+        newPath = value === "/dev/null" ? null : value.replace(/^b\//, "");
+      }
+      i += 1;
+    }
+    const hunks: DiffHunk[] = [];
+    while (i < lines.length && lines[i].startsWith("@@")) {
+      const headerMatch = lines[i].match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (!headerMatch) {
+        i += 1;
+        continue;
+      }
+      const oldStart = Number.parseInt(headerMatch[1], 10);
+      const oldCount = headerMatch[2] !== undefined ? Number.parseInt(headerMatch[2], 10) : 1;
+      const newStart = Number.parseInt(headerMatch[3], 10);
+      const newCount = headerMatch[4] !== undefined ? Number.parseInt(headerMatch[4], 10) : 1;
+      const headerLine = lines[i];
+      i += 1;
+      const bodyLines: string[] = [];
+      const newSideLines: string[] = [];
+      while (i < lines.length && !lines[i].startsWith("@@") && !lines[i].startsWith("diff --git ")) {
+        const line = lines[i];
+        if (line.startsWith("+")) {
+          newSideLines.push(line.slice(1));
+          bodyLines.push(line);
+        } else if (line.startsWith("-")) {
+          bodyLines.push(line);
+        } else if (line.startsWith(" ")) {
+          newSideLines.push(line.slice(1));
+          bodyLines.push(line);
+        } else if (line.startsWith("\\")) {
+          bodyLines.push(line);
+        } else if (line.length === 0 && i === lines.length - 1) {
+          break;
+        } else {
+          break;
+        }
+        i += 1;
+      }
+      hunks.push({
+        oldStart,
+        oldCount,
+        newStart,
+        newCount,
+        newText: newSideLines.join("\n"),
+        raw: [headerLine, ...bodyLines].join("\n"),
+      });
+    }
+    files.push({ oldPath, newPath, headerLines, hunks });
+  }
+  return files;
+}
+
+function buildInlineCommentFromHunk(
   daemonName: string,
-  proposals: Proposal[],
+  file: string,
+  hunk: DiffHunk,
+): InlineComment | null {
+  if (hunk.oldCount === 0) return null;
+  const body = [
+    `Daemon \`${daemonName}\` suggests:`,
+    "```suggestion",
+    hunk.newText,
+    "```",
+  ].join("\n");
+  const endLine = hunk.oldStart + hunk.oldCount - 1;
+  const comment: InlineComment = {
+    path: file,
+    line: endLine,
+    side: "RIGHT",
+    body,
+  };
+  if (endLine > hunk.oldStart) {
+    comment.start_line = hunk.oldStart;
+    comment.start_side = "RIGHT";
+  }
+  return comment;
+}
+
+function classifyDaemonDiff(
+  daemonName: string,
+  diff: string,
   prFiles: Map<string, PrFileInfo>,
-): ClassifiedProposal {
+): DaemonClassified {
   const inlineComments: InlineComment[] = [];
-  const fixupTargets: Proposal[] = [];
-  for (const proposal of proposals) {
-    const prInfo = prFiles.get(proposal.file);
-    const target = { start: proposal.line, end: proposal.endLine };
-    const inHunk =
-      prInfo !== undefined && prInfo.ranges.some((range) => rangeContains(range, target));
-    if (inHunk) {
-      inlineComments.push(buildInlineComment(daemonName, proposal));
-    } else {
-      fixupTargets.push(proposal);
+  const fixupFiles = new Set<string>();
+  const fixupPatchSegments: string[] = [];
+  let fixupHunks = 0;
+  for (const fileDiff of parseUnifiedDiff(diff)) {
+    const file = fileDiff.newPath ?? fileDiff.oldPath;
+    if (!file) continue;
+    const prInfo = fileDiff.oldPath ? prFiles.get(fileDiff.oldPath) : undefined;
+    const fileFixupHunks: DiffHunk[] = [];
+    for (const hunk of fileDiff.hunks) {
+      const inline =
+        fileDiff.oldPath !== null &&
+        prInfo !== undefined &&
+        hunk.oldCount > 0 &&
+        prInfo.ranges.some((range) =>
+          rangeContains(range, { start: hunk.oldStart, end: hunk.oldStart + hunk.oldCount - 1 }),
+        );
+      if (inline) {
+        const comment = buildInlineCommentFromHunk(daemonName, fileDiff.oldPath as string, hunk);
+        if (comment) {
+          inlineComments.push(comment);
+          continue;
+        }
+      }
+      fileFixupHunks.push(hunk);
+    }
+    if (fileFixupHunks.length > 0) {
+      fixupHunks += fileFixupHunks.length;
+      fixupFiles.add(file);
+      const segment = [
+        ...fileDiff.headerLines,
+        ...fileFixupHunks.map((hunk) => hunk.raw),
+      ].join("\n");
+      fixupPatchSegments.push(`${segment}\n`);
     }
   }
-  return { daemonName, inlineComments, fixupTargets };
+  return {
+    daemonName,
+    inlineComments,
+    fixupHunks,
+    fixupFiles: [...fixupFiles].sort(),
+    fixupPatchSegments,
+  };
 }
 
 async function postProposalReview(
@@ -546,39 +694,15 @@ async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function applyProposalToFile(filePath: string, proposal: Proposal): Promise<void> {
-  const original = await readFile(filePath, "utf8");
-  const lines = original.split("\n");
-  if (proposal.line < 1 || proposal.endLine > lines.length) {
-    throw new Error(
-      `proposal lines ${proposal.line}-${proposal.endLine} out of range for ${proposal.file} (file has ${lines.length} lines)`,
-    );
-  }
-  const before = lines.slice(0, proposal.line - 1);
-  const after = lines.slice(proposal.endLine);
-  const replacement = proposal.replacement === "" ? [] : proposal.replacement.split("\n");
-  await writeFile(filePath, [...before, ...replacement, ...after].join("\n"));
-}
-
-type FixupContribution = { daemonName: string; proposal: Proposal };
+type FixupSummaryEntry = { daemonName: string; files: string[] };
 
 type FixupResult = {
   branchName: string;
   branchUrl: string;
   stackedPrUrl: string | null;
   stackedPrError: string | null;
-  applied: FixupContribution[];
-  skipped: Array<{ contribution: FixupContribution; reason: string }>;
+  applied: FixupSummaryEntry[];
 };
-
-function orderForApply(contributions: FixupContribution[]): FixupContribution[] {
-  return [...contributions].sort((a, b) => {
-    if (a.proposal.file !== b.proposal.file) {
-      return a.proposal.file < b.proposal.file ? -1 : 1;
-    }
-    return b.proposal.line - a.proposal.line;
-  });
-}
 
 async function ensureStackedPr(
   owner: string,
@@ -586,7 +710,7 @@ async function ensureStackedPr(
   branchName: string,
   baseRef: string,
   prNumber: number,
-  contributions: FixupContribution[],
+  applied: FixupSummaryEntry[],
   githubToken: string,
 ): Promise<string> {
   const headers = {
@@ -610,12 +734,9 @@ async function ensureStackedPr(
   const bodyLines = [
     `Auto-generated by daemon-review for #${prNumber}.`,
     "",
-    "Heals applied:",
-    ...contributions.map(
-      ({ daemonName, proposal }) =>
-        `- \`${daemonName}\`: \`${proposal.file}\`:${proposal.line}${
-          proposal.endLine !== proposal.line ? `-${proposal.endLine}` : ""
-        }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
+    "Files touched:",
+    ...applied.flatMap(({ daemonName, files }) =>
+      files.map((file) => `- \`${daemonName}\`: \`${file}\``),
     ),
     "",
     `Merge this PR into \`${baseRef}\` to land the heals on top of #${prNumber}.`,
@@ -650,10 +771,11 @@ async function pushFixupBranch(
   prNumber: number,
   prHeadSha: string,
   prHeadRef: string,
-  contributions: FixupContribution[],
+  classifications: DaemonClassified[],
   githubToken: string,
 ): Promise<FixupResult | null> {
-  if (contributions.length === 0) return null;
+  const contributing = classifications.filter((c) => c.fixupPatchSegments.length > 0);
+  if (contributing.length === 0) return null;
 
   const branchName = `claude/daemon-fixup-pr-${prNumber}`;
   const fixupRoot = await mkdtemp(join(tmpdir(), `daemon-fixup-${prNumber}-`));
@@ -664,19 +786,20 @@ async function pushFixupBranch(
   await gitOrThrow(fixupRoot, ["fetch", "--depth", "1", "origin", prHeadSha]);
   await gitOrThrow(fixupRoot, ["checkout", "-b", branchName, prHeadSha]);
 
-  const applied: FixupContribution[] = [];
-  const skipped: Array<{ contribution: FixupContribution; reason: string }> = [];
-  for (const contribution of orderForApply(contributions)) {
-    const target = join(fixupRoot, contribution.proposal.file);
-    try {
-      await applyProposalToFile(target, contribution.proposal);
-      applied.push(contribution);
-    } catch (error) {
-      skipped.push({
-        contribution,
-        reason: error instanceof Error ? error.message : String(error),
-      });
+  const applied: FixupSummaryEntry[] = [];
+  for (const classification of contributing) {
+    const patch = classification.fixupPatchSegments.join("");
+    const patchPath = join(fixupRoot, `.daemon-fixup-${classification.daemonName}.patch`);
+    await writeFile(patchPath, patch);
+    const result = await runGit(fixupRoot, ["apply", "--whitespace=nowarn", patchPath]);
+    await rm(patchPath, { force: true });
+    if (!result.ok) {
+      console.error(
+        `git apply failed for ${classification.daemonName}: ${result.stderr || result.stdout}`,
+      );
+      continue;
     }
+    applied.push({ daemonName: classification.daemonName, files: classification.fixupFiles });
   }
 
   if (applied.length === 0) {
@@ -685,18 +808,18 @@ async function pushFixupBranch(
   }
 
   const messageLines = [`Daemon fixup for PR #${prNumber}`, ""];
-  for (const { daemonName, proposal } of applied) {
-    messageLines.push(
-      `- ${daemonName}: ${proposal.file}:${proposal.line}${
-        proposal.endLine !== proposal.line ? `-${proposal.endLine}` : ""
-      }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
-    );
+  for (const { daemonName, files } of applied) {
+    for (const file of files) {
+      messageLines.push(`- ${daemonName}: ${file}`);
+    }
   }
   await gitOrThrow(fixupRoot, [
     "-c",
     "user.email=daemon-fixup@local",
     "-c",
     "user.name=daemon-fixup",
+    "-c",
+    "commit.gpgsign=false",
     "commit",
     "-am",
     messageLines.join("\n"),
@@ -727,36 +850,32 @@ async function pushFixupBranch(
     stackedPrUrl,
     stackedPrError,
     applied,
-    skipped,
   };
 }
 
 function buildReviewBody(
-  daemonName: string,
-  inlineCount: number,
-  daemonFixupApplied: FixupContribution[],
+  classification: DaemonClassified,
   fixup: FixupResult | null,
 ): string {
   const lines: string[] = [];
+  const inlineCount = classification.inlineComments.length;
   if (inlineCount > 0) {
     lines.push(
-      `Daemon \`${daemonName}\` posted ${inlineCount} inline healing suggestion${inlineCount === 1 ? "" : "s"}.`,
+      `Daemon \`${classification.daemonName}\` posted ${inlineCount} inline healing suggestion${inlineCount === 1 ? "" : "s"}.`,
     );
   }
-  if (daemonFixupApplied.length > 0 && fixup) {
+  const daemonContributedFixup =
+    fixup !== null &&
+    fixup.applied.some((entry) => entry.daemonName === classification.daemonName);
+  if (daemonContributedFixup && fixup) {
     const target = fixup.stackedPrUrl
       ? `stacked PR ${fixup.stackedPrUrl}`
       : `branch [\`${fixup.branchName}\`](${fixup.branchUrl})`;
     lines.push(
       "",
-      `${daemonFixupApplied.length} additional heal${daemonFixupApplied.length === 1 ? "" : "s"} fall outside this PR's diff hunks and have been committed to ${target}:`,
+      `${classification.fixupHunks} additional hunk${classification.fixupHunks === 1 ? "" : "s"} fall outside this PR's diff hunks and have been committed to ${target}:`,
       "",
-      ...daemonFixupApplied.map(
-        ({ proposal }) =>
-          `- \`${proposal.file}\`:${proposal.line}${
-            proposal.endLine !== proposal.line ? `-${proposal.endLine}` : ""
-          }${proposal.reason ? ` — ${proposal.reason}` : ""}`,
-      ),
+      ...classification.fixupFiles.map((file) => `- \`${file}\``),
     );
     if (!fixup.stackedPrUrl && fixup.stackedPrError) {
       lines.push("", `_Stacked PR creation failed: ${fixup.stackedPrError}_`);
@@ -807,17 +926,14 @@ async function main() {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  const proposingOutcomes = outcomes.filter(
-    (outcome) => outcome.ok && outcome.proposals.length > 0,
+  const editingOutcomes = outcomes.filter(
+    (outcome) => outcome.ok && outcome.diff.trim().length > 0,
   );
-  if (proposingOutcomes.length > 0) {
+  if (editingOutcomes.length > 0) {
     try {
       const prFiles = await fetchPrFiles(githubToken, owner, repo, prNumber);
-      const classifications = proposingOutcomes.map((outcome) =>
-        classifyProposalForInline(outcome.name, outcome.proposals, prFiles),
-      );
-      const allFixupContributions: FixupContribution[] = classifications.flatMap((c) =>
-        c.fixupTargets.map((proposal) => ({ daemonName: c.daemonName, proposal })),
+      const classifications = editingOutcomes.map((outcome) =>
+        classifyDaemonDiff(outcome.name, outcome.diff, prFiles),
       );
       let fixup: FixupResult | null = null;
       try {
@@ -827,26 +943,14 @@ async function main() {
           prNumber,
           requiredEnv("PR_HEAD_SHA"),
           requiredEnv("PR_HEAD_REF"),
-          allFixupContributions,
+          classifications,
           githubToken,
         );
       } catch (error) {
         console.error("daemon fixup branch push failed:", error);
       }
-      const appliedByDaemon = new Map<string, FixupContribution[]>();
-      for (const contribution of fixup?.applied ?? []) {
-        const list = appliedByDaemon.get(contribution.daemonName) ?? [];
-        list.push(contribution);
-        appliedByDaemon.set(contribution.daemonName, list);
-      }
       for (const classification of classifications) {
-        const applied = appliedByDaemon.get(classification.daemonName) ?? [];
-        const body = buildReviewBody(
-          classification.daemonName,
-          classification.inlineComments.length,
-          applied,
-          fixup,
-        );
+        const body = buildReviewBody(classification, fixup);
         try {
           await postProposalReview(
             githubToken,

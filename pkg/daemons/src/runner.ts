@@ -20,7 +20,6 @@ import {
 import type { AgentProvider, ProviderRunFailure } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
-import { createProposeTool, type Proposal, type ProposalCapture } from "./tools/propose";
 import { createWideEvent, stdoutSink, type WideEvent, type WideEventSink } from "./wide-events";
 
 export type RunOptions = {
@@ -40,7 +39,6 @@ export type RunSuccess = {
   payload: CompletePayload;
   turns: number;
   tokens: { input: number; output: number };
-  proposals: Proposal[];
 };
 
 export type RunFailure = {
@@ -87,7 +85,7 @@ Use the \`track\` tool for daemon-local structured memory:
 
 If the available memory and unchanged dependencies already answer the audit, complete from memory instead of rereading the repo.
 
-When you can confidently apply a heal, register it via the \`propose\` tool with structured (\`file\`, \`line\`, optional \`endLine\`, \`replacement\`, optional \`reason\`) data instead of mutating files. Proposed heals are surfaced to reviewers as inline \`suggestion\` review comments wherever their lines overlap the PR's diff; the real checkout is not modified. If the daemon's job is purely auditing, do not call \`propose\` and rely on findings alone.`;
+When you can confidently apply a heal, edit the file directly using \`Edit\` or \`Write\`. Your working tree is a sandbox copy of the PR — your edits do not touch the real checkout. The runner diffs your sandbox against the PR head after you finish and turns each hunk into a one-click inline \`suggestion\` review comment when the hunk lands inside the PR's diff, or commits it to a stacked fixup PR otherwise. If the daemon's job is purely auditing, do not edit any files and rely on findings alone.`;
 
 export const COMPLETE_TOOL_INSTRUCTIONS = `When — and only when — your task is finished, call the \`complete\` tool exactly once. It takes:
 
@@ -95,7 +93,7 @@ export const COMPLETE_TOOL_INSTRUCTIONS = `When — and only when — your task 
 - \`findings\` (optional): per-invariant outcomes, each with \`invariant\` (snake_case tag), optional \`target\`, required \`status\` of "ok" | "healed" | "violation_persists" | "skipped", and optional \`note\`
 - \`nextRunHint\` (optional): advice for the next invocation
 
-If you have a confident heal for a finding, register it with the \`propose\` tool (see preamble) before calling \`complete\`. Use \`status: "healed"\` on a finding only when a corresponding \`propose\` call has been made for it.
+If you have a confident heal for a finding, edit the relevant file directly with \`Edit\` or \`Write\` (see preamble) before calling \`complete\`. Use \`status: "healed"\` on a finding only when you have written the corresponding fix to its file.
 
 Call \`complete\` immediately after you have enough evidence and have recorded any high-value tracked facts for future runs.
 Do not spend extra turns on bookkeeping after the audit result is already known.`;
@@ -155,7 +153,6 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
   const memoryStore = await createDaemonMemoryStore(spec.name, spec.scopeRoot, opts.memoryDir);
   const readPaths = new Set<string>();
   const events: WideEvent[] = [];
-  const proposalCapture: ProposalCapture = { proposals: [] };
   const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(previousMemory));
 
   const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
@@ -182,7 +179,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
-    extraTools: [createTrackTool(memoryStore, runId), createProposeTool(proposalCapture)],
+    extraTools: [createTrackTool(memoryStore, runId)],
     onTurnStart(turn) {
       emit({
         kind: "daemon.turn.started",
@@ -289,7 +286,6 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       payload: result.payload,
       turns: result.turns,
       tokens: result.tokens,
-      proposals: proposalCapture.proposals,
     };
   }
   const failure = result as ProviderRunFailure;
