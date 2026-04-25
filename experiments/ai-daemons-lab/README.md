@@ -1,6 +1,6 @@
 # AI Daemons Lab
 
-Example consumer of [`@redc/daemons`](../../pkg/daemons/README.md).
+Example consumer of [`@red/daemons`](../../pkg/daemons/README.md).
 
 Daemons are authored as markdown files with a `.daemon.md` suffix anywhere
 under the repo. Each daemon's scope — the directory it can read and write —
@@ -46,5 +46,5 @@ description: One sentence for `redc daemons list`.
 ```
 
 The markdown body is the daemon's brief. At the end of a run, it must reply
-with ONLY a fenced `complete` block; see `@redc/daemons` README for the
+with ONLY a fenced `complete` block; see `@red/daemons` README for the
 payload shape.

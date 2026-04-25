@@ -11,6 +11,7 @@ import {
   normalizeCheckedPath,
   saveMemoryRecord,
 } from "./memory";
+import { saveDaemonRun } from "./run-history";
 import {
   createPiProvider,
   DEFAULT_OPENROUTER_MODEL,
@@ -19,7 +20,7 @@ import {
 import type { AgentProvider } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
-import { stdoutSink, type WideEventSink } from "./wide-events";
+import { createWideEvent, stdoutSink, type WideEvent, type WideEventSink } from "./wide-events";
 
 export type RunOptions = {
   root?: string;
@@ -130,14 +131,22 @@ export async function runDaemon(name: string, opts: RunOptions = {}): Promise<Ru
 }
 
 export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<RunResult> {
-  const emit = opts.emit ?? stdoutSink();
+  const sink = opts.emit ?? stdoutSink();
   const provider = opts.provider ?? selectProvider();
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxWallclockMs = opts.maxWallclockMs ?? DEFAULT_MAX_WALLCLOCK_MS;
   const runId = newRunId(spec.name);
+  const startedAt = new Date().toISOString();
   const previousMemory = await loadMemorySnapshot(spec.name, spec.scopeRoot, opts.memoryDir);
   const memoryStore = await createDaemonMemoryStore(spec.name, spec.scopeRoot, opts.memoryDir);
   const readPaths = new Set<string>();
+  const events: WideEvent[] = [];
+
+  const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
+    const full = createWideEvent(event);
+    events.push(full);
+    sink(full);
+  };
 
   emit({
     kind: "daemon.run.started",
@@ -237,6 +246,25 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
         outputTokens: result.tokens.output,
       },
     });
+    await saveDaemonRun(
+      {
+        daemon: spec.name,
+        scopeRoot: spec.scopeRoot,
+        file: spec.file,
+        runId,
+        provider: provider.name,
+        input: opts.input ?? null,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "completed",
+        turns: result.turns,
+        tokens: result.tokens,
+        payload: result.payload,
+        events,
+      },
+      spec.scopeRoot,
+      opts.memoryDir,
+    );
     return {
       ok: true,
       runId,
@@ -259,6 +287,28 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       output: result.tokens.output,
     },
   });
+  await saveDaemonRun(
+    {
+      daemon: spec.name,
+      scopeRoot: spec.scopeRoot,
+      file: spec.file,
+      runId,
+      provider: provider.name,
+      input: opts.input ?? null,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      status: "failed",
+      turns: result.turns,
+      tokens: result.tokens,
+      failure: {
+        reason: result.reason,
+        message: result.message,
+      },
+      events,
+    },
+    spec.scopeRoot,
+    opts.memoryDir,
+  );
   return {
     ok: false,
     runId,

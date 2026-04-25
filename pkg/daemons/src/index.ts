@@ -16,7 +16,13 @@ export {
   type CompleteFinding as CompleteFindingT,
   type DaemonFrontmatter as DaemonFrontmatterT,
 } from "./schema";
-export { stdoutSink, memorySink, type WideEvent, type WideEventSink } from "./wide-events";
+export {
+  createWideEvent,
+  stdoutSink,
+  memorySink,
+  type WideEvent,
+  type WideEventSink,
+} from "./wide-events";
 export {
   DEFAULT_MEMORY_DIRNAME,
   buildMemoryPrompt,
@@ -24,6 +30,7 @@ export {
   createDaemonMemoryStore,
   createEmptyMemoryRecord,
   findRepoRoot,
+  loadLatestMemoryRecord,
   loadMemorySnapshot,
   normalizeCheckedPath,
   resolveMemoryDir,
@@ -34,6 +41,14 @@ export {
   type DaemonMemoryStore,
   type TrackEntry,
 } from "./memory";
+export {
+  loadDaemonRun,
+  listDaemonRuns,
+  saveDaemonRun,
+  type DaemonRunIndex,
+  type DaemonRunIndexEntry,
+  type DaemonRunRecord,
+} from "./run-history";
 export type {
   AgentProvider,
   ProviderRunOptions,

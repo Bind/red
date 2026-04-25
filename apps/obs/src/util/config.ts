@@ -5,6 +5,7 @@ import {
 	InMemoryActiveRequestAggregator,
 	type RollupQuery,
 } from "../service/collector-service";
+import { createDaemonObservabilityQuery } from "../service/daemon-query";
 import {
 	DedupingTriageDispatcher,
 	HttpTriageDispatcher,
@@ -214,7 +215,16 @@ export function createCollectorDeps(
 		triageDispatcher: config.triage
 			? createTriageDispatcher(config.triage)
 			: undefined,
+		daemonQuery: shouldEnableDaemonQuery() ? createDaemonObservabilityQuery() : undefined,
 	};
+}
+
+function shouldEnableDaemonQuery(env: NodeJS.ProcessEnv = process.env): boolean {
+	return Boolean(
+		env.AI_DAEMONS_MEMORY_BACKEND ||
+			env.AI_DAEMONS_MEMORY_DIR ||
+			env.AI_DAEMONS_R2_BUCKET,
+	);
 }
 
 function createRollupQuery(config: WideEventsConfig): RollupQuery {

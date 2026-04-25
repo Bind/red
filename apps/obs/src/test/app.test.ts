@@ -16,7 +16,7 @@ afterEach(() => {
 	}
 });
 
-function createFixtureApp() {
+function createFixtureApp(extraDeps: Partial<Parameters<typeof createApp>[0]> = {}) {
 	tempDir = mkdtempSync(join(tmpdir(), "wide-events-collector-"));
 	const rawEventsDir = join(tempDir, "raw");
 	const rollupDir = join(tempDir, "rollup");
@@ -28,6 +28,7 @@ function createFixtureApp() {
 				incompleteGraceMs: 50,
 				now: () => new Date("2026-04-08T14:00:00.000Z"),
 			}),
+			...extraDeps,
 		}),
 		rawEventsDir,
 		rollupDir,
@@ -273,5 +274,112 @@ describe("wide-events collector app", () => {
 		expect(readFileSync(rollupPath, "utf8")).toContain(
 			'"rollup_reason":"timeout"',
 		);
+	});
+
+	test("exposes daemon memory and run history endpoints", async () => {
+		const { app } = createFixtureApp({
+			daemonQuery: {
+				async getMemory() {
+					return {
+						version: 3,
+						daemonContractVersion: 1,
+						daemon: "docs-command-surface",
+						scopeRoot: "/repo",
+						repoRoot: "/repo",
+						repoId: "Bind/red",
+						commit: "abc123",
+						baseCommit: null,
+						updatedAt: "2026-04-24T22:00:00.000Z",
+						tracked: {
+							readme_surface: {
+								subject: "readme_surface",
+								fingerprint: "fp",
+								fact: { command: "just verify" },
+								depends_on: ["README.md"],
+								checked_at: "2026-04-24T22:00:00.000Z",
+								source_run_id: "run_1",
+							},
+						},
+						lastRun: {
+							summary: "checked",
+							findings: [],
+							checkedFiles: [],
+							fileInventory: [],
+						},
+					};
+				},
+				async listRuns() {
+					return [
+						{
+							runId: "run_1",
+							daemon: "docs-command-surface",
+							commit: "abc123",
+							provider: "openrouter",
+							startedAt: "2026-04-24T22:00:00.000Z",
+							finishedAt: "2026-04-24T22:00:05.000Z",
+							status: "failed" as const,
+							turns: 18,
+							tokens: { input: 10, output: 5 },
+							reason: "wallclock_exceeded" as const,
+							message: "exceeded max wallclock (180000ms)",
+						},
+					];
+				},
+				async getRun() {
+					return {
+						version: 1,
+						daemon: "docs-command-surface",
+						repoId: "Bind/red",
+						repoRoot: "/repo",
+						scopeRoot: "/repo",
+						file: "/repo/docs-command-surface.daemon.md",
+						runId: "run_1",
+						provider: "openrouter",
+						input: null,
+						commit: "abc123",
+						startedAt: "2026-04-24T22:00:00.000Z",
+						finishedAt: "2026-04-24T22:00:05.000Z",
+						status: "failed" as const,
+						turns: 18,
+						tokens: { input: 10, output: 5 },
+						failure: {
+							reason: "wallclock_exceeded" as const,
+							message: "exceeded max wallclock (180000ms)",
+						},
+						events: [],
+					};
+				},
+			},
+		});
+
+		const memoryResponse = await app.fetch(
+			new Request("http://collector.local/v1/daemons/docs-command-surface/memory"),
+		);
+		expect(memoryResponse.status).toBe(200);
+		expect((await memoryResponse.json()) as { daemon: string }).toMatchObject({
+			daemon: "docs-command-surface",
+		});
+
+		const runsResponse = await app.fetch(
+			new Request("http://collector.local/v1/daemons/docs-command-surface/runs"),
+		);
+		expect(runsResponse.status).toBe(200);
+		expect((await runsResponse.json()) as { count: number }).toMatchObject({
+			count: 1,
+		});
+
+		const runResponse = await app.fetch(
+			new Request("http://collector.local/v1/daemons/docs-command-surface/runs/run_1"),
+		);
+		expect(runResponse.status).toBe(200);
+		expect((await runResponse.json()) as { runId: string }).toMatchObject({
+			runId: "run_1",
+		});
+
+		const debugResponse = await app.fetch(
+			new Request("http://collector.local/v1/daemons/docs-command-surface/debug"),
+		);
+		expect(debugResponse.status).toBe(200);
+		expect(await debugResponse.text()).toContain("Daemon Debug: docs-command-surface");
 	});
 });
