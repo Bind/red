@@ -14,8 +14,7 @@ just setp
 just up
 just down
 just test
-just typechek
-just check
+just typecheck
 # broader operator shell CLI
 ./scripts/redc help
 ```
