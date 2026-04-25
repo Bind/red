@@ -67,7 +67,7 @@ jobs:
           manifest_hash="$(
             {
               sha256sum package.json bun.lock
-              find apps pkg workflows -name package.json -print0 | sort -z | xargs -0 sha256sum
+              find apps pkg workflows experiments -path '*/node_modules' -prune -o -name package.json -print0 | sort -z | xargs -0 sha256sum
             } | sha256sum | cut -d' ' -f1
           )"
           alpine_image="ghcr.io/${OWNER}/red-workspace-deps-alpine:${manifest_hash}"

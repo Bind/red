@@ -8,14 +8,21 @@ COPY apps/auth/package.json ./apps/auth/
 COPY apps/bff/package.json ./apps/bff/
 COPY apps/ctl/package.json ./apps/ctl/
 COPY apps/grs/package.json ./apps/grs/
+COPY apps/grs/zig/examples/cloudflare-worker/package.json ./apps/grs/zig/examples/cloudflare-worker/
 COPY apps/mcp/package.json ./apps/mcp/
 COPY apps/obs/package.json ./apps/obs/
 COPY apps/triage/package.json ./apps/triage/
 COPY apps/web/package.json ./apps/web/
+COPY experiments/ai-daemons-lab/package.json ./experiments/ai-daemons-lab/
+COPY experiments/bash-runtime-lab/package.json ./experiments/bash-runtime-lab/
+COPY experiments/ci-runner-lab/package.json ./experiments/ci-runner-lab/
+COPY experiments/durable-workflow-lab/package.json ./experiments/durable-workflow-lab/
+COPY experiments/smithers-lab/package.json ./experiments/smithers-lab/
 COPY pkg/daemons/package.json ./pkg/daemons/
 COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/server/package.json ./pkg/server/
+
 COPY experiments/ai-daemons-lab/package.json ./experiments/ai-daemons-lab/
 COPY experiments/bash-runtime-lab/package.json ./experiments/bash-runtime-lab/
 COPY experiments/ci-runner-lab/package.json ./experiments/ci-runner-lab/

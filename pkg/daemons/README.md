@@ -1,4 +1,4 @@
-# @redc/daemons
+# @red/daemons
 
 Markdown-authored AI daemons for red.
 
@@ -71,7 +71,7 @@ import {
   createInMemoryCodexAuthSource,
   createPiProvider,
   runDaemon,
-} from "@redc/daemons";
+} from "@red/daemons";
 
 // Default: reads ~/.codex/auth.json (written by `codex login`)
 const provider = createPiProvider({
@@ -234,7 +234,7 @@ import {
   memorySink,
   createPiProvider,
   createFileCodexAuthSource,
-} from "@redc/daemons";
+} from "@red/daemons";
 
 const { specs } = await loadDaemons();
 const { emit, drain } = memorySink();

@@ -14,12 +14,14 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: write
     timeout-minutes: 20
     steps:
       - name: Checkout trusted base repo
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted-base
           fetch-depth: 1
           persist-credentials: false
 
@@ -43,18 +45,18 @@ jobs:
         run: curl -fsS https://dotenvx.sh | sh
 
       - name: Install dependencies
+        working-directory: trusted-base
         run: bun install --frozen-lockfile
 
-      - name: Provision daemon memory infra
-        run: dotenvx run -f .env.ci -- just provision dev .env.ci
-
       - name: Run daemon review
+        working-directory: trusted-base
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
           DAEMON_REVIEW_MAX_PARALLEL: "3"
+          DAEMON_REVIEW_PROPOSAL_MODE: "true"
           AI_DAEMONS_PROVIDER: openrouter
           AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
           AI_DAEMONS_MEMORY_BACKEND: r2

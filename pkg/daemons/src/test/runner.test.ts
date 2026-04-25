@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { loadDaemonRun, listDaemonRuns } from "../run-history";
 import type {
   AgentProvider,
   ProviderRunOptions,
@@ -244,5 +245,44 @@ describe("runner", () => {
     expect(capturedSystemPrompt).toContain("Runner-managed memory from the nearest verified commit snapshot is available.");
     expect(capturedSystemPrompt).toContain("Previously checked and unchanged:");
     expect(capturedSystemPrompt).toContain("notes.txt");
+  });
+
+  test("persists completed daemon runs with emitted events", async () => {
+    await writeDaemon("history-ok", "d");
+    const memoryDir = join(dir, ".cache");
+    const result = await runDaemon("history-ok", {
+      root: dir,
+      memoryDir,
+      provider: mockProvider({
+        turns: 1,
+        toolCallsPerTurn: [[{ name: "read" }]],
+        outcome: { kind: "complete", payload: { summary: "done", findings: [] } },
+      }),
+    });
+    expect(result.ok).toBe(true);
+    const runs = await listDaemonRuns("history-ok", dir, memoryDir);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("completed");
+    if (!result.ok) throw new Error("expected success");
+    const record = await loadDaemonRun("history-ok", dir, result.runId, memoryDir);
+    expect(record).not.toBeNull();
+    expect(record?.payload?.summary).toBe("done");
+    expect(record?.events.some((event) => event.kind === "daemon.run.completed")).toBe(true);
+  });
+
+  test("persists failed daemon runs with failure metadata", async () => {
+    await writeDaemon("history-fail", "d");
+    const memoryDir = join(dir, ".cache");
+    const result = await runDaemon("history-fail", {
+      root: dir,
+      memoryDir,
+      provider: mockProvider({ turns: 2, outcome: { kind: "wallclock" } }),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    const record = await loadDaemonRun("history-fail", dir, result.runId, memoryDir);
+    expect(record?.status).toBe("failed");
+    expect(record?.failure?.reason).toBe("wallclock_exceeded");
+    expect(record?.events.some((event) => event.kind === "daemon.run.failed")).toBe(true);
   });
 });

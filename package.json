@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "packageManager": "bun@1.3.10",
-  "workspaces": ["apps/*", "pkg/*", "workflows/*", "experiments/*"],
+  "workspaces": ["apps/*", "pkg/*", "workflows/*"],
   "bin": {
     "redc": "apps/ctl/cli/index.ts"
   },

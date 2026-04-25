@@ -14,7 +14,8 @@
   "dependencies": {
     "@duckdb/node-api": "^1.5.2-r.1",
     "@red/health": "workspace:*",
-    "@red/server": "workspace:*"
+    "@red/server": "workspace:*",
+    "@red/daemons": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",
