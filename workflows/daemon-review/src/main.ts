@@ -466,6 +466,13 @@ function buildInlineComment(daemonName: string, proposal: Proposal): InlineComme
   return comment;
 }
 
+function rangeContains(
+  outer: { start: number; end: number },
+  inner: { start: number; end: number },
+): boolean {
+  return outer.start <= inner.start && inner.end <= outer.end;
+}
+
 function classifyProposalForInline(
   daemonName: string,
   proposals: Proposal[],
@@ -474,7 +481,11 @@ function classifyProposalForInline(
   const inlineComments: InlineComment[] = [];
   const fixupTargets: Proposal[] = [];
   for (const proposal of proposals) {
-    if (prFiles.has(proposal.file)) {
+    const prInfo = prFiles.get(proposal.file);
+    const target = { start: proposal.line, end: proposal.endLine };
+    const inHunk =
+      prInfo !== undefined && prInfo.ranges.some((range) => rangeContains(range, target));
+    if (inHunk) {
       inlineComments.push(buildInlineComment(daemonName, proposal));
     } else {
       fixupTargets.push(proposal);
@@ -640,7 +651,7 @@ function buildReviewBody(
   if (daemonFixupApplied.length > 0 && fixup) {
     lines.push(
       "",
-      `${daemonFixupApplied.length} additional heal${daemonFixupApplied.length === 1 ? "" : "s"} touch file${daemonFixupApplied.length === 1 ? "" : "s"} outside this PR's diff and have been committed to [\`${fixup.branchName}\`](${fixup.branchUrl}):`,
+      `${daemonFixupApplied.length} additional heal${daemonFixupApplied.length === 1 ? "" : "s"} fall outside this PR's diff hunks and have been committed to [\`${fixup.branchName}\`](${fixup.branchUrl}):`,
       "",
       ...daemonFixupApplied.map(
         ({ proposal }) =>
