@@ -16,12 +16,19 @@ just down
 just tezt
 just typechek
 just check
+Common commands:
+
+```bash
+just
+just setup
+just up
+just down
+just test
+just typecheck
+just verify
 # broader operator shell CLI
 ./scripts/redc help
 ```
-
-Service-specific commands:
-
 ```bash
 just git-server-up
 just git-server-test
