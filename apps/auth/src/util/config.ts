@@ -143,7 +143,7 @@ function requiredBoolean(value: string | undefined, label: string): boolean {
 function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   const port = Number.parseInt(env.AUTH_LAB_PORT ?? "4020", 10);
   if (!Number.isFinite(port) || port <= 0) {
-    throw new Error(`AUTH_LAB_PORT must be a positive integer`);
+    throw new Error("AUTH_LAB_PORT must be a positive integer");
   }
   const hostname = env.AUTH_LAB_HOST ?? "127.0.0.1";
   const issuer = env.AUTH_LAB_ISSUER ?? `http://${hostname}:${port}`;

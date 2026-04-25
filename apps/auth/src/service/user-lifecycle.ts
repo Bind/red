@@ -85,7 +85,7 @@ export function createUserLifecycleService(
         throw new Error(`User ${email} not found`);
       }
       if (user.onboardingState !== "active" || !user.recoveryReady) {
-        throw new Error(`Active account is required to start recovery`);
+        throw new Error("Active account is required to start recovery");
       }
 
       await stores.user.updateByEmail(normalizedEmail, {
@@ -197,7 +197,7 @@ export function createUserLifecycleService(
       }
 
       if (!verified) {
-        throw new Error(`Recovery factor verification failed`);
+        throw new Error("Recovery factor verification failed");
       }
 
       const nextSessionKind =
