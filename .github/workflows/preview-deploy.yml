@@ -54,7 +54,7 @@ jobs:
         run: just lint
 
       - name: Test
-        run: bun test
+        run: bun test apps pkg workflows
 
       - name: Turbo build smoke
         env:
