@@ -525,7 +525,11 @@ async function main() {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
+  try {
+    await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
+  } catch (error) {
+    console.error("daemon review proposal comment failed:", error);
+  }
 
   const blockingFailures = outcomes.filter(
     (outcome) =>
