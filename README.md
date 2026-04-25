@@ -103,7 +103,8 @@ Main product and runtime surfaces live here.
 - `apps/triage/`: triage service plus optional Smithers-backed workflow runner mode.
 - `apps/web/`: Vite/React frontend app.
 
-### `pkg/`
+- Current experiments live under:
+  `ci-runner-lab/`, `durable-workflow-lab/`, `smithers-lab/`, `ai-daemons-lab/`, and `bash-runtime-lab/`.
 
 Shared importable code lives here.
 
