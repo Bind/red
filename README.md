@@ -10,12 +10,11 @@ Common commands:
 
 ```bash
 just
-just setp
+just setup
 just up
 just down
 just test
-just typechek
-just check
+just typecheck
 # broader operator shell CLI
 ./scripts/redc help
 ```
@@ -125,7 +124,7 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 - `experiments/README.md`: conventions for what belongs here and how new experiments should be structured.
 - Current experiments live under:
-  `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
+  `ai-daemons-lab/`, `bash-runtime-lab/`, `ci-runner-lab/`, `durable-workflow-lab/`, and `smithers-lab/`.
 
 ### `scripts/`
 
