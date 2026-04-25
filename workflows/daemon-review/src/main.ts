@@ -860,6 +860,35 @@ async function main() {
       } catch (error) {
         console.error("daemon fixup branch push failed:", error);
       }
+      try {
+        const diagSections = [
+          "## daemon-review diagnostic (debug)",
+          "",
+          "```",
+          `fixup is null: ${fixup === null}`,
+          `fixup.applied count: ${fixup?.applied.length ?? 0}`,
+          `fixup.stackedPrUrl: ${fixup?.stackedPrUrl ?? "<null>"}`,
+          `fixup.stackedPrTrace length: ${fixup?.stackedPrTrace.length ?? 0}`,
+          "stackedPrTrace:",
+          ...(fixup?.stackedPrTrace ?? []).map((line) => `  ${line}`),
+          "```",
+        ];
+        await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${githubToken}`,
+              accept: "application/vnd.github+json",
+              "content-type": "application/json",
+              "user-agent": "redc-daemon-review",
+            },
+            body: JSON.stringify({ body: diagSections.join("\n") }),
+          },
+        );
+      } catch (error) {
+        console.error("diagnostic comment failed:", error);
+      }
       const appliedByDaemon = new Map<string, FixupContribution[]>();
       for (const contribution of fixup?.applied ?? []) {
         const list = appliedByDaemon.get(contribution.daemonName) ?? [];
