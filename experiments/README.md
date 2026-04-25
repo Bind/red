@@ -64,7 +64,7 @@ Authoring spec for a TypeScript-first durable workflow model:
 - Bun-shell-compatible `sh` primitive for shell-heavy workflow steps
 - focused on workflow authoring UX rather than worker/runtime internals
 
-### `codemode-lab`
+### `ai-daemons-lab`
 
 Runtime probe for the `smithers.sh` / `executor.sh` style flow:
 
@@ -72,14 +72,21 @@ Runtime probe for the `smithers.sh` / `executor.sh` style flow:
 - Bun executes the generated module as the unit of work
 - captures logs and structured return values over HTTP
 
-### `jwks-auth-lab`
+### `bash-runtime-lab`
 
-Small auth/JWKS lab. Minimal structure is fine here because the scope is narrow.
+Bash runtime and shell integration lab:
 
-### `opencode-lab`
+- explores bash script execution patterns
+- tests shell command integration approaches
+- experiments with shell-based workflow execution
 
-Runner/backend spike for evaluating `opencode`. It uses `container/` and
-`prompts/` because those are the relevant assets for this experiment.
+### `smithers-lab`
+
+Smithers workflow runner integration lab:
+
+- tests Smithers workflow execution patterns
+- explores durable workflow integration
+- experiments with AI-driven workflow orchestration
 
 ## Cleanup rules
 
