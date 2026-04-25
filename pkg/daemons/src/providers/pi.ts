@@ -97,11 +97,12 @@ export function createPiProvider(opts: PiProviderOptions): AgentProvider {
     name: "pi",
     async runUntilComplete(options: ProviderRunOptions): Promise<ProviderRunResult> {
       const result = await runOnce(options, primaryModel, tokenManager, opts.apiKey);
+      const failure: ProviderRunFailure | null = result.ok ? null : (result as ProviderRunFailure);
       if (
         fallbackModel &&
-        !result.ok &&
-        result.reason === "provider_error" &&
-        shouldFallbackOpenRouterModel(result.message)
+        failure &&
+        failure.reason === "provider_error" &&
+        shouldFallbackOpenRouterModel(failure.message)
       ) {
         return runOnce(options, fallbackModel, tokenManager, opts.apiKey);
       }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import {
   resolveDaemon,
@@ -21,6 +22,10 @@ type DaemonOutcome = {
   findings: CompleteFinding[];
   reason?: string;
   message?: string;
+  proposal?: {
+    files: string[];
+    patch: string;
+  };
 };
 
 function reviewParallelism(totalDaemons: number): number {
@@ -137,16 +142,101 @@ function renderOutcome(outcome: DaemonOutcome): string {
     const note = finding.note ? `: ${finding.note}` : "";
     lines.push(`  - ${finding.invariant}${target} -> ${finding.status}${note}`);
   }
+  if (outcome.proposal) {
+    lines.push(`- proposal: ${outcome.proposal.files.length} file(s) would be changed`);
+  }
   return lines.join("\n");
 }
 
+function proposalModeEnabled(): boolean {
+  return process.env.DAEMON_REVIEW_PROPOSAL_MODE === "true";
+}
+
+async function copyRepoTree(source: string, dest: string): Promise<void> {
+  await cp(source, dest, {
+    recursive: true,
+    filter: (path) => !path.endsWith("/.git") && !path.includes("/.git/"),
+  });
+}
+
+async function runCommand(
+  cwd: string,
+  cmd: string[],
+): Promise<{ ok: true; stdout: string } | { ok: false; stdout: string; stderr: string }> {
+  const proc = Bun.spawn({
+    cmd,
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode === 0) return { ok: true, stdout };
+  return { ok: false, stdout, stderr };
+}
+
+async function buildProposalPatch(baseRoot: string, proposalRoot: string): Promise<string> {
+  const diff = await runCommand(process.cwd(), [
+    "git",
+    "diff",
+    "--no-index",
+    "--relative",
+    "--",
+    baseRoot,
+    proposalRoot,
+  ]);
+  if (diff.ok) return diff.stdout;
+  const failure = diff as { ok: false; stdout: string; stderr: string };
+  const combined = `${failure.stdout}${failure.stderr}`;
+  if (combined.includes("diff --git")) return combined;
+  return "";
+}
+
+function extractPatchedFiles(patch: string): string[] {
+  const files = new Set<string>();
+  for (const line of patch.split("\n")) {
+    const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (match?.[2]) files.add(match[2]);
+  }
+  return [...files];
+}
+
 async function runSingleDaemon(daemonName: string, prRoot: string): Promise<DaemonOutcome> {
-  console.log(`running daemon ${daemonName} against ${prRoot}`);
+  const proposalMode = proposalModeEnabled();
+  const workingRoot = proposalMode
+    ? await mkdtemp(join(tmpdir(), `daemon-review-${daemonName}-`))
+    : prRoot;
+
+  if (proposalMode) {
+    await copyRepoTree(prRoot, workingRoot);
+  }
+
+  console.log(`running daemon ${daemonName} against ${workingRoot}`);
   const result = await runDaemon(daemonName, {
-    root: prRoot,
+    root: workingRoot,
     maxTurns: 24,
     maxWallclockMs: 180_000,
   });
+
+  const proposalPatch =
+    proposalMode && result.ok
+      ? await buildProposalPatch(prRoot, workingRoot)
+      : "";
+  const proposalFiles = proposalPatch ? extractPatchedFiles(proposalPatch) : [];
+  const proposal =
+    proposalPatch && proposalFiles.length > 0
+      ? {
+          files: proposalFiles,
+          patch: proposalPatch,
+        }
+      : undefined;
+
+  if (proposalMode) {
+    await rm(workingRoot, { recursive: true, force: true });
+  }
 
   if (result.ok === false) {
     return {
@@ -164,6 +254,7 @@ async function runSingleDaemon(daemonName: string, prRoot: string): Promise<Daem
     ok: true,
     summary: result.payload.summary,
     findings: result.payload.findings,
+    proposal,
   };
 }
 
@@ -183,6 +274,76 @@ async function runDaemonsInParallel(daemonNames: string[], prRoot: string): Prom
 
   await Promise.all(Array.from({ length: parallelism }, () => worker()));
   return outcomes;
+}
+
+async function upsertProposalComment(
+  githubToken: string,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+  outcomes: DaemonOutcome[],
+): Promise<void> {
+  const proposed = outcomes.filter((outcome) => outcome.ok && outcome.proposal);
+  if (proposed.length === 0) return;
+
+  const marker = "<!-- daemon-review-proposals -->";
+  const sections = proposed.map((outcome) => {
+    const proposal = outcome.proposal!;
+    const patch = proposal.patch.length > 12_000
+      ? `${proposal.patch.slice(0, 12_000)}\n\n...diff truncated...`
+      : proposal.patch;
+    return [
+      `### ${outcome.name}`,
+      "",
+      `Would update: ${proposal.files.join(", ")}`,
+      "",
+      "```diff",
+      patch.trim(),
+      "```",
+    ].join("\n");
+  });
+  const body = [
+    marker,
+    "## Daemon Healing Suggestions",
+    "",
+    "These daemon runs were executed in proposal mode against a disposable copy of the PR checkout. No files were changed in CI.",
+    "",
+    ...sections,
+  ].join("\n");
+
+  const listResponse = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments?per_page=100`,
+    {
+      headers: {
+        authorization: `Bearer ${githubToken}`,
+        accept: "application/vnd.github+json",
+        "user-agent": "redc-daemon-review",
+      },
+    },
+  );
+  if (!listResponse.ok) {
+    throw new Error(`failed to list PR comments: ${listResponse.status} ${await listResponse.text()}`);
+  }
+  const comments = (await listResponse.json()) as Array<{ id: number; body?: string }>;
+  const existing = comments.find((comment) => comment.body?.includes(marker));
+
+  const targetUrl = existing
+    ? `https://api.github.com/repos/${owner}/${repo}/issues/comments/${existing.id}`
+    : `https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments`;
+  const method = existing ? "PATCH" : "POST";
+  const response = await fetch(targetUrl, {
+    method,
+    headers: {
+      authorization: `Bearer ${githubToken}`,
+      accept: "application/vnd.github+json",
+      "content-type": "application/json",
+      "user-agent": "redc-daemon-review",
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`failed to upsert PR proposal comment: ${response.status} ${await response.text()}`);
+  }
 }
 
 async function main() {
@@ -226,6 +387,8 @@ async function main() {
   if (process.env.GITHUB_STEP_SUMMARY) {
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
+
+  await upsertProposalComment(githubToken, owner, repo, prNumber, outcomes);
 
   const blockingFailures = outcomes.filter(
     (outcome) =>

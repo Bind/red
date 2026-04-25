@@ -17,7 +17,7 @@ import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_PROVIDER_ID,
 } from "./providers/pi";
-import type { AgentProvider } from "./providers/types";
+import type { AgentProvider, ProviderRunFailure } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
 import { createWideEvent, stdoutSink, type WideEvent, type WideEventSink } from "./wide-events";
@@ -274,17 +274,18 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       tokens: result.tokens,
     };
   }
+  const failure = result as ProviderRunFailure;
 
   emit({
     kind: "daemon.run.failed",
     route_name: spec.name,
     data: {
       runId,
-      reason: result.reason,
-      message: result.message,
-      turns: result.turns,
-      input: result.tokens.input,
-      output: result.tokens.output,
+      reason: failure.reason,
+      message: failure.message,
+      turns: failure.turns,
+      input: failure.tokens.input,
+      output: failure.tokens.output,
     },
   });
   await saveDaemonRun(
@@ -298,11 +299,11 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       startedAt,
       finishedAt: new Date().toISOString(),
       status: "failed",
-      turns: result.turns,
-      tokens: result.tokens,
+      turns: failure.turns,
+      tokens: failure.tokens,
       failure: {
-        reason: result.reason,
-        message: result.message,
+        reason: failure.reason,
+        message: failure.message,
       },
       events,
     },
@@ -313,10 +314,10 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     ok: false,
     runId,
     daemon: spec.name,
-    reason: result.reason,
-    message: result.message,
-    turns: result.turns,
-    tokens: result.tokens,
+    reason: failure.reason,
+    message: failure.message,
+    turns: failure.turns,
+    tokens: failure.tokens,
   };
 }
 
