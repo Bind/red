@@ -6,7 +6,7 @@ export type WideEvent = {
   data: Record<string, unknown>;
 };
 
-export type WideEventSink = (event: Omit<WideEvent, "event_id" | "ts">) => void;
+export type WideEventSink = (event: WideEvent) => void;
 
 let counter = 0;
 function nextId(): string {
@@ -14,14 +14,17 @@ function nextId(): string {
   return `evt_${Date.now().toString(36)}_${counter.toString(36)}`;
 }
 
+export function createWideEvent(event: Omit<WideEvent, "event_id" | "ts">): WideEvent {
+  return {
+    event_id: nextId(),
+    ts: new Date().toISOString(),
+    ...event,
+  };
+}
+
 export function stdoutSink(): WideEventSink {
   return (event) => {
-    const full: WideEvent = {
-      event_id: nextId(),
-      ts: new Date().toISOString(),
-      ...event,
-    };
-    process.stdout.write(`${JSON.stringify(full)}\n`);
+    process.stdout.write(`${JSON.stringify(event)}\n`);
   };
 }
 
@@ -29,11 +32,7 @@ export function memorySink(): { emit: WideEventSink; drain: () => WideEvent[] } 
   const events: WideEvent[] = [];
   return {
     emit(event) {
-      events.push({
-        event_id: nextId(),
-        ts: new Date().toISOString(),
-        ...event,
-      });
+      events.push(event);
     },
     drain() {
       const out = events.slice();

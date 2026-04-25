@@ -11,15 +11,16 @@ import {
   normalizeCheckedPath,
   saveMemoryRecord,
 } from "./memory";
+import { saveDaemonRun } from "./run-history";
 import {
   createPiProvider,
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_PROVIDER_ID,
 } from "./providers/pi";
-import type { AgentProvider } from "./providers/types";
+import type { AgentProvider, ProviderRunFailure } from "./providers/types";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
-import { stdoutSink, type WideEventSink } from "./wide-events";
+import { createWideEvent, stdoutSink, type WideEvent, type WideEventSink } from "./wide-events";
 
 export type RunOptions = {
   root?: string;
@@ -65,6 +66,14 @@ Work in a delta-first way:
 - reuse prior tracked facts when their dependencies are unchanged
 - read the minimum source material needed to confirm or reject a contract
 - do not keep exploring after you have enough evidence for real findings
+
+If the runner provides structured review context in the initial input:
+
+- start with the listed changed files
+- treat listed authority files as the default source of truth
+- avoid exploring outside that set unless a specific mismatch requires it
+- prefer file reads over shell commands whenever the files can answer the question
+- once one clear mismatch explains an invariant, classify it and move on
 
 Use the \`track\` tool for daemon-local structured memory:
 
@@ -130,14 +139,23 @@ export async function runDaemon(name: string, opts: RunOptions = {}): Promise<Ru
 }
 
 export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<RunResult> {
-  const emit = opts.emit ?? stdoutSink();
+  const sink = opts.emit ?? stdoutSink();
   const provider = opts.provider ?? selectProvider();
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxWallclockMs = opts.maxWallclockMs ?? DEFAULT_MAX_WALLCLOCK_MS;
   const runId = newRunId(spec.name);
+  const startedAt = new Date().toISOString();
   const previousMemory = await loadMemorySnapshot(spec.name, spec.scopeRoot, opts.memoryDir);
   const memoryStore = await createDaemonMemoryStore(spec.name, spec.scopeRoot, opts.memoryDir);
   const readPaths = new Set<string>();
+  const events: WideEvent[] = [];
+  const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(previousMemory));
+
+  const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
+    const full = createWideEvent(event);
+    events.push(full);
+    sink(full);
+  };
 
   emit({
     kind: "daemon.run.started",
@@ -153,7 +171,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
 
   const result = await provider.runUntilComplete({
     cwd: spec.scopeRoot,
-    systemPrompt: buildSystemPrompt(spec, buildMemoryPrompt(previousMemory)),
+    systemPrompt,
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
@@ -237,6 +255,26 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
         outputTokens: result.tokens.output,
       },
     });
+    await saveDaemonRun(
+      {
+        daemon: spec.name,
+        scopeRoot: spec.scopeRoot,
+        file: spec.file,
+        runId,
+        provider: provider.name,
+        systemPrompt,
+        input: opts.input ?? null,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "completed",
+        turns: result.turns,
+        tokens: result.tokens,
+        payload: result.payload,
+        events,
+      },
+      spec.scopeRoot,
+      opts.memoryDir,
+    );
     return {
       ok: true,
       runId,
@@ -246,27 +284,51 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       tokens: result.tokens,
     };
   }
+  const failure = result as ProviderRunFailure;
 
   emit({
     kind: "daemon.run.failed",
     route_name: spec.name,
     data: {
       runId,
-      reason: result.reason,
-      message: result.message,
-      turns: result.turns,
-      input: result.tokens.input,
-      output: result.tokens.output,
+      reason: failure.reason,
+      message: failure.message,
+      turns: failure.turns,
+      input: failure.tokens.input,
+      output: failure.tokens.output,
     },
   });
+  await saveDaemonRun(
+    {
+      daemon: spec.name,
+      scopeRoot: spec.scopeRoot,
+      file: spec.file,
+      runId,
+      provider: provider.name,
+      systemPrompt,
+      input: opts.input ?? null,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      status: "failed",
+      turns: failure.turns,
+      tokens: failure.tokens,
+      failure: {
+        reason: failure.reason,
+        message: failure.message,
+      },
+      events,
+    },
+    spec.scopeRoot,
+    opts.memoryDir,
+  );
   return {
     ok: false,
     runId,
     daemon: spec.name,
-    reason: result.reason,
-    message: result.message,
-    turns: result.turns,
-    tokens: result.tokens,
+    reason: failure.reason,
+    message: failure.message,
+    turns: failure.turns,
+    tokens: failure.tokens,
   };
 }
 

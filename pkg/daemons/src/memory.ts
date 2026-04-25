@@ -173,6 +173,16 @@ export async function loadMemorySnapshot(
   };
 }
 
+export async function loadLatestMemoryRecord(
+  daemonName: string,
+  scopeRoot: string,
+  explicitDir?: string,
+): Promise<DaemonMemoryRecord | null> {
+  const ctx = await resolveMemoryContext(scopeRoot, explicitDir);
+  const latest = await ctx.backend.loadLatest(daemonName);
+  return normalizeMemoryRecord(latest, daemonName, scopeRoot, ctx.repoRoot, ctx.repoId);
+}
+
 export async function saveMemoryRecord(
   record: DaemonMemoryRecord,
   scopeRoot: string,

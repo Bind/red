@@ -7,6 +7,7 @@ import type {
 	WideCollectorRejectedEvent,
 	WideRollupRecord,
 } from "./collector-contract";
+import type { DaemonObservabilityQuery } from "./daemon-query";
 import type { TriageDispatcher } from "./triage-dispatcher";
 
 export interface AcceptedCollectorBatch {
@@ -69,6 +70,7 @@ export interface CollectorDependencies {
 	rollupQuery?: RollupQuery;
 	activeRequests: ActiveRequestAggregator;
 	triageDispatcher?: TriageDispatcher;
+	daemonQuery?: DaemonObservabilityQuery;
 }
 
 interface EventValidationResult {
