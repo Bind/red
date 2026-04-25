@@ -151,3 +151,4 @@ The current doc layout is workable, but it should stay opinionated:
 - `./scripts/redc` is the operator-facing CLI from the repo root (`changes`, `change`, `diff`, `approve`, `regenerate-summary`, `requeue-summary`, `retry-merge`, `repos`, `branches`, `create-pr`, `velocity`, `health`, `jobs`, `actions`, `runs`, `run`, `sessions`, `events`).
 - The installed package bin `redc` is the narrower Bun status client (`redc status`, `help`, `--api-url`, `--format`).
 - Install local hooks with `just hooks-install`.
+  `ci-runner-lab/`, `durable-workflow-lab/`, `smithers-lab/`, `ai-daemons-lab/`, and `bash-runtime-lab/`.
