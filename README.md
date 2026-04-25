@@ -10,7 +10,7 @@ Common commands:
 
 ```bash
 just
-just setup
+just setp
 just up
 just down
 just test
