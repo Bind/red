@@ -55,6 +55,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
           DAEMON_REVIEW_MAX_PARALLEL: "3"
           DAEMON_REVIEW_PROPOSAL_MODE: "true"
