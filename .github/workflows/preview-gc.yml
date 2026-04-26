@@ -1,0 +1,54 @@
+name: Preview garbage collect
+
+on:
+  pull_request:
+    types: [closed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: preview-gc
+  cancel-in-progress: false
+
+env:
+  JUST_UNSTABLE: "1"
+  DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
+
+jobs:
+  gc:
+    name: garbage collect inactive previews
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: extractions/setup-just@v2
+
+      - name: Install dotenvx
+        run: curl -fsS https://dotenvx.sh | sh
+
+      - name: Configure SSH (dev key from .env.ci)
+        run: |
+          mkdir -p ~/.ssh
+          key="$(./infra/platform/get-required-dotenvx-value.sh DEV_SSH_PRIVATE_KEY .env.ci)"
+          if printf "%s" "$key" | grep -q "^-----BEGIN "; then
+            printf "%s\n" "$key" > ~/.ssh/id_ed25519
+          else
+            printf "%s" "$key" | openssl base64 -d -A > ~/.ssh/id_ed25519
+          fi
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Resolve dev server IP from synced env
+        id: dev-ip
+        run: echo "host=$(./infra/platform/get-required-dotenvx-value.sh REDC_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
+
+      - name: Garbage collect closed previews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: just preview-gc "${{ steps.dev-ip.outputs.host }}" 2222

@@ -97,6 +97,17 @@ wiring issues for services before they make it into prod. The shared
 immutable-image runtime lives in `infra/base/compose.yml`; preview adds the
 PR-specific overlay in `infra/preview/compose.yml`.
 
+## Lifecycle cleanup
+
+- Each deploy now tears down the existing stack for that same PR before
+  pulling the next image set. That drops the old containers and releases
+  their image references before the new deploy starts.
+- PR close/merge still triggers `teardown` immediately.
+- `.github/workflows/preview-gc.yml` also reconciles the host against the
+  current set of open PRs on `pull_request.closed`, on pushes to `main`, and
+  nightly. If a close hook is missed, the next reconciliation deletes the
+  stale preview directory, compose project, and Caddy site.
+
 ## Nightly eviction
 
 `infra/preview/setup-host.sh` installs `/opt/redc-previews/preview-cleanup.sh`

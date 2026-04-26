@@ -376,6 +376,10 @@ deploy-preview slug host image_tag git_commit base_branch base_ref head_branch p
 teardown-preview slug host port="2222":
     ./infra/preview/teardown.sh {{ slug }} {{ host }} {{ port }}
 
+# Remove preview stacks whose PRs are no longer open
+preview-gc host port="2222":
+    ./infra/preview/garbage-collect.sh {{ host }} {{ port }}
+
 # Smoke-check a deployed preview URL
 preview-check slug:
     just deploy-check "https://{{ slug }}.preview.red.computer"

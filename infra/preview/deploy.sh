@@ -31,6 +31,7 @@ MIN_FREE_KB=$((16 * 1024 * 1024))
 SEED_TMP="$(mktemp -d)"
 BASE_EXPORT_DIR="${SEED_TMP}/base"
 HEAD_EXPORT_DIR="${SEED_TMP}/head"
+PREVIEW_UTILS_CONTENT="$(cat "$(dirname "$0")/../platform/utils.sh")"
 
 cleanup() {
   rm -rf "${SEED_TMP}"
@@ -83,6 +84,8 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   "bash -s" <<REMOTE
 set -euo pipefail
 
+${PREVIEW_UTILS_CONTENT}
+
 if [ -z "\${DOTENV_PRIVATE_KEY_PREVIEW:-}" ] && [ -f /root/.bashrc ]; then
   # Load just the persisted preview dotenvx key without evaluating interactive shell setup.
   preview_key_line=\$(grep -E '^export DOTENV_PRIVATE_KEY_PREVIEW=' /root/.bashrc | tail -n1 || true)
@@ -111,6 +114,9 @@ chmod 600 /opt/redc-previews/.env
 set -a
 . /opt/redc-previews/.env
 set +a
+
+echo "==> Tearing down existing preview stack for ${PROJECT}"
+teardown_preview_project "${REMOTE_DIR}" "${PROJECT}"
 
 if [ -n "\${GHCR_USERNAME:-}" ] && [ -n "\${GHCR_TOKEN:-}" ]; then
   printf '%s' "\${GHCR_TOKEN}" | docker login ghcr.io -u "\${GHCR_USERNAME}" --password-stdin
