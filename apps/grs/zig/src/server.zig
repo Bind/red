@@ -1,7 +1,7 @@
 /// Multi-threaded git smart HTTP server using libgitty.
 /// Now also serves the native control-plane routes directly from Zig.
 const std = @import("std");
-const auth_mod = @import("redc_auth.zig");
+const auth_mod = @import("red_auth.zig");
 const control_plane_mod = @import("control_plane.zig");
 const obs_mod = @import("obs.zig");
 const protocol = @import("protocol.zig");

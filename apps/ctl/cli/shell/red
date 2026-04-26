@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc — agent-native code forge CLI
+# red — agent-native code forge CLI
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
