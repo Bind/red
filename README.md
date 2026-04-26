@@ -25,7 +25,7 @@ Service-specific commands:
 just git-server-up
 just git-server-test
 just git-server-zig-check
-just gs-integratio
+just gs-integration
 
 just auth-install
 just auth-serve
