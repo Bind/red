@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc branches <owner/repo> — list branches for a repo
+# red branches <owner/repo> — list branches for a repo
 
 repo="${1:-}"
 require_arg "owner/repo" "$repo"
@@ -11,7 +11,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc branches — $repo"
+echo "red branches — $repo"
 separator
 echo
 

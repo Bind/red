@@ -5,7 +5,7 @@ function loadConfig(): BffConfig {
 
   return {
     port: parseInt(process.env.BFF_PORT ?? "3001", 10),
-    apiBaseUrl: process.env.REDC_API_BASE_URL ?? "http://localhost:3000",
+    apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
     authBaseUrl: process.env.AUTH_BASE_URL ?? "http://localhost:4020",
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
     triageBaseUrl: process.env.TRIAGE_BASE_URL ?? "http://triage:7000",
@@ -16,7 +16,7 @@ function loadConfig(): BffConfig {
       hostedRepoId
         ? {
             repoId: hostedRepoId,
-            apiBaseUrl: process.env.REDC_API_BASE_URL ?? "http://localhost:3000",
+            apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
             readmePath: process.env.BFF_HOSTED_REPO_README_PATH ?? "README.md",
           }
         : undefined,

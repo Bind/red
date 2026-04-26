@@ -1,6 +1,6 @@
 ---
 name: experiment-bootstrap
-description: Bootstrap new repo experiments with the redc conventions for folder layout, runtime config, testing, and compose-based e2e.
+description: Bootstrap new repo experiments with the red conventions for folder layout, runtime config, testing, and compose-based e2e.
 ---
 
 # Experiment Bootstrap

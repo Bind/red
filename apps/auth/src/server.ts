@@ -196,7 +196,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     audience: config.audience,
     hostname: config.hostname,
     port: config.port,
-    secret: config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    secret: config.userAuthSecret ?? "red-auth-lab-dev-secret",
     passkeyOrigins: config.passkeyOrigins,
     passkeyRpId: config.passkeyRpId,
     database: config.database,
@@ -204,14 +204,14 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   const authAdapter = createBetterAuthAdapter(userRuntime.auth);
   const userLifecycle = createUserLifecycleService(
     userRuntime.stores,
-    config.userAuthSecret ?? "redc-auth-lab-dev-secret",
+    config.userAuthSecret ?? "red-auth-lab-dev-secret",
     {
       allowAnyTotpCode: config.allowAnyTotpCode,
     },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
   const app = new Hono();
-  const authSecret = config.userAuthSecret ?? "redc-auth-lab-dev-secret";
+  const authSecret = config.userAuthSecret ?? "red-auth-lab-dev-secret";
   const startedAt = Date.now();
 
   if (config.stealthTotpSeedUser) {

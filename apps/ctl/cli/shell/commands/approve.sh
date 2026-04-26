@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc approve <id> — approve a change
+# red approve <id> — approve a change
 
 id="${1:-}"
 require_arg "id" "$id"

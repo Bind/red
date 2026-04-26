@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REDC_PORT="${REDC_PORT:-3000}"
-REDC_DB_PATH="${REDC_DB_PATH:-/data/redc-dev.db}"
+RED_PORT="${RED_PORT:-3000}"
+RED_DB_PATH="${RED_DB_PATH:-/data/red-dev.db}"
 MINIO_ENDPOINT="${MINIO_ENDPOINT:-s3}"
 MINIO_PORT="${MINIO_PORT:-9000}"
 MINIO_USE_SSL="${MINIO_USE_SSL:-false}"
 MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-minioadmin}"
 MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-minioadmin}"
-MINIO_BUCKET="${MINIO_BUCKET:-redc-artifacts}"
+MINIO_BUCKET="${MINIO_BUCKET:-red-artifacts}"
 MINIO_PREFIX="${MINIO_PREFIX:-claw-runs}"
 MINIO_API_PORT="${MINIO_API_PORT:-9003}"
 MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9002}"
@@ -32,7 +32,7 @@ WIDE_EVENTS_REPLAY_WINDOW_MS="${WIDE_EVENTS_REPLAY_WINDOW_MS:-600000}"
 OBS_SINK_MODE="${OBS_SINK_MODE:-collector}"
 WIDE_EVENTS_COLLECTOR_URL="${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}"
 GIT_STORAGE_PUBLIC_URL="${GIT_STORAGE_PUBLIC_URL:-http://grs:8080}"
-GIT_STORAGE_DEFAULT_OWNER="${GIT_STORAGE_DEFAULT_OWNER:-redc}"
+GIT_STORAGE_DEFAULT_OWNER="${GIT_STORAGE_DEFAULT_OWNER:-red}"
 TRIAGE_ENABLED="${TRIAGE_ENABLED:-false}"
 TRIAGE_ENDPOINT_URL="${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}"
 TRIAGE_MIN_STATUS_CODE="${TRIAGE_MIN_STATUS_CODE:-500}"
@@ -48,7 +48,7 @@ TRIAGE_OPENAI_BASE_URL="${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}"
 TRIAGE_OPENAI_API_KEY="${TRIAGE_OPENAI_API_KEY:-}"
 TRIAGE_OPENAI_MODEL="${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}"
 TRIAGE_OPENAI_PROVIDER_NAME="${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}"
-TRIAGE_OPENAI_TITLE="${TRIAGE_OPENAI_TITLE:-redc}"
+TRIAGE_OPENAI_TITLE="${TRIAGE_OPENAI_TITLE:-red}"
 TRIAGE_OPENAI_REFERER="${TRIAGE_OPENAI_REFERER:-}"
 SMITHERS_API_KEY="${SMITHERS_API_KEY:-}"
 SMITHERS_SERVER_PORT="${SMITHERS_SERVER_PORT:-7331}"
@@ -73,9 +73,9 @@ echo "Writing .env..."
 cat > .env <<EOF
 GIT_STORAGE_PUBLIC_URL=$GIT_STORAGE_PUBLIC_URL
 GIT_STORAGE_DEFAULT_OWNER=$GIT_STORAGE_DEFAULT_OWNER
-REDC_PORT=$REDC_PORT
-REDC_DB_PATH=$REDC_DB_PATH
-OPENCODE_RUNNER_IMAGE=redc-claw-runner
+RED_PORT=$RED_PORT
+RED_DB_PATH=$RED_DB_PATH
+OPENCODE_RUNNER_IMAGE=red-claw-runner
 MINIO_ENDPOINT=$MINIO_ENDPOINT
 MINIO_PORT=$MINIO_PORT
 MINIO_USE_SSL=$MINIO_USE_SSL
@@ -138,9 +138,13 @@ if [[ -f .env.development ]] && command -v dotenvx >/dev/null 2>&1; then
   dotenvx decrypt -f .env.development --stdout >> .env
 fi
 
+echo "Syncing container Bun dependencies..."
+docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps ctl bun install --frozen-lockfile
+docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps auth bun install --frozen-lockfile
+
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
   echo "Building Claw runner image..."
-  docker build -t redc-claw-runner apps/ocr/
+  docker build -t red-claw-runner apps/ocr/
 
   echo "Building shared workspace dependency images..."
   docker build \

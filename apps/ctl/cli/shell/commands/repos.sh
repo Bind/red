@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc repos — list repos
+# red repos — list repos
 
 body=$(api_get "/api/repos")
 
@@ -8,7 +8,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc repos"
+echo "red repos"
 separator
 echo
 

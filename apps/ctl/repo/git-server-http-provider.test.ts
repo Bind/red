@@ -11,15 +11,15 @@ describe("GitServerHttpRepositoryProvider", () => {
       const headers = new Headers(init?.headers);
       calls.push({ url, auth: headers?.get("authorization") ?? null });
 
-      if (url.endsWith("/api/repos/redc/redc")) {
+      if (url.endsWith("/api/repos/red/red")) {
         return Response.json({
-          id: "redc/redc",
-          name: "redc",
-          full_name: "redc/redc",
+          id: "red/red",
+          name: "red",
+          full_name: "red/red",
           default_branch: "main",
         });
       }
-      if (url.endsWith("/api/repos/redc/redc/branches")) {
+      if (url.endsWith("/api/repos/red/red/branches")) {
         return Response.json([
           {
             name: "main",
@@ -32,7 +32,7 @@ describe("GitServerHttpRepositoryProvider", () => {
           },
         ]);
       }
-      if (url.includes("/api/repos/redc/redc/commits")) {
+      if (url.includes("/api/repos/red/red/commits")) {
         if (url.includes("/diff")) {
           return Response.json({
             patch: "diff --git a/src/app.ts b/src/app.ts",
@@ -42,17 +42,17 @@ describe("GitServerHttpRepositoryProvider", () => {
           {
             sha: "abc",
             message: "init",
-            author_name: "redc",
-            author_email: "redc@example.com",
+            author_name: "red",
+            author_email: "red@example.com",
             timestamp: "2026-01-01T00:00:00Z",
           },
         ]);
       }
-      if (url.includes("/api/repos/redc/redc/file")) {
+      if (url.includes("/api/repos/red/red/file")) {
         return Response.json({
           path: "README.md",
           ref: "main",
-          content: "# redc\n",
+          content: "# red\n",
         });
       }
       if (url.includes("patch=1")) {
@@ -71,7 +71,7 @@ describe("GitServerHttpRepositoryProvider", () => {
           patch: "diff --git a/README.md b/README.md",
         });
       }
-      if (url.includes("/api/repos/redc/redc/compare")) {
+      if (url.includes("/api/repos/red/red/compare")) {
         return Response.json({
           files_changed: 1,
           additions: 3,
@@ -97,19 +97,19 @@ describe("GitServerHttpRepositoryProvider", () => {
         password: "admin",
       });
 
-      expect(await provider.getRepo?.("redc", "redc")).toMatchObject({
-        full_name: "redc/redc",
+      expect(await provider.getRepo?.("red", "red")).toMatchObject({
+        full_name: "red/red",
         default_branch: "main",
       });
-      expect(await provider.listBranches?.("redc", "redc")).toHaveLength(1);
-      expect(await provider.listCommits?.("redc", "redc", "main", 10)).toHaveLength(1);
-      expect(await provider.getCommitDiff?.("redc", "redc", "abc")).toContain("diff --git");
-      expect(await provider.getFileContent("redc", "redc", "README.md", "main")).toContain("redc");
-      expect(await provider.compareDiff("redc", "redc", "main", "feature/demo")).toMatchObject({
+      expect(await provider.listBranches?.("red", "red")).toHaveLength(1);
+      expect(await provider.listCommits?.("red", "red", "main", 10)).toHaveLength(1);
+      expect(await provider.getCommitDiff?.("red", "red", "abc")).toContain("diff --git");
+      expect(await provider.getFileContent("red", "red", "README.md", "main")).toContain("red");
+      expect(await provider.compareDiff("red", "red", "main", "feature/demo")).toMatchObject({
         files_changed: 1,
         additions: 3,
       });
-      expect(await provider.getDiff("redc", "redc", "main", "feature/demo")).toContain("diff --git");
+      expect(await provider.getDiff("red", "red", "main", "feature/demo")).toContain("diff --git");
 
       expect(calls.length).toBeGreaterThan(0);
       expect(calls.every((call) => typeof call.auth === "string" && call.auth.startsWith("Basic "))).toBe(true);

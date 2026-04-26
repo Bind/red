@@ -141,7 +141,7 @@ jobs:
 
       - name: Resolve dev server IP from synced env
         id: dev-ip
-        run: echo "host=$(./infra/platform/get-required-dotenvx-value.sh REDC_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
+        run: echo "host=$(./infra/platform/get-required-dotenvx-value.sh RED_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
         run: >
@@ -198,7 +198,7 @@ jobs:
       - name: Resolve dev server IP from synced env
         id: dev-ip
         run: |
-          echo "host=$(./infra/platform/get-required-dotenvx-value.sh REDC_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
+          echo "host=$(./infra/platform/get-required-dotenvx-value.sh RED_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Tear down preview
         run: just teardown-preview "pr-${{ github.event.pull_request.number }}" "${{ steps.dev-ip.outputs.host }}" 2222

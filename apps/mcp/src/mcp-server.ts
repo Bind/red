@@ -13,7 +13,7 @@ export interface McpEndpoint {
  * needs long-lived server-initiated notifications.
  */
 export async function createMcpEndpoint(): Promise<McpEndpoint> {
-	const server = new McpServer({ name: "redc-mcp", version: "0.1.0" });
+	const server = new McpServer({ name: "red-mcp", version: "0.1.0" });
 	registerTools(server);
 
 	const transport = new WebStandardStreamableHTTPServerTransport({

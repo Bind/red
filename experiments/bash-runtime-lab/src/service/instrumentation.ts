@@ -74,7 +74,7 @@ function beforeHook(nodeId: string): SimpleCommandNode {
   return {
     type: "SimpleCommand",
     assignments: [],
-    name: wordFromLiteral("__redc_before"),
+    name: wordFromLiteral("__red_before"),
     args: [wordFromLiteral(nodeId)],
     redirections: [],
   };
@@ -84,7 +84,7 @@ function afterHook(nodeId: string): SimpleCommandNode {
   return {
     type: "SimpleCommand",
     assignments: [],
-    name: wordFromLiteral("__redc_after"),
+    name: wordFromLiteral("__red_after"),
     args: [wordFromLiteral(nodeId), wordFromStatus(), wordFromLiteral("run")],
     redirections: [],
   };
@@ -188,7 +188,7 @@ function wrapSimpleCommand(node: SimpleCommandNode, nodeId: string): CommandNode
               type: "SimpleCommand",
               assignments: [],
               name: wordFromLiteral("test"),
-              args: [wordFromVariable("REDC_ACTION"), wordFromLiteral("="), wordFromLiteral("run")],
+              args: [wordFromVariable("RED_ACTION"), wordFromLiteral("="), wordFromLiteral("run")],
               redirections: [],
             } as CommandNode,
             node.line,
@@ -209,7 +209,7 @@ function wrapSimpleCommand(node: SimpleCommandNode, nodeId: string): CommandNode
       statementFromCommand(
         {
           ...afterHook(nodeId),
-          args: [wordFromLiteral(nodeId), wordFromStatus(), wordFromVariable("REDC_ACTION")],
+          args: [wordFromLiteral(nodeId), wordFromStatus(), wordFromVariable("RED_ACTION")],
         },
         node.line,
       ),

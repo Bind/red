@@ -19,7 +19,7 @@ export function MagicLinkPage() {
   useEffect(() => {
     const attemptId = searchParams.get("attempt_id")?.trim();
     const token = searchParams.get("token")?.trim();
-    const clientId = searchParams.get("client_id")?.trim() ?? "redc-web";
+    const clientId = searchParams.get("client_id")?.trim() ?? "red-web";
 
     if (!attemptId || !token) {
       setStatus("error");

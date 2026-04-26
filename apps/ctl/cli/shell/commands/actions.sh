@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc actions — list claw actions
+# red actions — list claw actions
 
 body=$(api_get "/api/claw/actions")
 
@@ -8,7 +8,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc actions"
+echo "red actions"
 separator
 echo
 

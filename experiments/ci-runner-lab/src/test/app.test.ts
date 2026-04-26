@@ -36,7 +36,7 @@ describe("createApp", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        repoId: "redc/example",
+        repoId: "red/example",
         commitSha: "0123456789abcdef0123456789abcdef01234567",
         jobName: "test",
         gitCredentialGrant: "grant-1",
@@ -62,7 +62,7 @@ describe("createApp", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        repoId: "redc/example",
+        repoId: "red/example",
         commitSha: "0123456789abcdef0123456789abcdef01234567",
         jobName: "test",
         gitCredentialGrant: "grant-1",

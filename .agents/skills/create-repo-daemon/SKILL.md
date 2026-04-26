@@ -5,7 +5,7 @@ description: Create or update repo daemons for high-judgment, non-overlapping be
 
 # Create Repo Daemon
 
-Create repo daemons using the current redc pattern:
+Create repo daemons using the current red pattern:
 
 - keep daemon bodies simple and responsibility-focused
 - make each daemon own one primary axis only: docs surface, shared contract, topology wiring, environment layering, or operator workflow

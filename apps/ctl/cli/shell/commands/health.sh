@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc health — health check
+# red health — health check
 
 body=$(api_get "/health")
 
@@ -8,7 +8,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc health"
+echo "red health"
 separator
 echo
 echo "  Status: ok"

@@ -1,4 +1,4 @@
-# redc — agent-native code forge
+# red — agent-native code forge
 
 set dotenv-load
 
@@ -40,7 +40,7 @@ down:
 build:
     just workspace-deps-build-local
     docker compose -f {{ DEV_COMPOSE }} build
-    docker build -t redc-claw-runner apps/ocr/
+    docker build -t red-claw-runner apps/ocr/
 
 # Prebuild local workspace dependency layers shared by Dockerfiles
 workspace-deps-build-local:
@@ -326,19 +326,19 @@ secrets-keys env:
 
 # ── Base image (packer / hcloud snapshot) ───────────────
 
-# Build a new redc-base snapshot on Hetzner. Requires HCLOUD_TOKEN
+# Build a new red-base snapshot on Hetzner. Requires HCLOUD_TOKEN
 # (pulled from .env.ci via dotenvx). Prints the snapshot id/name at the
-# end of the packer run; set it as REDC_BASE_SNAPSHOT_ID for future
+# end of the packer run; set it as RED_BASE_SNAPSHOT_ID for future
 # `sst deploy`.
 image-build:
     dotenvx run -f .env.ci -- packer init infra/platform/packer
     dotenvx run -f .env.ci -- packer build infra/platform/packer
 
-# List all redc-base snapshots currently in the account.
+# List all red-base snapshots currently in the account.
 image-list:
     @dotenvx run -f .env.ci -- bash -c \
       'curl -fsSL -H "Authorization: Bearer $HCLOUD_TOKEN" \
-         "https://api.hetzner.cloud/v1/images?type=snapshot&label_selector=role=redc-base" \
+         "https://api.hetzner.cloud/v1/images?type=snapshot&label_selector=role=red-base" \
        | jq ".images[] | {id, description, created}"'
 
 # ── Release / deploy ────────────────────────────────────

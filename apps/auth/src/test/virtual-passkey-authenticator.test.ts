@@ -11,7 +11,7 @@ import { createVirtualPasskeyAuthenticator } from "../test/helpers/virtual-passk
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",
-  audience: "redc-api",
+  audience: "red-api",
   hostname: "127.0.0.1",
   port: 4020,
   exposeTestMailbox: true,
@@ -26,7 +26,7 @@ const baseConfig = {
       clientId: "claw-runner-dev",
       clientSecret: "dev-secret",
       allowedScopes: ["prs:create", "changes:read"],
-      allowedAudiences: ["redc-api"],
+      allowedAudiences: ["red-api"],
       tokenTtlSeconds: 300,
       status: "active" as const,
       allowedGrantTypes: ["client_credentials"] as const,

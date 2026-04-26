@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Deploys the working tree to a per-PR preview stack on the dev box.
-# The shared /opt/redc-previews/.env is produced once per deploy by decrypting
+# The shared /opt/red-previews/.env is produced once per deploy by decrypting
 # .env.preview with DOTENV_PRIVATE_KEY_PREVIEW (kept in the box's shell profile).
 # Compose then pulls immutable GHCR tags rather than building locally.
 #
@@ -17,15 +17,15 @@ BASE_BRANCH="${6:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <b
 BASE_REF="${7:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
 HEAD_BRANCH="${8:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
 PR_NUMBER="${9:?Usage: $0 <slug> <host> [ssh-port] <image-tag> <git-commit> <base-branch> <base-ref> <head-branch> <pr-number>}"
-REMOTE_DIR="/opt/redc-previews/${SLUG}"
+REMOTE_DIR="/opt/red-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
-CADDY_SITES_DIR="/opt/redc-preview-caddy/caddy/sites"
+CADDY_SITES_DIR="/opt/red-preview-caddy/caddy/sites"
 CADDY_SITE_FILE="${CADDY_SITES_DIR}/${SLUG}.caddy"
 PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
-PREVIEW_WEB_CLIENTS="redc-web=${PREVIEW_PUBLIC_URL}"
+PREVIEW_WEB_CLIENTS="red-web=${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
-PREVIEW_HOSTED_REPO_ID="redc/red"
+PREVIEW_HOSTED_REPO_ID="red/red"
 PREVIEW_REPO_OWNER="${PREVIEW_HOSTED_REPO_ID%%/*}"
 MIN_FREE_KB=$((16 * 1024 * 1024))
 SEED_TMP="$(mktemp -d)"
@@ -106,13 +106,13 @@ if ! command -v dotenvx >/dev/null 2>&1; then
   curl -fsS https://dotenvx.sh | sh
 fi
 
-# Shared /opt/redc-previews/.env is read by every preview's env_file.
+# Shared /opt/red-previews/.env is read by every preview's env_file.
 # Regenerate it from the (possibly updated) encrypted source each deploy.
-dotenvx decrypt -f .env.preview --stdout > /opt/redc-previews/.env
-chmod 600 /opt/redc-previews/.env
+dotenvx decrypt -f .env.preview --stdout > /opt/red-previews/.env
+chmod 600 /opt/red-previews/.env
 
 set -a
-. /opt/redc-previews/.env
+. /opt/red-previews/.env
 set +a
 
 echo "==> Tearing down existing preview stack for ${PROJECT}"

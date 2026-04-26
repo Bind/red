@@ -25,7 +25,7 @@ export interface WorkerDeps {
 export interface WorkerConfig {
   /** Poll interval in ms. Default: 1000 */
   pollInterval: number;
-  /** Commit status context name. Default: "redc" */
+  /** Commit status context name. Default: "red" */
   statusContext: string;
   /** Git remote name to fetch after merging. Null to skip. */
   fetchRemoteAfterMerge: string | null;
@@ -33,7 +33,7 @@ export interface WorkerConfig {
 
 const DEFAULT_CONFIG: WorkerConfig = {
   pollInterval: 1000,
-  statusContext: "redc",
+  statusContext: "red",
   fetchRemoteAfterMerge: null,
 };
 

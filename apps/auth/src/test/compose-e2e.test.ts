@@ -119,7 +119,7 @@ e2e("compose auth stack", () => {
 
     const verifier = createTokenVerifier({
       issuer: baseUrl,
-      audience: "redc-api",
+      audience: "red-api",
       jwksUrl: `${baseUrl}/.well-known/jwks.json`,
       fetchImpl: (input, init) => fetch(input, init),
     });

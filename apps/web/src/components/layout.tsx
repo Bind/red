@@ -36,7 +36,7 @@ export function Layout() {
             <div className="space-y-1">
               <Link to="/" className="group">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                  redc
+                  red
                 </h1>
               </Link>
               <nav className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">

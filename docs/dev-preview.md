@@ -46,14 +46,14 @@ via docker's embedded DNS on the shared `preview-net`.
    just bootstrap-dev-box <dev-ip>
    ```
    This pushes the remote setup script over SSH, installs docker/dotenvx
-   if needed, creates `/opt/redc-previews`, creates the `preview-net`
+   if needed, creates `/opt/red-previews`, creates the `preview-net`
    docker network, installs the eviction cron, uploads `.env.preview`,
    persists `DOTENV_PRIVATE_KEY_PREVIEW` if your local `.env.keys` already
-   has it, decrypts `/opt/redc-previews/.env` automatically when that key is
+   has it, decrypts `/opt/red-previews/.env` automatically when that key is
    available, and starts the permanent preview Caddy stack on the box.
 3. **Keep `.env.preview` current** with the shared preview secrets every PR
    stack needs: `TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc. Bootstrap
-   and preview deploys decrypt that file into `/opt/redc-previews/.env` on
+   and preview deploys decrypt that file into `/opt/red-previews/.env` on
    the box, and CI never rsyncs the plaintext `.env`.
 
 ## Required repo secrets
@@ -68,7 +68,7 @@ via docker's embedded DNS on the shared `preview-net`.
 | `CLOUDFLARE_DEFAULT_ACCOUNT_ID` | sst state bucket lives here |
 
 Triage provider credentials + the Smithers bearer token live on the dev box's
-`/opt/redc-previews/.env` (not in CI secrets; CI never touches that file).
+`/opt/red-previews/.env` (not in CI secrets; CI never touches that file).
 
 ## What the workflow does
 
@@ -110,8 +110,8 @@ PR-specific overlay in `infra/preview/compose.yml`.
 
 ## Nightly eviction
 
-`infra/preview/setup-host.sh` installs `/opt/redc-previews/preview-cleanup.sh`
-at 03:17 UTC via `/etc/cron.d/redc-preview-cleanup`, and that host-owned
+`infra/preview/setup-host.sh` installs `/opt/red-previews/preview-cleanup.sh`
+at 03:17 UTC via `/etc/cron.d/red-preview-cleanup`, and that host-owned
 script tears down any preview whose working directory was last modified more
 than 14 days ago.
 
@@ -119,10 +119,10 @@ than 14 days ago.
 
 ```bash
 # On the dev box (or any docker host with preview-net created and
-# /opt/redc-previews/.env already present), using an image tag that exists in GHCR:
+# /opt/red-previews/.env already present), using an image tag that exists in GHCR:
 IMAGE_TAG=<existing-ghcr-tag> \
 PREVIEW_PUBLIC_URL=https://pr-local.preview.red.computer \
-PREVIEW_WEB_CLIENTS=redc-web=https://pr-local.preview.red.computer \
+PREVIEW_WEB_CLIENTS=red-web=https://pr-local.preview.red.computer \
 PREVIEW_PASSKEY_ORIGINS=https://pr-local.preview.red.computer \
 COMPOSE_PROJECT_NAME=preview-pr-local \
 docker compose -f infra/base/compose.yml -f infra/preview/compose.yml up -d

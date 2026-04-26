@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc retry-merge <id> — retry failed merge
+# red retry-merge <id> — retry failed merge
 
 id="${1:-}"
 require_arg "id" "$id"

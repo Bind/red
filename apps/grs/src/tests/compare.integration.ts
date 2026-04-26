@@ -24,16 +24,16 @@ describe("git server compare integration", () => {
   test("returns stable filenames for nested file diffs", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-compare-"));
+    const repoDir = await mkdtemp(join(tmpdir(), "red-gitty-compare-"));
 
     try {
       const repoName = `compare-repo-${runId}`;
-      const repoId = `redc/${repoName}`;
+      const repoId = `red/${repoName}`;
       const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "compare-test", "write");
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "compare test"], { cwd: repoDir });
-      await runCommand("git", ["config", "user.email", "compare@redc.local"], { cwd: repoDir });
+      await runCommand("git", ["config", "user.email", "compare@red.local"], { cwd: repoDir });
       await Bun.write(join(repoDir, "README.md"), "# compare repo\n");
       await runCommand("git", ["add", "README.md"], { cwd: repoDir });
       await runCommand("git", ["commit", "-m", "seed repo"], { cwd: repoDir });
@@ -54,7 +54,7 @@ describe("git server compare integration", () => {
 
       const featureRef = (await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"])).stdout;
 
-      const compareUrl = new URL(`/api/repos/redc/${repoName}/compare`, server.publicUrl);
+      const compareUrl = new URL(`/api/repos/red/${repoName}/compare`, server.publicUrl);
       compareUrl.searchParams.set("base", mainRef);
       compareUrl.searchParams.set("head", featureRef);
 

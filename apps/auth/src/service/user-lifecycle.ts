@@ -139,7 +139,7 @@ export function createUserLifecycleService(
       });
 
       return {
-        totpURI: createOTP(totpSecret, { digits: 6, period: 30 }).url("redc auth lab", user.email),
+        totpURI: createOTP(totpSecret, { digits: 6, period: 30 }).url("red auth lab", user.email),
         backupCodes,
       };
     },

@@ -44,7 +44,7 @@ function buildHookPrelude(stateFile: string, workspaceDir: string, hookScript: s
   const quotedWorkspace = shellQuote(workspaceDir);
 
   return `
-__redc_hook() {
+__red_hook() {
   local phase="$1"
   local node_id="$2"
   local cwd="$3"
@@ -53,18 +53,18 @@ __redc_hook() {
   env -0 | ${bunBin} ${hookBin} "$phase" ${quotedState} ${quotedWorkspace} "$node_id" "$cwd" "$arg6" "$arg7"
 }
 
-__redc_before() {
-  eval "$(__redc_hook before "$1" "$PWD")"
+__red_before() {
+  eval "$(__red_hook before "$1" "$PWD")"
 }
 
-__redc_after() {
+__red_after() {
   local node_id="$1"
   local exit_code="\${2:-$?}"
   local action="\${3:-run}"
   if [ "$action" = "replay" ]; then
-    exit_code="\${REDC_EXIT:-$exit_code}"
+    exit_code="\${RED_EXIT:-$exit_code}"
   fi
-  __redc_hook after "$node_id" "$PWD" "$exit_code" "$action" >/dev/null
+  __red_hook after "$node_id" "$PWD" "$exit_code" "$action" >/dev/null
   return 0
 }
 `;

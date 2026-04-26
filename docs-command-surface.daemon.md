@@ -17,7 +17,7 @@ Stay narrow:
 
 Use the smallest authoritative source needed to validate a claim:
 - root `justfile`
-- `scripts/redc`
+- `scripts/red`
 - CLI entrypoints
 
 Flag:

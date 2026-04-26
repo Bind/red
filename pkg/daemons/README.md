@@ -6,7 +6,7 @@ A daemon is a `*.daemon.md` file with two-field frontmatter and a prose body.
 The file's directory is the daemon's working directory and the limit of its
 scope — it can only read and write files under that subtree.
 
-Invocation is explicit: `redc-daemons run <name>`. The framework spawns a
+Invocation is explicit: `red-daemons run <name>`. The framework spawns a
 `@mariozechner/pi-agent-core` Agent, hands it the standard `pi-coding-agent`
 toolkit (`read`, `edit`, `write`, `bash`, `grep`, `find`, `ls`) plus our own
 in-process `complete` tool, and lets the Agent loop until `complete` is
@@ -152,7 +152,7 @@ filesystem backend.
 The two headline commands for MVP are `auth` and `run`. `list` and `show` are
 read-only utilities.
 
-### `redc-daemons auth [--store <path>]`
+### `red-daemons auth [--store <path>]`
 
 Runs the ChatGPT / Codex OAuth flow via pi-ai's `loginOpenAICodex` and
 persists the resulting credentials. Default store is `~/.codex/auth.json`,
@@ -160,20 +160,20 @@ which matches the format written by the stock `codex login` CLI so the two
 are interchangeable — either command satisfies the file-backed auth source.
 
 ```bash
-redc-daemons auth                           # default: writes ~/.codex/auth.json
-redc-daemons auth --store ~/.red/auth.json  # custom location
+red-daemons auth                           # default: writes ~/.codex/auth.json
+red-daemons auth --store ~/.red/auth.json  # custom location
 ```
 
-### `redc-daemons run <name>`
+### `red-daemons run <name>`
 
 Loads the named daemon, spawns a pi-agent-core Agent scoped to the daemon's
 directory, runs until `complete` is called or a budget expires.
 
 ```bash
-redc-daemons run readme-links
-redc-daemons run readme-links --root experiments/ai-daemons-lab
-redc-daemons run readme-links --input "focus on the install section"
-redc-daemons run readme-links --max-turns 10 --max-ms 120000
+red-daemons run readme-links
+red-daemons run readme-links --root experiments/ai-daemons-lab
+red-daemons run readme-links --input "focus on the install section"
+red-daemons run readme-links --max-turns 10 --max-ms 120000
 ```
 
 Emits JSONL wide-events to stdout matching red's envelope (`event_id`,
@@ -181,13 +181,13 @@ Emits JSONL wide-events to stdout matching red's envelope (`event_id`,
 as pretty JSON on success. Exits non-zero on failure with the reason on
 stderr.
 
-### `redc-daemons list [--root <dir>]`
+### `red-daemons list [--root <dir>]`
 
 Walks `**/*.daemon.md` under the root (defaults to `cwd`), skipping
 `node_modules`, `.git`, build directories. Prints `name  file\n  description`
 per daemon.
 
-### `redc-daemons show <name> [--root <dir>]`
+### `red-daemons show <name> [--root <dir>]`
 
 Prints the resolved frontmatter, body, and scope root of a single daemon
 without invoking it.

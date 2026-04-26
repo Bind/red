@@ -9,8 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../platform/utils.sh"
 
 MAX_AGE_DAYS="${1:-14}"
-PREVIEWS_DIR="/opt/redc-previews"
-CADDY_SITE_DIR="/opt/redc-preview-caddy/caddy/sites"
+PREVIEWS_DIR="/opt/red-previews"
+CADDY_SITE_DIR="/opt/red-preview-caddy/caddy/sites"
 
 [ -d "${PREVIEWS_DIR}" ] || exit 0
 

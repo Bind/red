@@ -30,7 +30,7 @@ Submit a job:
 curl -fsS http://127.0.0.1:4091/jobs \
   -H 'content-type: application/json' \
   -d '{
-    "repoId": "redc/example",
+    "repoId": "red/example",
     "commitSha": "0123456789abcdef0123456789abcdef01234567",
     "jobName": "test",
     "env": {

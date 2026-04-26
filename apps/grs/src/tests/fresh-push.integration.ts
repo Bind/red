@@ -10,15 +10,15 @@ describe("native smart-http integration", () => {
   test("accepts the first push into a freshly created repo", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-fresh-push-"));
+    const repoDir = await mkdtemp(join(tmpdir(), "red-gitty-fresh-push-"));
 
     try {
-      const repoId = `redc/fresh-push-${runId}`;
+      const repoId = `red/fresh-push-${runId}`;
       const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "fresh-push-test", "write");
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "fresh push"], { cwd: repoDir });
-      await runCommand("git", ["config", "user.email", "fresh-push@redc.local"], { cwd: repoDir });
+      await runCommand("git", ["config", "user.email", "fresh-push@red.local"], { cwd: repoDir });
       await Bun.write(join(repoDir, "README.md"), "# fresh push\n");
       await runCommand("git", ["add", "README.md"], { cwd: repoDir });
       await runCommand("git", ["commit", "-m", "seed repo"], { cwd: repoDir });

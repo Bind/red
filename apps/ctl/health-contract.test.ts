@@ -7,7 +7,7 @@ const testConfig: AppConfig = {
   repoBackend: {
     kind: "git_storage",
     publicUrl: "http://git-server.test",
-    defaultOwner: "redc",
+    defaultOwner: "red",
     defaultBranch: "main",
     controlPlane: {
       baseUrl: "http://git-server.test",

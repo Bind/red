@@ -12,7 +12,7 @@ HOST="${1:?Usage: $0 <host> [ssh-port]}"
 SSH_PORT="${2:-2222}"
 IMAGE_TAG="${3:?Usage: $0 <host> [ssh-port] <image-tag> <git-commit>}"
 GIT_COMMIT="${4:?Usage: $0 <host> [ssh-port] <image-tag> <git-commit>}"
-REMOTE_DIR="/opt/redc"
+REMOTE_DIR="/opt/red"
 
 echo "==> Syncing files to ${HOST} (port ${SSH_PORT})"
 rsync -avz --delete \
@@ -31,7 +31,7 @@ echo "==> Decrypting .env.production and pulling compose images"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" "bash -s" <<'REMOTE'
 set -euo pipefail
-cd /opt/redc
+cd /opt/red
 
 if [ -z "${DOTENV_PRIVATE_KEY_PRODUCTION:-}" ] && [ -f /root/.bashrc ]; then
   # Load just the persisted production dotenvx key without evaluating interactive shell setup.

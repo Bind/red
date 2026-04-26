@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets
 any compliant MCP client — Claude mobile/desktop, Cursor, VS Code, etc. —
-call tools against the redc system.
+call tools against the red system.
 
 ## URL & transport
 
@@ -15,7 +15,7 @@ call tools against the redc system.
 | Health | The service itself exposes `GET /health`; the public gateway does not currently publish a dedicated `/mcp/health` route |
 
 Path-based routing in `infra/platform/gateway/envoy.yaml.template` sends any request
-matching `/mcp*` to the `redc_mcp` cluster (`${MCP_HOST}:3002`). TLS is
+matching `/mcp*` to the `red_mcp` cluster (`${MCP_HOST}:3002`). TLS is
 terminated one hop above by the production Caddy / preview Caddy.
 
 ## Auth flow (multi-client)
@@ -86,7 +86,7 @@ tool as a smoke test. Adding a new tool is three steps:
        "list_repos",
        {
          title: "List repos",
-         description: "Every repo tracked by the redc control plane.",
+         description: "Every repo tracked by the red control plane.",
          inputSchema: { limit: z.number().int().min(1).max(100).default(20) },
        },
        async ({ limit }) => {

@@ -21,7 +21,7 @@ export function createWideEventContextAgent(model: string): ToolLoopAgent {
   return new ToolLoopAgent({
     model: openai(model),
     instructions:
-      "You map incidents to repo, branch, and ownership context in redc. Prefer explicit ownership and call out ambiguity.",
+      "You map incidents to repo, branch, and ownership context in red. Prefer explicit ownership and call out ambiguity.",
   });
 }
 

@@ -26,7 +26,7 @@ function parseGlobalArgs(argv: string[]) {
   let image =
     process.env.OPENCODE_RUNNER_IMAGE ??
     process.env.CODEX_RUNNER_IMAGE ??
-    "redc-claw-runner";
+    "red-claw-runner";
   let gitBaseUrl = process.env.GIT_STORAGE_PUBLIC_URL ?? process.env.GIT_BASE_URL;
   let timeoutMs: number | undefined;
   let limit = 20;

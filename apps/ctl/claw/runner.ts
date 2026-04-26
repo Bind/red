@@ -44,7 +44,7 @@ export class DockerClawRunner {
       .replace(/\/+$/, "")
       .replace(/localhost|127\.0\.0\.1/, "host.docker.internal");
     const repoUrl = `${dockerBaseUrl}/${request.repo}.git`;
-    const tmpRoot = await mkdtemp(join(tmpdir(), "redc-claw-job-"));
+    const tmpRoot = await mkdtemp(join(tmpdir(), "red-claw-job-"));
     const inputDir = join(tmpRoot, "input");
     const outputDir = join(tmpRoot, "output");
     const opencodeHomeDir = join(tmpRoot, "opencode-home");
@@ -126,15 +126,15 @@ export class DockerClawRunner {
         "--cidfile",
         cidFile,
         "--label",
-        `redc.run_id=${runId}`,
+        `red.run_id=${runId}`,
         "--label",
-        `redc.job_name=${request.metadata.jobName}`,
+        `red.job_name=${request.metadata.jobName}`,
         "--label",
-        `redc.repo=${request.repo}`,
+        `red.repo=${request.repo}`,
         "--label",
-        `redc.head_ref=${request.headRef}`,
+        `red.head_ref=${request.headRef}`,
         "--label",
-        `redc.base_ref=${request.baseRef ?? ""}`,
+        `red.base_ref=${request.baseRef ?? ""}`,
         "-v",
         `${inputDir}:/input:ro`,
         "-v",
@@ -142,19 +142,19 @@ export class DockerClawRunner {
         "-e",
         `REPO_URL=${repoUrl}`,
         "-e",
-        `REDC_RUN_ID=${runId}`,
+        `RED_RUN_ID=${runId}`,
         "-e",
-        `REDC_JOB_NAME=${request.metadata.jobName}`,
+        `RED_JOB_NAME=${request.metadata.jobName}`,
       ];
 
       if (request.metadata.jobId) {
-        args.push("--label", `redc.job_id=${request.metadata.jobId}`);
+        args.push("--label", `red.job_id=${request.metadata.jobId}`);
       }
       if (request.metadata.changeId != null) {
-        args.push("--label", `redc.change_id=${request.metadata.changeId}`);
+        args.push("--label", `red.change_id=${request.metadata.changeId}`);
       }
       if (request.metadata.workerId) {
-        args.push("--label", `redc.worker_id=${request.metadata.workerId}`);
+        args.push("--label", `red.worker_id=${request.metadata.workerId}`);
       }
 
       if (this.config.openaiApiKey) {
@@ -422,7 +422,7 @@ async function runDockerPreflightChecks(
     );
   }
 
-  const probeName = `redc-docker-probe-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const probeName = `red-docker-probe-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const createProbe = await runCommand([
     "docker",
     "create",
@@ -598,7 +598,7 @@ async function waitForContainerId(cidFile: string): Promise<string | undefined> 
 function buildContainerName(jobName: string, runId: string): string {
   const safeJobName = jobName.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
   const shortRunId = runId.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12);
-  return `redc-${safeJobName || "job"}-${shortRunId || "run"}`;
+  return `red-${safeJobName || "job"}-${shortRunId || "run"}`;
 }
 
 async function collectFiles(outputDir: string, requestedPaths: string[]): Promise<ClawOutputFile[]> {

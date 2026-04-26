@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc runs — list recent agent runs
+# red runs — list recent agent runs
 
 limit=""
 while [[ $# -gt 0 ]]; do
@@ -19,7 +19,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc runs"
+echo "red runs"
 separator
 echo
 

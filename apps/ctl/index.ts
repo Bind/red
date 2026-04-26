@@ -80,14 +80,14 @@ interface RepoCreateInput {
 }
 
 function loadConfig(): AppConfig {
-  const configuredRepos = (process.env.REDC_REPOS ?? "")
+  const configuredRepos = (process.env.RED_REPOS ?? "")
     .split(",")
     .map((r) => r.trim())
     .filter(Boolean);
 
   return {
-    port: parseInt(process.env.REDC_PORT ?? "3000", 10),
-    dbPath: process.env.REDC_DB_PATH ?? ".local/state/redc.db",
+    port: parseInt(process.env.RED_PORT ?? "3000", 10),
+    dbPath: process.env.RED_DB_PATH ?? ".local/state/red.db",
     repoBackend: {
       kind: "git_storage",
       publicUrl: process.env.GIT_STORAGE_PUBLIC_URL ?? "http://grs:8080",
@@ -337,7 +337,7 @@ export function createApp(config: AppConfig) {
     return c.json({ ok: true });
   });
 
-  // List known repos (configured via REDC_REPOS, then DB, then provider)
+  // List known repos (configured via RED_REPOS, then DB, then provider)
   app.get("/api/repos", async (c) => {
     return c.json(repos.list().map((repo) => repo.full_name));
   });
@@ -636,7 +636,7 @@ export function createApp(config: AppConfig) {
   const clawImage =
     process.env.OPENCODE_RUNNER_IMAGE ??
     process.env.CODEX_RUNNER_IMAGE ??
-    "redc-claw-runner";
+    "red-claw-runner";
   const hasClawAuth = existsSync(join(homedir(), ".local", "share", "opencode", "auth.json"));
   const runner = (openaiKey || hasClawAuth)
       ? new DockerClawRunner({
@@ -711,8 +711,8 @@ export function createApp(config: AppConfig) {
 
 function inferDefaultOwner(repos: string[]): string {
   const first = repos[0];
-  if (!first || !first.includes("/")) return "redc";
-  return first.split("/")[0] || "redc";
+  if (!first || !first.includes("/")) return "red";
+  return first.split("/")[0] || "red";
 }
 
 function eventToLogLines(event: { kind: string; type: string; text: string | null; delta: string | null }): string[] {
@@ -733,7 +733,7 @@ if (import.meta.main) {
   worker.start();
   clawReconciler.start();
   clawArtifactUploader.start();
-  console.log(`redc listening on port ${config.port}`);
+  console.log(`red listening on port ${config.port}`);
   Bun.serve({
     port: config.port,
     fetch: app.fetch,

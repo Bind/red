@@ -95,7 +95,7 @@ workflow uses `dotenvx get <KEY> -f .env.ci` to emit it.
 1. rsync the encrypted `.env.<env>` up along with the rest of the tree
 2. ssh into the box and decrypt on-host:
    - prod: `dotenvx decrypt -f .env.production -o .env`
-   - preview: `dotenvx decrypt -f .env.preview --stdout > /opt/redc-previews/.env`
+   - preview: `dotenvx decrypt -f .env.preview --stdout > /opt/red-previews/.env`
 3. compose reads the resulting plaintext env file normally
 4. Plaintext env files stay on the box filesystem (root-readable only,
    `chmod 600`). They're gitignored and rsync-excluded so local edits

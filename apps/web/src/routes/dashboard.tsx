@@ -52,7 +52,7 @@ import {
   serializeRegistrationCredential,
 } from "@/lib/webauthn";
 
-const WEB_CLIENT_ID = "redc-web";
+const WEB_CLIENT_ID = "red-web";
 
 function timeAgo(dateStr: string): string {
   const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : `${dateStr}Z`;
@@ -97,7 +97,7 @@ function confidenceVariant(
 
 function deriveDefaultOwner(email: string): string {
   const localPart = email.split("@")[0]?.trim();
-  return localPart || "redc";
+  return localPart || "red";
 }
 
 function parseApiMessage(error: unknown, fallback: string): string {
@@ -137,7 +137,7 @@ function PasskeyEnrollmentCard({ onComplete }: { onComplete: () => Promise<void>
 
       await verifyPasskeyRegistration(
         serializeRegistrationCredential(registration),
-        "redc passkey",
+        "red passkey",
       );
 
       setMessage("Confirming the new passkey.");
@@ -670,7 +670,7 @@ function RepoCreateCard({
               id="repo-owner"
               value={owner}
               onChange={(event) => setOwner(event.target.value)}
-              placeholder="redc"
+              placeholder="red"
               required
             />
           </div>

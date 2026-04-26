@@ -24,7 +24,7 @@ describe("instrumentScript", () => {
     };
 
     expect(first.type).toBe("Group");
-    expect(first.body[0]?.pipelines[0]?.commands[0]?.name?.parts?.[0]?.value).toBe("__redc_before");
-    expect(first.body[2]?.pipelines[0]?.commands[0]?.name?.parts?.[0]?.value).toBe("__redc_after");
+    expect(first.body[0]?.pipelines[0]?.commands[0]?.name?.parts?.[0]?.value).toBe("__red_before");
+    expect(first.body[2]?.pipelines[0]?.commands[0]?.name?.parts?.[0]?.value).toBe("__red_after");
   });
 });

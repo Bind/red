@@ -1,6 +1,6 @@
 # Wide-Event 500 Autofix
 
-First-pass Smithers workflow spec for redc.
+First-pass Smithers workflow spec for red.
 
 ## Goal
 
@@ -151,7 +151,7 @@ trigger
   -> Parallel
      -> classify-incident
      -> collect-wide-event-evidence
-     -> collect-redc-context
+     -> collect-red-context
   -> aggregate-diagnosis
   -> branch: attempt fix?
      -> implement-fix
@@ -206,13 +206,13 @@ Evidence to collect:
 - timing and retries
 - whether downstream services are missing from the final rollup
 
-### `collect-redc-context`
+### `collect-red-context`
 
 Purpose:
-- map the failure to redc ownership and current change activity
+- map the failure to red ownership and current change activity
 
 Expected integrations:
-- recent redc runs
+- recent red runs
 - related change or branch
 - repo metadata
 - existing open remediation PRs
@@ -333,7 +333,7 @@ Avoid using:
 - open PR
 - search for duplicate open PRs
 
-### redc Runtime Context
+### red Runtime Context
 
 - look up related change IDs
 - inspect recent agent runs

@@ -15,23 +15,23 @@ services:
   api:
     container_name: ${COMPOSE_PROJECT_NAME}-api
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
-      REDC_DB_PATH: /data/redc-preview.db
-      REDC_REPOS: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
-      GIT_STORAGE_DEFAULT_OWNER: ${PREVIEW_REPO_OWNER:-redc}
+      RED_DB_PATH: /data/red-preview.db
+      RED_REPOS: ${PREVIEW_HOSTED_REPO_ID:-red/red}
+      GIT_STORAGE_DEFAULT_OWNER: ${PREVIEW_REPO_OWNER:-red}
 
   bff:
     container_name: ${COMPOSE_PROJECT_NAME}-bff
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
-      BFF_HOSTED_REPO_ID: ${PREVIEW_HOSTED_REPO_ID:-redc/red}
+      BFF_HOSTED_REPO_ID: ${PREVIEW_HOSTED_REPO_ID:-red/red}
 
   auth:
     container_name: ${COMPOSE_PROJECT_NAME}-auth
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
       AUTH_LAB_ISSUER: ${PREVIEW_PUBLIC_URL:?PREVIEW_PUBLIC_URL is required}
       AUTH_LAB_WEB_CLIENTS: ${PREVIEW_WEB_CLIENTS:?PREVIEW_WEB_CLIENTS is required}
@@ -51,26 +51,26 @@ services:
   obs:
     container_name: ${COMPOSE_PROJECT_NAME}-obs
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
 
   grs:
     container_name: ${COMPOSE_PROJECT_NAME}-grs
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
 
   triage:
     container_name: ${COMPOSE_PROJECT_NAME}-triage
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red-preview}
 
   triage-smithers:
     container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc-preview}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red-preview}
 
   web:
     container_name: ${COMPOSE_PROJECT_NAME}-web
@@ -78,7 +78,7 @@ services:
   mcp:
     container_name: ${COMPOSE_PROJECT_NAME}-mcp
     env_file:
-      - /opt/redc-previews/.env
+      - /opt/red-previews/.env
     environment:
       MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:-mcp-preview}
 

@@ -12,13 +12,13 @@ import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-aut
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4025",
-  audience: "redc-api",
+  audience: "red-api",
   hostname: "127.0.0.1",
   port: 4025,
   exposeTestMailbox: true,
   webClients: [
     {
-      clientId: "redc-web",
+      clientId: "red-web",
       redirectBaseUrl: "http://localhost:5173",
       magicLinkPath: "/auth/magic-link",
     },
@@ -34,7 +34,7 @@ const baseConfig = {
       clientId: "claw-runner-dev",
       clientSecret: "dev-secret",
       allowedScopes: ["prs:create", "changes:read"],
-      allowedAudiences: ["redc-api"],
+      allowedAudiences: ["red-api"],
       tokenTtlSeconds: 300,
       status: "active" as const,
       allowedGrantTypes: ["client_credentials"] as const,
@@ -114,7 +114,7 @@ describe("user auth runtime", () => {
 
       const verifier = createTokenVerifier({
         issuer,
-        audience: "redc-api",
+        audience: "red-api",
         jwksUrl: `${issuer}/.well-known/jwks.json`,
         fetchImpl: (input, init) => server.fetch(input, init),
       });

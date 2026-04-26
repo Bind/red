@@ -141,7 +141,7 @@ export function HostedRepoPage() {
           </div>
           <div className="space-y-2">
             <p className="font-mono text-sm uppercase tracking-[0.24em] text-muted-foreground">
-              redc hosting redc
+              red hosting red
             </p>
             <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
               {snapshot.repo.full_name}

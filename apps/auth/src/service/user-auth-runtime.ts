@@ -133,7 +133,7 @@ export async function createUserAuthRuntime(
   const loginAttemptStore = createLoginAttemptStore(kysely);
 
   const auth = betterAuth({
-    appName: "redc-auth-lab",
+    appName: "red-auth-lab",
     baseURL: config.issuer,
     basePath: "/api/auth",
     secret: config.secret,
@@ -227,7 +227,7 @@ export async function createUserAuthRuntime(
       }),
       passkey({
         rpID: config.passkeyRpId,
-        rpName: "redc auth lab",
+        rpName: "red auth lab",
         origin:
           config.passkeyOrigins.length === 1 ? config.passkeyOrigins[0] : config.passkeyOrigins,
       }),

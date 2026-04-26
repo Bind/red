@@ -1,6 +1,6 @@
-# redc
+# red
 
-`redc` is an agent-native code forge workspace. The repo contains the main API and CLI, supporting services, the web app, infra and compose wiring, shared packages, and a small set of experiments.
+`red` is an agent-native code forge workspace. The repo contains the main API and CLI, supporting services, the web app, infra and compose wiring, shared packages, and a small set of experiments.
 
 ## Working from the repo root
 
@@ -16,7 +16,7 @@ just down
 just test
 just typecheck
 # broader operator shell CLI
-./scripts/redc help
+./scripts/red help
 ```
 
 Service-specific commands:
@@ -90,9 +90,9 @@ The local compose stack uses short container names:
 
 Main product and runtime surfaces live here.
 
-- `apps/ctl/`: main Bun/Hono backend plus the `redc` CLI entrypoints.
+- `apps/ctl/`: main Bun/Hono backend plus the `red` CLI entrypoints.
   Important subfolders:
-  `cli/` for the narrow Bun status client exposed as the package `redc` bin, `cli/shell/` for the broader operator shell CLI wrapped by `./scripts/redc`, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, and `repo/` for grs integration.
+  `cli/` for the narrow Bun status client exposed as the package `red` bin, `cli/shell/` for the broader operator shell CLI wrapped by `./scripts/red`, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, and `repo/` for grs integration.
 - `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
 - `apps/bff/`: backend-for-frontend service.
 - `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
@@ -130,8 +130,8 @@ Self-contained labs, canaries, and technical probes that are not yet part of the
 
 Repo-level helper scripts.
 
-- `scripts/redc`: the canonical operator-facing `redc` command; wraps the broader shell CLI under `apps/ctl/cli/shell/`.
-- installed `redc`: the narrower Bun CLI from `apps/ctl/cli/index.ts`, currently documenting `status` plus `--api-url` and `--format`.
+- `scripts/red`: the canonical operator-facing `red` command; wraps the broader shell CLI under `apps/ctl/cli/shell/`.
+- installed `red`: the narrower Bun CLI from `apps/ctl/cli/index.ts`, currently documenting `status` plus `--api-url` and `--format`.
 
 ## Documentation setup
 
@@ -147,6 +147,6 @@ The current doc layout is workable, but it should stay opinionated:
 
 - Prefer `just` commands over ad-hoc shell commands when a recipe already exists.
 - Use `.integration.ts` for git-server live integration tests so they stay out of the default `bun test` run.
-- `./scripts/redc` is the operator-facing CLI from the repo root (`changes`, `change`, `diff`, `approve`, `regenerate-summary`, `requeue-summary`, `retry-merge`, `repos`, `branches`, `create-pr`, `velocity`, `health`, `jobs`, `actions`, `runs`, `run`, `sessions`, `events`).
-- The installed package bin `redc` is the narrower Bun status client (`redc status`, `help`, `--api-url`, `--format`).
+- `./scripts/red` is the operator-facing CLI from the repo root (`changes`, `change`, `diff`, `approve`, `regenerate-summary`, `requeue-summary`, `retry-merge`, `repos`, `branches`, `create-pr`, `velocity`, `health`, `jobs`, `actions`, `runs`, `run`, `sessions`, `events`).
+- The installed package bin `red` is the narrower Bun status client (`red status`, `help`, `--api-url`, `--format`).
 - Install local hooks with `just hooks-install`.

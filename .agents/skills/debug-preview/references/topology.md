@@ -15,13 +15,13 @@ If `dotenvx get ... --format shell` yields a base64 blob instead of PEM text, de
 
 ## Host-owned paths
 
-- Preview root: `/opt/redc-previews`
-- Per-preview checkout: `/opt/redc-previews/<slug>`
-- Shared preview env: `/opt/redc-previews/.env`
-- Encrypted preview env: `/opt/redc-previews/.env.preview`
-- Caddy stack root: `/opt/redc-preview-caddy`
-- Caddy main config: `/opt/redc-preview-caddy/caddy/preview.Caddyfile`
-- Per-preview Caddy sites: `/opt/redc-preview-caddy/caddy/sites/<slug>.caddy`
+- Preview root: `/opt/red-previews`
+- Per-preview checkout: `/opt/red-previews/<slug>`
+- Shared preview env: `/opt/red-previews/.env`
+- Encrypted preview env: `/opt/red-previews/.env.preview`
+- Caddy stack root: `/opt/red-preview-caddy`
+- Caddy main config: `/opt/red-preview-caddy/caddy/preview.Caddyfile`
+- Per-preview Caddy sites: `/opt/red-preview-caddy/caddy/sites/<slug>.caddy`
 
 ## Naming
 
@@ -97,21 +97,21 @@ docker logs --tail 200 preview-pr-9-gateway
 Inspect the preview checkout:
 
 ```bash
-ls -la /opt/redc-previews
-ls -la /opt/redc-previews/pr-9
+ls -la /opt/red-previews
+ls -la /opt/red-previews/pr-9
 ```
 
 Inspect ingress routing:
 
 ```bash
-cat /opt/redc-preview-caddy/caddy/sites/pr-9.caddy
+cat /opt/red-preview-caddy/caddy/sites/pr-9.caddy
 docker logs --tail 200 preview-caddy
 ```
 
 Inspect compose state from the preview checkout:
 
 ```bash
-cd /opt/redc-previews/pr-9
+cd /opt/red-previews/pr-9
 COMPOSE_PROJECT_NAME=preview-pr-9 docker compose -f infra/base/compose.yml -f infra/preview/compose.yml ps
 COMPOSE_PROJECT_NAME=preview-pr-9 docker compose -f infra/base/compose.yml -f infra/preview/compose.yml logs auth
 ```

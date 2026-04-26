@@ -56,17 +56,17 @@ interface ComparePayload {
 
 async function createRepoWithHistory(server: StartedDevGitServer, repoName: string) {
   const repoInfo = {
-    id: `redc/${repoName}`,
-    owner: "redc",
+    id: `red/${repoName}`,
+    owner: "red",
     name: repoName,
   };
   const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoInfo.id, "control-plane-test", "write");
 
-  const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-control-plane-"));
+  const repoDir = await mkdtemp(join(tmpdir(), "red-gitty-control-plane-"));
 
   await runCommand("git", ["init"], { cwd: repoDir });
   await runCommand("git", ["config", "user.name", "control plane test"], { cwd: repoDir });
-  await runCommand("git", ["config", "user.email", "control-plane@redc.local"], { cwd: repoDir });
+  await runCommand("git", ["config", "user.email", "control-plane@red.local"], { cwd: repoDir });
   await Bun.write(join(repoDir, "README.md"), "# native control plane\n");
   await runCommand("git", ["add", "README.md"], { cwd: repoDir });
   await runCommand("git", ["commit", "-m", "seed repo"], { cwd: repoDir });

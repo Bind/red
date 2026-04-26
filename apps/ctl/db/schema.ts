@@ -4,7 +4,7 @@ import { Database } from "bun:sqlite";
  * Initialize the SQLite database with WAL mode and create tables.
  * All tables include org_id for future multi-tenancy.
  */
-export function initDatabase(dbPath: string = ".local/state/redc.db"): Database {
+export function initDatabase(dbPath: string = ".local/state/red.db"): Database {
   const db = new Database(dbPath);
 
   // Enable WAL mode for concurrent read/write

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# redc CLI shared helpers
+# red CLI shared helpers
 
-REDC_API="${REDC_API_URL:-http://localhost:3000}"
+RED_API="${RED_API_URL:-http://localhost:3000}"
 JSON_OUTPUT=false
 
 # ── Output helpers ──────────────────────────────────────────────
@@ -62,10 +62,10 @@ is_tty() {
 
 api_get() {
   local path="$1"
-  local url="${REDC_API}${path}"
+  local url="${RED_API}${path}"
   local http_code body
 
-  body=$(curl -sS -w '\n%{http_code}' "$url" 2>&1) || die "connection refused — is redc running? ($url)"
+  body=$(curl -sS -w '\n%{http_code}' "$url" 2>&1) || die "connection refused — is red running? ($url)"
   http_code=$(echo "$body" | tail -n1)
   body=$(echo "$body" | sed '$d')
 
@@ -79,7 +79,7 @@ api_get() {
 api_post() {
   local path="$1"
   local data="${2:-}"
-  local url="${REDC_API}${path}"
+  local url="${RED_API}${path}"
   local http_code body
   local -a curl_args=(-sS -X POST)
 
@@ -87,7 +87,7 @@ api_post() {
     curl_args+=(-H 'Content-Type: application/json' -d "$data")
   fi
 
-  body=$(curl "${curl_args[@]}" -w '\n%{http_code}' "$url" 2>&1) || die "connection refused — is redc running? ($url)"
+  body=$(curl "${curl_args[@]}" -w '\n%{http_code}' "$url" 2>&1) || die "connection refused — is red running? ($url)"
   http_code=$(echo "$body" | tail -n1)
   body=$(echo "$body" | sed '$d')
 
@@ -100,6 +100,6 @@ api_post() {
 
 api_stream() {
   local path="$1"
-  local url="${REDC_API}${path}"
-  curl -sS -N -H 'Accept: text/event-stream' "$url" 2>/dev/null || die "connection refused — is redc running? ($url)"
+  local url="${RED_API}${path}"
+  curl -sS -N -H 'Accept: text/event-stream' "$url" 2>/dev/null || die "connection refused — is red running? ($url)"
 }

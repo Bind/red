@@ -8,19 +8,19 @@
 #   sudo bash setup-host.sh
 # Optional env:
 #   DOTENV_PRIVATE_KEY_PREVIEW=...   write preview dotenvx key into /root/.bashrc
-#   BOOTSTRAP_PREVIEW_ENV=1          decrypt /opt/redc-previews/.env.preview → /opt/redc-previews/.env
+#   BOOTSTRAP_PREVIEW_ENV=1          decrypt /opt/red-previews/.env.preview → /opt/red-previews/.env
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREVIEW_UTILS="${SCRIPT_DIR}/../platform/utils.sh"
 PREVIEW_CLEANUP_TEMPLATE="${SCRIPT_DIR}/cleanup.sh"
 
-PREVIEWS_DIR="/opt/redc-previews"
+PREVIEWS_DIR="/opt/red-previews"
 PREVIEW_NET="preview-net"
-CRON_FILE="/etc/cron.d/redc-preview-cleanup"
+CRON_FILE="/etc/cron.d/red-preview-cleanup"
 EVICT_SCRIPT="${PREVIEWS_DIR}/preview-cleanup.sh"
 HOST_PREVIEW_UTILS="${PREVIEWS_DIR}/utils.sh"
-CADDY_DIR="/opt/redc-preview-caddy"
+CADDY_DIR="/opt/red-preview-caddy"
 CADDY_COMPOSE="${CADDY_DIR}/compose.yml"
 CADDY_CONFIG_DIR="${CADDY_DIR}/caddy"
 CADDYFILE="${CADDY_CONFIG_DIR}/preview.Caddyfile"
@@ -69,14 +69,14 @@ fi
 echo "==> Installing evict script at ${EVICT_SCRIPT}"
 install -m 755 "${PREVIEW_UTILS}" "${HOST_PREVIEW_UTILS}"
 perl \
-  -0pe 's@^SCRIPT_DIR=.*\n@@m; s@^source "\$\{SCRIPT_DIR\}/\.\./platform/utils\.sh"$@source "/opt/redc-previews/utils.sh"@m' \
+  -0pe 's@^SCRIPT_DIR=.*\n@@m; s@^source "\$\{SCRIPT_DIR\}/\.\./platform/utils\.sh"$@source "/opt/red-previews/utils.sh"@m' \
   "${PREVIEW_CLEANUP_TEMPLATE}" > "${EVICT_SCRIPT}"
 chmod +x "${EVICT_SCRIPT}"
 
 echo "==> Installing nightly cron at ${CRON_FILE}"
 cat > "${CRON_FILE}" <<CRON
 # m h dom mon dow user command
-17 3 * * * root ${EVICT_SCRIPT} 14 >> /var/log/redc-preview-cleanup.log 2>&1
+17 3 * * * root ${EVICT_SCRIPT} 14 >> /var/log/red-preview-cleanup.log 2>&1
 CRON
 chmod 644 "${CRON_FILE}"
 
@@ -148,7 +148,7 @@ echo "    1. If you did not pass DOTENV_PRIVATE_KEY_PREVIEW to this script,"
 echo "       export it so deploys can decrypt the per-PR secret env:"
 echo "         echo 'export DOTENV_PRIVATE_KEY_PREVIEW=<key>' >> /root/.bashrc"
 echo ""
-echo "    2. Create /opt/redc-previews/.env with preview secrets or let"
+echo "    2. Create /opt/red-previews/.env with preview secrets or let"
 echo "       infra/preview/deploy.sh decrypt .env.preview into place."
 echo ""
 echo "    Preview URLs will resolve to this box via the wildcard DNS managed"

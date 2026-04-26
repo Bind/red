@@ -10,7 +10,7 @@ const testConfig: AppConfig = {
   repoBackend: {
     kind: "git_storage",
     publicUrl: "http://git-server.test",
-    defaultOwner: "redc",
+    defaultOwner: "red",
     defaultBranch: "main",
     controlPlane: {
       baseUrl: "http://git-server.test",
@@ -80,7 +80,7 @@ describe("App integration", () => {
   });
 
   test("repo listing is durable and repo creation persists across app instances", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "redc-repos-"));
+    const dir = await mkdtemp(join(tmpdir(), "red-repos-"));
     const dbPath = join(dir, "repos.db");
 
     const first = createApp({ ...testConfig, dbPath });
@@ -89,7 +89,7 @@ describe("App integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        owner: "redc",
+        owner: "red",
         name: "dashboard-demo",
         default_branch: "main",
         visibility: "private",
@@ -101,19 +101,19 @@ describe("App integration", () => {
       default_branch: string;
       visibility: string;
     };
-    expect(created.full_name).toBe("redc/dashboard-demo");
+    expect(created.full_name).toBe("red/dashboard-demo");
     expect(created.default_branch).toBe("main");
 
     const listResponse = await first.app.fetch(new Request("http://localhost/api/repos"));
     expect(listResponse.status).toBe(200);
-    expect(await listResponse.json()).toEqual(["redc/dashboard-demo"]);
+    expect(await listResponse.json()).toEqual(["red/dashboard-demo"]);
 
     first.db.close();
 
     const second = createApp({ ...testConfig, dbPath });
     const secondListResponse = await second.app.fetch(new Request("http://localhost/api/repos"));
     expect(secondListResponse.status).toBe(200);
-    expect(await secondListResponse.json()).toEqual(["redc/dashboard-demo"]);
+    expect(await secondListResponse.json()).toEqual(["red/dashboard-demo"]);
 
     second.db.close();
   });
@@ -158,7 +158,7 @@ describe("App integration", () => {
   });
 
   test("createApp with file-based db", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "redc-test-"));
+    const dir = await mkdtemp(join(tmpdir(), "red-test-"));
     const { app, db } = createApp({ ...testConfig, dbPath: join(dir, "test.db") });
     const res = await app.fetch(new Request("http://localhost/health"));
     expect(res.status).toBe(200);
@@ -169,7 +169,7 @@ describe("App integration", () => {
     const { app, changes, jobs, db } = createApp(testConfig);
     const change = changes.create({
       org_id: "default",
-      repo: "redc-admin/test-repo",
+      repo: "red-admin/test-repo",
       branch: "feature/test",
       base_branch: "main",
       head_sha: "abc123",
@@ -195,7 +195,7 @@ describe("App integration", () => {
     const { app, changes, db } = createApp(testConfig);
     const change = changes.create({
       org_id: "default",
-      repo: "redc-admin/test-repo",
+      repo: "red-admin/test-repo",
       branch: "feature/test",
       base_branch: "main",
       head_sha: "abc123",

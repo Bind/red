@@ -6,7 +6,7 @@ import { SqliteClawRunTracker } from "./tracker";
 import type { ClawRunRecord } from "./types";
 
 function makeTracker(): SqliteClawRunTracker {
-  const dir = mkdtempSync(join(tmpdir(), "redc-claw-tracker-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "red-claw-tracker-test-"));
   return new SqliteClawRunTracker(join(dir, "runs.db"));
 }
 
@@ -17,11 +17,11 @@ function makeRecord(): ClawRunRecord {
     jobId: "job-1",
     changeId: 12,
     workerId: "worker-1",
-    repo: "redc-admin/redc",
+    repo: "red-admin/red",
     headRef: "abc123",
     baseRef: "main",
-    image: "redc-claw-runner",
-    containerName: "redc-generate-summary-run-1",
+    image: "red-claw-runner",
+    containerName: "red-generate-summary-run-1",
     containerId: null,
     codexSessionId: null,
     rolloutPath: null,
@@ -61,11 +61,11 @@ test("tracker maps sqlite rows back to camelCase records", () => {
     jobId: "job-1",
     changeId: 12,
     workerId: "worker-1",
-    repo: "redc-admin/redc",
+    repo: "red-admin/red",
     headRef: "abc123",
     baseRef: "main",
-    image: "redc-claw-runner",
-    containerName: "redc-generate-summary-run-1",
+    image: "red-claw-runner",
+    containerName: "red-generate-summary-run-1",
     containerId: "container-1",
     codexSessionId: "019d-run-session",
     rolloutPath: "/root/.codex/sessions/2026/04/01/rollout-2026-04-01T01-00-01-019d-run-session.jsonl",

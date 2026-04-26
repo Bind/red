@@ -3,8 +3,8 @@ set -euo pipefail
 
 HOST="${1:?usage: garbage-collect.sh <host> [ssh-port]}"
 SSH_PORT="${2:-2222}"
-PREVIEWS_DIR="/opt/redc-previews"
-CADDY_SITE_DIR="/opt/redc-preview-caddy/caddy/sites"
+PREVIEWS_DIR="/opt/red-previews"
+CADDY_SITE_DIR="/opt/red-preview-caddy/caddy/sites"
 PREVIEW_UTILS_CONTENT="$(cat "$(dirname "$0")/../platform/utils.sh")"
 
 if ! command -v gh >/dev/null 2>&1; then

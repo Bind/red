@@ -134,7 +134,7 @@ describe("BFF app", () => {
             token_type: "Bearer",
             expires_in: 600,
             scope: "session:exchange repos:read repos:create changes:read",
-            audience: "redc-api",
+            audience: "red-api",
             subject: "user:123",
             sid: "session-123",
           });
@@ -147,7 +147,7 @@ describe("BFF app", () => {
             headers: { "Content-Type": "text/plain; charset=utf-8" },
           });
         }
-        if (url.pathname === "/api/repos/redc/redc/commits/abc123/diff") {
+        if (url.pathname === "/api/repos/red/red/commits/abc123/diff") {
           hostedRepoCommitDiffRequestId = request.headers.get("x-request-id");
           return new Response("diff --git a/src/app.ts b/src/app.ts\n", {
             headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -156,7 +156,7 @@ describe("BFF app", () => {
         return new Response("not found", { status: 404 });
       },
       hostedRepo: {
-        repoId: "redc/redc",
+        repoId: "red/red",
         apiBaseUrl: "http://api.test",
         readmePath: "README.md",
       },
@@ -309,7 +309,7 @@ describe("BFF app", () => {
           return Response.json({
             attempt_id: "attempt-123",
             status: "pending",
-            client_id: "redc-web",
+            client_id: "red-web",
           });
         }
         if (url.pathname === "/login-attempts/redeem" && request.method === "POST") {
@@ -335,13 +335,13 @@ describe("BFF app", () => {
     const createResponse = await app.request("http://bff.test/rpc/auth/login-attempts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "user@example.com", client_id: "redc-web" }),
+      body: JSON.stringify({ email: "user@example.com", client_id: "red-web" }),
     });
     expect(createResponse.status).toBe(200);
     expect(await createResponse.json()).toEqual({
       attempt_id: "attempt-123",
       status: "pending",
-      client_id: "redc-web",
+      client_id: "red-web",
     });
 
     const redeemResponse = await app.request("http://bff.test/rpc/auth/login-attempts/redeem", {
@@ -368,7 +368,7 @@ describe("BFF app", () => {
         const url = new URL(request.url);
         if (url.pathname === "/user/two-factor/enroll") {
           return Response.json({
-            totpURI: "otpauth://totp/redc?secret=SECRET",
+            totpURI: "otpauth://totp/red?secret=SECRET",
             backupCodes: ["CODE-1", "CODE-2"],
           });
         }
@@ -399,7 +399,7 @@ describe("BFF app", () => {
     });
     expect(enrollResponse.status).toBe(200);
     expect(await enrollResponse.json()).toEqual({
-      totpURI: "otpauth://totp/redc?secret=SECRET",
+      totpURI: "otpauth://totp/red?secret=SECRET",
       backupCodes: ["CODE-1", "CODE-2"],
     });
 
@@ -443,7 +443,7 @@ describe("BFF app", () => {
             token_type: "Bearer",
             expires_in: 600,
             scope: "session:exchange repos:read repos:create changes:read",
-            audience: "redc-api",
+            audience: "red-api",
             subject: "user:123",
             sid: "session-123",
           });
@@ -498,7 +498,7 @@ describe("BFF app", () => {
             token_type: "Bearer",
             expires_in: 600,
             scope: "session:exchange repos:read repos:create changes:read",
-            audience: "redc-api",
+            audience: "red-api",
             subject: "user:123",
             sid: "session-123",
           });
@@ -508,9 +508,9 @@ describe("BFF app", () => {
           return Response.json(
             {
               id: 1,
-              owner: "redc",
+              owner: "red",
               name: "dashboard-demo",
-              full_name: "redc/dashboard-demo",
+              full_name: "red/dashboard-demo",
               default_branch: "main",
               visibility: "private",
             },
@@ -529,7 +529,7 @@ describe("BFF app", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        owner: "redc",
+        owner: "red",
         name: "dashboard-demo",
         default_branch: "main",
         visibility: "private",
@@ -539,9 +539,9 @@ describe("BFF app", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       id: 1,
-      owner: "redc",
+      owner: "red",
       name: "dashboard-demo",
-      full_name: "redc/dashboard-demo",
+      full_name: "red/dashboard-demo",
       default_branch: "main",
       visibility: "private",
     });
@@ -553,7 +553,7 @@ describe("BFF app", () => {
     expect(calls[1]?.cookie).toBe("better-auth.session_token=abc");
     expect(calls[1]?.body).toBe(
       JSON.stringify({
-        owner: "redc",
+        owner: "red",
         name: "dashboard-demo",
         default_branch: "main",
         visibility: "private",
@@ -587,15 +587,15 @@ describe("BFF app", () => {
   test("serves the special hosted repo snapshot from the BFF-owned reader", async () => {
     const snapshot: HostedRepoSnapshot = {
       repo: {
-        owner: "redc",
-        name: "redc",
-        full_name: "redc/redc",
+        owner: "red",
+        name: "red",
+        full_name: "red/red",
         default_branch: "main",
         visibility: "private",
       },
       readme: {
         path: "README.md",
-        content: "# redc\n",
+        content: "# red\n",
       },
       branches: [
         {
@@ -610,13 +610,13 @@ describe("BFF app", () => {
         {
           sha: "abc123",
           message: "bootstrap hosted repo",
-          author_name: "redc",
-          author_email: "team@redc.local",
+          author_name: "red",
+          author_email: "team@red.local",
           timestamp: "2026-04-05T00:00:00.000Z",
         },
       ],
       access: {
-        actor_id: "redc-bff-hosted-repo",
+        actor_id: "red-bff-hosted-repo",
         mode: "read",
         token_ttl_seconds: 300,
       },

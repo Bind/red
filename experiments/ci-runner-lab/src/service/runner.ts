@@ -210,7 +210,7 @@ export class LocalWorker implements Worker {
       CI_COMMIT_SHA: item.job.commitSha,
       CI_WORKSPACE_DIR: workspaceDir,
       CI_ARTIFACTS_DIR: artifactsDir,
-      CI_GIT_HELPER_PATH: "/run/redc/git-credential-helper",
+      CI_GIT_HELPER_PATH: "/run/red/git-credential-helper",
       CI_INLINE_COMMAND: [
         `echo "repo ${item.job.repoId}"`,
         `echo "commit ${item.job.commitSha}"`,
