@@ -39,7 +39,7 @@ via docker's embedded DNS on the shared `preview-net`.
    target env file.
    When the preview server IP or wildcard DNS changes, re-run
    `dotenvx run -f .env.ci -- just provision dev .env.ci` and commit the
-   encrypted `.env.ci` update so GitHub Actions can read `REDC_SERVER_IP`
+   encrypted `.env.ci` update so GitHub Actions can read `RED_SERVER_IP`
    without provisioning during each PR workflow.
 2. **Run bootstrap** on the box:
    ```bash

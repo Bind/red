@@ -45,12 +45,12 @@ cax11 takes 4–6 min (the bulk is `docker pull` of the preloaded images).
 Export the ID alongside the other CI secrets:
 
 ```bash
-dotenvx set REDC_BASE_SNAPSHOT_ID="<id>" -f .env.ci
+dotenvx set RED_BASE_SNAPSHOT_ID="<id>" -f .env.ci
 git add .env.ci && git commit -m "chore: pin red-base snapshot"
 ```
 
 Next `sst deploy --stage production` will build the prod server on top of
-the snapshot. When `REDC_BASE_SNAPSHOT_ID` is unset, `sst.config.ts` falls
+the snapshot. When `RED_BASE_SNAPSHOT_ID` is unset, `sst.config.ts` falls
 back to stock `ubuntu-24.04` plus a minimal cloud-init — so the snapshot
 is a pure optimisation, never a hard requirement.
 
@@ -80,7 +80,7 @@ around for rollback.
 
 ## Rollback
 
-If a new snapshot breaks `sst deploy`, point `REDC_BASE_SNAPSHOT_ID` at
+If a new snapshot breaks `sst deploy`, point `RED_BASE_SNAPSHOT_ID` at
 the previous snapshot ID, re-commit `.env.ci`, and redeploy. SST will
 recreate the prod server on the known-good image.
 

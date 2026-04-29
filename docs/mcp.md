@@ -90,7 +90,7 @@ tool as a smoke test. Adding a new tool is three steps:
          inputSchema: { limit: z.number().int().min(1).max(100).default(20) },
        },
        async ({ limit }) => {
-         const res = await fetch(`${process.env.REDC_API_BASE_URL}/api/repos`);
+         const res = await fetch(`${process.env.RED_API_BASE_URL}/api/repos`);
          const body = await res.json();
          return {
            content: [{ type: "text", text: JSON.stringify(body.slice(0, limit), null, 2) }],
