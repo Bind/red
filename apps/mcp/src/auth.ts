@@ -80,6 +80,10 @@ export function oauthMiddleware(
 			});
 		}
 		const token = header.slice(7).trim();
+		if (config.adminToken && token === config.adminToken) {
+			c.set("oauth", { active: true, sub: "admin", scope: config.requiredScope });
+			return next();
+		}
 		let result: IntrospectionResult;
 		try {
 			result = await introspector.introspect(token);

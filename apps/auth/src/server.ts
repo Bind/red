@@ -47,6 +47,14 @@ export interface AuthServerConfig {
     sqlitePath?: string;
     postgresUrl?: string;
   };
+  /**
+   * Shared admin token. When set, requests bearing
+   * `Authorization: Bearer ${adminToken}` may introspect or revoke any token
+   * without supplying client_credentials Basic auth, and a request to
+   * introspect the admin token itself returns active. Sourced from
+   * `RED_ADMIN_TOKEN`.
+   */
+  adminToken?: string;
 }
 
 export interface AuthServer {
@@ -59,6 +67,14 @@ export interface AuthServer {
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
   response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
 };
+
+function parseBearerToken(headers: Headers): string | null {
+  const value = headers.get("authorization");
+  if (!value) return null;
+  const [scheme, token] = value.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
+  return token.trim() || null;
+}
 
 function parseBasicAuth(headers: Headers): { clientId: string; clientSecret: string } | null {
   const value = headers.get("authorization");
@@ -303,19 +319,44 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return registry.authenticate(clientId, clientSecret);
   };
 
+  const isAdminBearer = (request: Request): boolean => {
+    if (!config.adminToken) return false;
+    const bearer = parseBearerToken(request.headers);
+    return bearer !== null && bearer === config.adminToken;
+  };
+
   const handleIntrospect = async (request: Request) => {
     const fields = await readBodyFields(request);
     const token = fields.token;
     if (!token) {
       throw new AuthError("invalid_request", "Missing token", 400);
     }
-    const requestClient = authenticateRequestClient(request, fields);
-    const tokenClientId = extractTokenClientId(token);
-    if (!tokenClientId) {
-      throw new AuthError("invalid_token", "Token is missing client_id", 401);
+    if (config.adminToken && token === config.adminToken) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      return {
+        active: true,
+        sub: "admin",
+        client_id: "admin",
+        scope: "admin",
+        token_type: "Bearer",
+        iss: config.issuer,
+        aud: config.audience,
+        iat: nowSec,
+      };
     }
-    if (tokenClientId !== requestClient.clientId) {
-      throw new AuthError("access_denied", "Client cannot introspect another client's token", 403);
+    if (!isAdminBearer(request)) {
+      const requestClient = authenticateRequestClient(request, fields);
+      const tokenClientId = extractTokenClientId(token);
+      if (!tokenClientId) {
+        throw new AuthError("invalid_token", "Token is missing client_id", 401);
+      }
+      if (tokenClientId !== requestClient.clientId) {
+        throw new AuthError(
+          "access_denied",
+          "Client cannot introspect another client's token",
+          403,
+        );
+      }
     }
     return authority.introspectToken(token);
   };
@@ -326,13 +367,19 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (!token) {
       throw new AuthError("invalid_request", "Missing token", 400);
     }
-    const requestClient = authenticateRequestClient(request, fields);
-    const tokenClientId = extractTokenClientId(token);
-    if (!tokenClientId) {
-      throw new AuthError("invalid_token", "Token is missing client_id", 401);
+    if (config.adminToken && token === config.adminToken) {
+      // The admin token is configured out-of-band and cannot be revoked at runtime.
+      return { revoked: true };
     }
-    if (tokenClientId !== requestClient.clientId) {
-      throw new AuthError("access_denied", "Client cannot revoke another client's token", 403);
+    if (!isAdminBearer(request)) {
+      const requestClient = authenticateRequestClient(request, fields);
+      const tokenClientId = extractTokenClientId(token);
+      if (!tokenClientId) {
+        throw new AuthError("invalid_token", "Token is missing client_id", 401);
+      }
+      if (tokenClientId !== requestClient.clientId) {
+        throw new AuthError("access_denied", "Client cannot revoke another client's token", 403);
+      }
     }
     await authority.revokeToken(token);
     return { revoked: true };

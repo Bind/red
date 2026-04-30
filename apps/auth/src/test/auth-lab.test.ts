@@ -297,6 +297,50 @@ describe("auth lab", () => {
     expect(body.error).toBe("access_denied");
   });
 
+  test("admin token introspects any client's token without basic auth", async () => {
+    const server = await createAuthServer({ ...dualClientConfig, adminToken: "shhh-admin" });
+    const token = await mintToken(server, "claw-runner-alt", "alt-secret", "red-api");
+    const response = await server.fetch(
+      new Request("http://127.0.0.1:4020/oauth/introspect", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer shhh-admin",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ token: token.access_token }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { active: boolean; client_id?: string };
+    expect(body.active).toBe(true);
+    expect(body.client_id).toBe("claw-runner-alt");
+  });
+
+  test("introspecting the admin token returns active synthetic claims", async () => {
+    const server = await createAuthServer({ ...baseConfig, adminToken: "shhh-admin" });
+    const response = await server.fetch(
+      new Request("http://127.0.0.1:4020/oauth/introspect", {
+        method: "POST",
+        headers: {
+          authorization: basicAuthHeader("claw-runner-dev", "dev-secret"),
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ token: "shhh-admin" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      active: boolean;
+      sub?: string;
+      scope?: string;
+    };
+    expect(body.active).toBe(true);
+    expect(body.sub).toBe("admin");
+    expect(body.scope).toBe("admin");
+  });
+
   test("blocks client A from revoking client B tokens", async () => {
     const server = await createAuthServer(dualClientConfig);
     const token = await mintToken(server, "claw-runner-alt", "alt-secret", "red-api");

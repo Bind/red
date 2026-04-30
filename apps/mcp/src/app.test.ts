@@ -76,6 +76,48 @@ describe("mcp app auth", () => {
 		expect(res.status).toBe(403);
 	});
 
+	test("RED_ADMIN_TOKEN bearer bypasses introspection", async () => {
+		const mcp = await createMcpEndpoint();
+		let introspected = false;
+		const app = createApp({
+			config: baseConfig({ adminToken: "shhh-admin" }),
+			mcp,
+			introspector: fakeIntrospector({}, () => {
+				introspected = true;
+			}),
+		});
+		const res = await app.request("/mcp", {
+			method: "POST",
+			headers: {
+				authorization: "Bearer shhh-admin",
+				"content-type": "application/json",
+				accept: "application/json, text/event-stream",
+			},
+			body: "",
+		});
+		expect(res.status).not.toBe(401);
+		expect(res.status).not.toBe(403);
+		expect(introspected).toBe(false);
+	});
+
+	test("non-admin tokens still go through introspection when adminToken set", async () => {
+		const mcp = await createMcpEndpoint();
+		let introspected = false;
+		const app = createApp({
+			config: baseConfig({ adminToken: "shhh-admin" }),
+			mcp,
+			introspector: fakeIntrospector({ "bad-token": { active: false } }, () => {
+				introspected = true;
+			}),
+		});
+		const res = await app.request("/mcp", {
+			method: "POST",
+			headers: { authorization: "Bearer bad-token" },
+		});
+		expect(res.status).toBe(401);
+		expect(introspected).toBe(true);
+	});
+
 	test("MCP_DISABLE_AUTH=true bypasses introspection", async () => {
 		const mcp = await createMcpEndpoint();
 		let introspected = false;

@@ -140,6 +140,11 @@ function requiredBoolean(value: string | undefined, label: string): boolean {
   throw new Error(`${label} must be true or false`);
 }
 
+function readAdminToken(env: NodeJS.ProcessEnv): string | undefined {
+  const value = env.AUTH_LAB_ADMIN_TOKEN?.trim() || env.RED_ADMIN_TOKEN?.trim();
+  return value || undefined;
+}
+
 function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   const port = Number.parseInt(env.AUTH_LAB_PORT ?? "4020", 10);
   if (!Number.isFinite(port) || port <= 0) {
@@ -191,6 +196,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
       },
     ],
     bootstrapClientSecret,
+    adminToken: readAdminToken(env),
   };
 }
 
@@ -260,6 +266,7 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
       },
     ],
     bootstrapClientSecret,
+    adminToken: readAdminToken(env),
   };
 }
 

@@ -24,6 +24,13 @@ export interface BffConfig {
   grsBaseUrl?: string;
   mcpBaseUrl?: string;
   disableAuth?: boolean;
+  /**
+   * Shared admin token. When set, outbound proxy calls skip the
+   * `/session/exchange` round-trip and forward `Authorization: Bearer
+   * ${adminToken}` directly, and `requireSession` gates pass without a
+   * cookie. Sourced from `RED_ADMIN_TOKEN`.
+   */
+  adminToken?: string;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
   hostedRepoReader?: HostedRepoReader;
@@ -297,6 +304,13 @@ export function createApp(config: BffConfig) {
   const hostedRepoReader =
     config.hostedRepoReader
     ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
+  const adminToken = config.adminToken;
+  const resolveOutboundAuth = async (
+    request: Request,
+  ): Promise<{ accessToken: string } | Response> => {
+    if (adminToken) return { accessToken: adminToken };
+    return fetchSessionExchangeToken(request, fetchImpl, config.authBaseUrl);
+  };
 
   app.use(
     "*",
@@ -471,7 +485,7 @@ export function createApp(config: BffConfig) {
       const query = new URLSearchParams();
       const hours = c.req.query("hours");
       if (hours) query.set("hours", hours);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      return resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/velocity", query), {
           authorization: `Bearer ${result.accessToken}`,
@@ -479,7 +493,7 @@ export function createApp(config: BffConfig) {
       });
     })
     .get("/review", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/review"), {
           authorization: `Bearer ${result.accessToken}`,
@@ -487,7 +501,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .get("/jobs/pending", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/jobs/pending"), {
           authorization: `Bearer ${result.accessToken}`,
@@ -495,7 +509,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .get("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
           authorization: `Bearer ${result.accessToken}`,
@@ -503,7 +517,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .post("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyMutation(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
           authorization: `Bearer ${result.accessToken}`,
@@ -514,7 +528,7 @@ export function createApp(config: BffConfig) {
       const query = new URLSearchParams();
       const repo = c.req.query("repo");
       if (repo) query.set("repo", repo);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      return resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/branches", query), {
           authorization: `Bearer ${result.accessToken}`,
@@ -522,7 +536,7 @@ export function createApp(config: BffConfig) {
       });
     })
     .get("/changes/:id", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}`), {
           authorization: `Bearer ${result.accessToken}`,
@@ -530,7 +544,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .get("/changes/:id/diff", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyText(
           c,
@@ -541,7 +555,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyMutation(
           c,
@@ -552,7 +566,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyMutation(
           c,
@@ -563,7 +577,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .get("/changes/:id/sessions", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(
           c,
@@ -574,7 +588,7 @@ export function createApp(config: BffConfig) {
       })
     )
     .get("/changes/:id/agent-events", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyStream(
           c,
@@ -590,7 +604,7 @@ export function createApp(config: BffConfig) {
       if (after) query.set("after", after);
       const limit = c.req.query("limit");
       if (limit) query.set("limit", limit);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
+      return resolveOutboundAuth(c.req.raw).then((result) => {
         if (result instanceof Response) return result;
         return proxyJson(
           c,
@@ -606,6 +620,7 @@ export function createApp(config: BffConfig) {
   // handoff needed. Session check is gated by config.disableAuth (dev flag).
   const requireSession = async (c: Parameters<typeof fetchSessionExchangeToken>[0] extends Request ? any : never) => {
     if (config.disableAuth) return null;
+    if (adminToken) return null;
     const result = await fetchSessionExchangeToken(
       c.req.raw,
       fetchImpl,
