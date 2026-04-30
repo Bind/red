@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc jobs — pending job count
+# red jobs — pending job count
 
 body=$(api_get "/api/jobs/pending")
 
@@ -10,7 +10,7 @@ fi
 
 count=$(echo "$body" | jq -r '.count // .pending // .' 2>/dev/null || echo "$body")
 
-echo "redc jobs"
+echo "red jobs"
 separator
 echo
 echo "  Pending jobs: $count"

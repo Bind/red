@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc events <changeId> — stream agent events (SSE)
+# red events <changeId> — stream agent events (SSE)
 
 change_id="${1:-}"
 require_arg "changeId" "$change_id"
@@ -14,7 +14,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc events — change #$change_id (streaming, ctrl-c to stop)"
+echo "red events — change #$change_id (streaming, ctrl-c to stop)"
 separator
 echo
 

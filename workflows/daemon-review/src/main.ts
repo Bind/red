@@ -41,7 +41,7 @@ function reviewParallelism(totalDaemons: number): number {
 const DOC_SURFACE_PATHS = [
   "README.md",
   "justfile",
-  "scripts/redc",
+  "scripts/red",
   "apps/ctl/cli/",
 ];
 
@@ -59,7 +59,7 @@ const INFRA_PATHS = [
 
 const DAEMON_CONFIG: Record<string, DaemonReviewConfig> = {
   "docs-command-surface": {
-    authorityPaths: ["README.md", "justfile", "scripts/redc", "apps/ctl/cli/"],
+    authorityPaths: ["README.md", "justfile", "scripts/red", "apps/ctl/cli/"],
     maxTurns: 12,
   },
   "compose-contract": {
@@ -121,7 +121,7 @@ async function fetchChangedFiles(
         headers: {
           authorization: `Bearer ${githubToken}`,
           accept: "application/vnd.github+json",
-          "user-agent": "redc-daemon-review",
+          "user-agent": "red-daemon-review",
         },
       },
     );
@@ -428,7 +428,7 @@ async function fetchPrFiles(
         headers: {
           authorization: `Bearer ${githubToken}`,
           accept: "application/vnd.github+json",
-          "user-agent": "redc-daemon-review",
+          "user-agent": "red-daemon-review",
         },
       },
     );
@@ -660,7 +660,7 @@ async function postProposalReview(
         authorization: `Bearer ${githubToken}`,
         accept: "application/vnd.github+json",
         "content-type": "application/json",
-        "user-agent": "redc-daemon-review",
+        "user-agent": "red-daemon-review",
       },
       body: JSON.stringify({ body, event: "COMMENT", comments }),
     },
@@ -716,7 +716,7 @@ async function ensureStackedPr(
   const headers = {
     authorization: `Bearer ${githubToken}`,
     accept: "application/vnd.github+json",
-    "user-agent": "redc-daemon-review",
+    "user-agent": "red-daemon-review",
   } as const;
 
   const listUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&head=${owner}:${branchName}&base=${encodeURIComponent(baseRef)}`;

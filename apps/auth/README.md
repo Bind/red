@@ -1,6 +1,6 @@
 # Auth Service
 
-Self-contained auth service for `redc`, promoted from the auth experiment.
+Self-contained auth service for `red`, promoted from the auth experiment.
 
 ## Integration
 

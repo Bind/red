@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc diff <id> — show change diff
+# red diff <id> — show change diff
 
 id="${1:-}"
 require_arg "id" "$id"

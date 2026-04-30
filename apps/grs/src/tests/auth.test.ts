@@ -11,14 +11,14 @@ describe("SharedSecretGitAuth", () => {
 
     const creds = auth.issueRepoCredentials({
       actorId: "agent-1",
-      repoId: "redc/demo",
+      repoId: "red/demo",
       access: "read",
       ttlSeconds: 60,
     });
 
     const header = `Basic ${Buffer.from(`${creds.username}:${creds.password}`).toString("base64")}`;
     const decision = auth.authorizeBasicAuth(header, {
-      repoId: "redc/demo",
+      repoId: "red/demo",
       requiredAccess: "read",
     });
 
@@ -33,20 +33,20 @@ describe("SharedSecretGitAuth", () => {
     const auth = new SharedSecretGitAuth({ tokenSecret: "secret" });
     const creds = auth.issueRepoCredentials({
       actorId: "agent-1",
-      repoId: "redc/demo",
+      repoId: "red/demo",
       access: "write",
       ttlSeconds: 60,
     });
     const header = `Basic ${Buffer.from(`${creds.username}:${creds.password}`).toString("base64")}`;
 
     const decision = auth.authorizeBasicAuth(header, {
-      repoId: "redc/other",
+      repoId: "red/other",
       requiredAccess: "read",
     });
 
     expect(decision.ok).toBe(false);
     if (!decision.ok) {
-      expect(decision.reason).toContain("redc/other");
+      expect(decision.reason).toContain("red/other");
     }
   });
 
@@ -58,7 +58,7 @@ describe("SharedSecretGitAuth", () => {
     const header = `Basic ${Buffer.from("admin:admin").toString("base64")}`;
 
     const decision = auth.authorizeBasicAuth(header, {
-      repoId: "redc/demo",
+      repoId: "red/demo",
       requiredAccess: "write",
     });
 

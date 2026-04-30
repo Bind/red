@@ -31,18 +31,18 @@ variable "base_image" {
 variable "snapshot_name" {
   type    = string
   # Override on CLI. Defaults include the current date for cheap uniqueness.
-  default = "redc-base-{{timestamp}}"
+  default = "red-base-{{timestamp}}"
 }
 
 variable "snapshot_labels" {
   type = map(string)
   default = {
-    role       = "redc-base"
+    role       = "red-base"
     managed-by = "packer"
   }
 }
 
-source "hcloud" "redc_base" {
+source "hcloud" "red_base" {
   token             = var.hcloud_token
   image             = var.base_image
   location          = var.location
@@ -54,8 +54,8 @@ source "hcloud" "redc_base" {
 }
 
 build {
-  name    = "redc-base"
-  sources = ["source.hcloud.redc_base"]
+  name    = "red-base"
+  sources = ["source.hcloud.red_base"]
 
   provisioner "shell" {
     scripts = [

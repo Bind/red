@@ -29,7 +29,7 @@ export async function statusCommand(ctx: CliContext): Promise<number> {
     }
 
     // Text output
-    console.log("redc status");
+    console.log("red status");
     console.log("═".repeat(50));
     console.log();
 
@@ -68,7 +68,7 @@ export async function statusCommand(ctx: CliContext): Promise<number> {
     return 0;
   } catch (err) {
     if (err instanceof ApiError) {
-      console.error(`Error: could not reach redc API at ${ctx.apiUrl}`);
+      console.error(`Error: could not reach red API at ${ctx.apiUrl}`);
       console.error(`  ${err.message}`);
       return 1;
     }
@@ -81,7 +81,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   try {
     res = await fetch(url);
   } catch (err) {
-    throw new ApiError(`Connection refused — is redc running? (${url})`);
+    throw new ApiError(`Connection refused — is red running? (${url})`);
   }
   if (!res.ok) {
     throw new ApiError(`HTTP ${res.status}: ${await res.text()}`);

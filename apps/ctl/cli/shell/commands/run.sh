@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc run <runId> — show run detail
+# red run <runId> — show run detail
 
 run_id="${1:-}"
 require_arg "runId" "$run_id"
@@ -17,7 +17,7 @@ status=$(echo "$body" | jq -r '.status // "—"')
 started=$(echo "$body" | jq -r '.started_at // .created_at // "—"')
 finished=$(echo "$body" | jq -r '.finished_at // .completed_at // "—"')
 
-echo "redc run #$id"
+echo "red run #$id"
 separator
 echo
 echo "  Action:    $action"

@@ -1,6 +1,6 @@
 ---
 name: debug-preview
-description: Debug a redc preview deployment on the shared Hetzner box. Use when a preview URL, deploy, remote service, or per-PR stack needs investigation over SSH, or when you need to find where preview services, logs, caddy routes, env files, and compose state live on the host.
+description: Debug a red preview deployment on the shared Hetzner box. Use when a preview URL, deploy, remote service, or per-PR stack needs investigation over SSH, or when you need to find where preview services, logs, caddy routes, env files, and compose state live on the host.
 ---
 
 # Debug Preview
@@ -24,13 +24,13 @@ Use this skill for per-PR preview issues on the shared dev box.
 3. Inspect the host before diving into app logs.
 
 - Read [references/topology.md](references/topology.md) for the box layout and service map.
-- Start with `docker ps`, `docker logs`, disk headroom, and `/opt/redc-previews/<slug>`.
-- Confirm the matching Caddy site exists under `/opt/redc-preview-caddy/caddy/sites/`.
+- Start with `docker ps`, `docker logs`, disk headroom, and `/opt/red-previews/<slug>`.
+- Confirm the matching Caddy site exists under `/opt/red-preview-caddy/caddy/sites/`.
 
 4. Stay narrow to one preview stack.
 
 - Prefer `preview-${slug}-*` containers only, for example `preview-pr-9-gateway`.
-- Use the compose files in `/opt/redc-previews/<slug>/infra/base/compose.yml` and `/opt/redc-previews/<slug>/infra/preview/compose.yml`.
+- Use the compose files in `/opt/red-previews/<slug>/infra/base/compose.yml` and `/opt/red-previews/<slug>/infra/preview/compose.yml`.
 - Avoid global cleanup unless the problem is clearly host-wide.
 
 5. Report findings with the exact layer that failed.
@@ -44,10 +44,10 @@ Use this skill for per-PR preview issues on the shared dev box.
 ## Quick checks
 
 - Is `preview-caddy` up?
-- Does `/opt/redc-preview-caddy/caddy/sites/<slug>.caddy` exist?
+- Does `/opt/red-preview-caddy/caddy/sites/<slug>.caddy` exist?
 - Are `preview-${slug}-gateway` and the target service containers running?
-- Is `/opt/redc-previews/.env` present?
-- Is `/opt/redc-previews/<slug>` populated with the current repo checkout?
+- Is `/opt/red-previews/.env` present?
+- Is `/opt/red-previews/<slug>` populated with the current repo checkout?
 - Are disk, memory, or image-pull failures blocking startup?
 
 ## References

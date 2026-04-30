@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc requeue-summary <id> — retry failed summary
+# red requeue-summary <id> — retry failed summary
 
 id="${1:-}"
 require_arg "id" "$id"

@@ -7,9 +7,9 @@ set -euo pipefail
 SLUG="${1:?Usage: $0 <slug> <host> [ssh-port]}"
 HOST="${2:?Usage: $0 <slug> <host> [ssh-port]}"
 SSH_PORT="${3:-2222}"
-REMOTE_DIR="/opt/redc-previews/${SLUG}"
+REMOTE_DIR="/opt/red-previews/${SLUG}"
 PROJECT="preview-${SLUG}"
-CADDY_SITE_FILE="/opt/redc-preview-caddy/caddy/sites/${SLUG}.caddy"
+CADDY_SITE_FILE="/opt/red-preview-caddy/caddy/sites/${SLUG}.caddy"
 PREVIEW_UTILS_CONTENT="$(cat "$(dirname "$0")/../platform/utils.sh")"
 
 echo "==> Tearing down preview ${SLUG} on ${HOST}"

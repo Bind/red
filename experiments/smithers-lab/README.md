@@ -1,6 +1,6 @@
 # Smithers Lab
 
-Starter experiment for evaluating the [smithers.sh](https://smithers.sh/) orchestrator inside the redc repo shape.
+Starter experiment for evaluating the [smithers.sh](https://smithers.sh/) orchestrator inside the red repo shape.
 
 ## What It Does
 
@@ -23,7 +23,7 @@ Example request:
 ```bash
 curl -X POST http://127.0.0.1:4090/workflows/research-brief \
   -H 'content-type: application/json' \
-  -d '{"topic":"How should we evaluate smithers.sh for redc?","audience":"engineering"}'
+  -d '{"topic":"How should we evaluate smithers.sh for red?","audience":"engineering"}'
 ```
 
 Wide-event trigger request:

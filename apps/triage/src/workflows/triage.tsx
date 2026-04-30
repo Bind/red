@@ -244,7 +244,7 @@ function ProposeLoop() {
 }
 
 export default smithers(() => (
-	<Workflow name="redc.triage">
+	<Workflow name="red.triage">
 		<Sequence>
 			<InvestigateLoop />
 			<HumanGate />

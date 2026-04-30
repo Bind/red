@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc changes — list review queue
+# red changes — list review queue
 
 body=$(api_get "/api/review")
 
@@ -10,7 +10,7 @@ fi
 
 count=$(echo "$body" | jq 'length' 2>/dev/null || echo "?")
 
-echo "redc changes"
+echo "red changes"
 separator
 echo
 

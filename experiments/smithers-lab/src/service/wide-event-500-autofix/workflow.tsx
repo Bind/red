@@ -37,7 +37,7 @@ export function createWideEvent500AutofixWorkflow(opts: { dbPath: string; model:
   return smithers((ctx) => {
     const diagnosis = ctx.outputMaybe(outputs.diagnosis, { nodeId: "classify-incident" });
     const evidence = ctx.outputMaybe(outputs.evidence, { nodeId: "collect-wide-event-evidence" });
-    const incidentContext = ctx.outputMaybe(outputs.context, { nodeId: "collect-redc-context" });
+    const incidentContext = ctx.outputMaybe(outputs.context, { nodeId: "collect-red-context" });
     const repairPlan = ctx.outputMaybe(outputs.repairPlan, { nodeId: "aggregate-diagnosis" });
 
     const triggerDetails = JSON.stringify(ctx.input, null, 2);
@@ -47,15 +47,15 @@ export function createWideEvent500AutofixWorkflow(opts: { dbPath: string; model:
         <Sequence>
           <Parallel>
             <Task id="classify-incident" output={outputs.diagnosis} agent={classifierAgent}>
-              {`Classify this recurring root >=500 failure for redc.\n\nTrigger:\n${triggerDetails}\n\nReturn a conservative diagnosis. Treat infra or dependency issues as non-patchable. Prefer explicit ownership only when supported by the trigger payload.`}
+              {`Classify this recurring root >=500 failure for red.\n\nTrigger:\n${triggerDetails}\n\nReturn a conservative diagnosis. Treat infra or dependency issues as non-patchable. Prefer explicit ownership only when supported by the trigger payload.`}
             </Task>
 
             <Task id="collect-wide-event-evidence" output={outputs.evidence} agent={evidenceAgent}>
               {`Summarize the operational evidence for this wide-event-triggered failure.\n\nTrigger:\n${triggerDetails}\n\nFocus on root status, rollup reason, services touched, likely patchability, and the smallest likely owner/repo hints from the payload.`}
             </Task>
 
-            <Task id="collect-redc-context" output={outputs.context} agent={contextAgent}>
-              {`Infer the redc ownership and remediation context for this failure.\n\nTrigger:\n${triggerDetails}\n\nReturn target repo/branch/change/run hints, duplicate PR risk, and notes about ambiguity.`}
+            <Task id="collect-red-context" output={outputs.context} agent={contextAgent}>
+              {`Infer the red ownership and remediation context for this failure.\n\nTrigger:\n${triggerDetails}\n\nReturn target repo/branch/change/run hints, duplicate PR risk, and notes about ambiguity.`}
             </Task>
           </Parallel>
 

@@ -15,14 +15,14 @@ import { createVirtualTotpAuthenticator } from "../test/helpers/virtual-totp-aut
 
 const baseConfig = {
   issuer: "http://127.0.0.1:4020",
-  audience: "redc-api",
+  audience: "red-api",
   hostname: "127.0.0.1",
   port: 4020,
   exposeTestMailbox: true,
   stealthTotpEmails: ["douglasjbinder@gmail.com"],
   webClients: [
     {
-      clientId: "redc-web",
+      clientId: "red-web",
       redirectBaseUrl: "http://localhost:5173",
       magicLinkPath: "/auth/magic-link",
     },
@@ -38,7 +38,7 @@ const baseConfig = {
       clientId: "claw-runner-dev",
       clientSecret: "dev-secret",
       allowedScopes: ["prs:create", "changes:read"],
-      allowedAudiences: ["redc-api"],
+      allowedAudiences: ["red-api"],
       tokenTtlSeconds: 300,
       status: "active" as const,
       allowedGrantTypes: ["client_credentials"] as const,
@@ -54,7 +54,7 @@ const dualClientConfig = {
       clientId: "claw-runner-alt",
       clientSecret: "alt-secret",
       allowedScopes: ["prs:create", "changes:read"],
-      allowedAudiences: ["redc-api", "other-api"],
+      allowedAudiences: ["red-api", "other-api"],
       tokenTtlSeconds: 300,
       status: "active" as const,
       allowedGrantTypes: ["client_credentials"] as const,
@@ -223,7 +223,7 @@ describe("auth lab", () => {
         body: new URLSearchParams({
           grant_type: "client_credentials",
           scope: "prs:create",
-          audience: "redc-api",
+          audience: "red-api",
         }),
       }),
     );
@@ -246,7 +246,7 @@ describe("auth lab", () => {
         body: new URLSearchParams({
           grant_type: "client_credentials",
           scope: "prs:create",
-          audience: "redc-api",
+          audience: "red-api",
         }),
       }),
     );
@@ -268,7 +268,7 @@ describe("auth lab", () => {
         body: new URLSearchParams({
           grant_type: "client_credentials",
           scope: "prs:create admin",
-          audience: "redc-api",
+          audience: "red-api",
         }),
       }),
     );
@@ -280,7 +280,7 @@ describe("auth lab", () => {
 
   test("blocks client A from introspecting client B tokens", async () => {
     const server = await createAuthServer(dualClientConfig);
-    const token = await mintToken(server, "claw-runner-alt", "alt-secret", "redc-api");
+    const token = await mintToken(server, "claw-runner-alt", "alt-secret", "red-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/introspect", {
         method: "POST",
@@ -299,7 +299,7 @@ describe("auth lab", () => {
 
   test("blocks client A from revoking client B tokens", async () => {
     const server = await createAuthServer(dualClientConfig);
-    const token = await mintToken(server, "claw-runner-alt", "alt-secret", "redc-api");
+    const token = await mintToken(server, "claw-runner-alt", "alt-secret", "red-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/revoke", {
         method: "POST",
@@ -356,7 +356,7 @@ describe("auth lab", () => {
         },
         body: JSON.stringify({
           email: "cross-device@example.com",
-          client_id: "redc-web",
+          client_id: "red-web",
         }),
       }),
     );
@@ -367,7 +367,7 @@ describe("auth lab", () => {
       client_id: string;
     };
     expect(created.status).toBe("pending");
-    expect(created.client_id).toBe("redc-web");
+    expect(created.client_id).toBe("red-web");
     expect(server.userRuntime.mailbox.at(-1)?.url).toContain(
       `http://localhost:5173/auth/magic-link?attempt_id=${created.attempt_id}`,
     );
@@ -379,7 +379,7 @@ describe("auth lab", () => {
     expect(await pendingResponse.json()).toMatchObject({
       attempt_id: created.attempt_id,
       status: "pending",
-      client_id: "redc-web",
+      client_id: "red-web",
     });
 
     const token = server.userRuntime.mailbox.at(-1)?.token;
@@ -394,7 +394,7 @@ describe("auth lab", () => {
         body: JSON.stringify({
           attempt_id: created.attempt_id,
           token,
-          client_id: "redc-web",
+          client_id: "red-web",
         }),
       }),
     );

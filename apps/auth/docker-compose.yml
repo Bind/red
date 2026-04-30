@@ -26,8 +26,8 @@ services:
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
       AUTH_LAB_ISSUER: http://127.0.0.1:4020
-      AUTH_LAB_AUDIENCE: redc-api
-      AUTH_LAB_WEB_CLIENTS: redc-web=http://localhost:5173
+      AUTH_LAB_AUDIENCE: red-api
+      AUTH_LAB_WEB_CLIENTS: red-web=http://localhost:5173
       AUTH_LAB_PASSKEY_ORIGINS: http://localhost:5173
       AUTH_LAB_PASSKEY_RP_IDS: localhost
       AUTH_LAB_ALLOW_ANY_TOTP_CODE: "true"
@@ -37,7 +37,7 @@ services:
       AUTH_LAB_BOOTSTRAP_CLIENT_ID: claw-runner-compose
       AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: auth-lab-compose-client-secret
       AUTH_LAB_BOOTSTRAP_SCOPES: prs:create changes:read
-      AUTH_LAB_BOOTSTRAP_AUDIENCES: redc-api
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: red-api
       AUTH_LAB_BOOTSTRAP_TTL_SECONDS: 300
       AUTH_LAB_EXPOSE_TEST_MAILBOX: "true"
     volumes:

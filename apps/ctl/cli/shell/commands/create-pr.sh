@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc create-pr <repo> <branch> <title> [--body text] — create PR from branch
+# red create-pr <repo> <branch> <title> [--body text] — create PR from branch
 
 repo="${1:-}"
 branch="${2:-}"

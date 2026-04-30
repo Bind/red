@@ -1,6 +1,6 @@
 ---
 name: wide-events-observability
-description: Use when debugging redc request flow, verifying wide-events ingestion, inspecting MinIO raw or rollup data, checking request_id propagation, or quickly tracing why a request did or did not materialize into a canonical rollup.
+description: Use when debugging red request flow, verifying wide-events ingestion, inspecting MinIO raw or rollup data, checking request_id propagation, or quickly tracing why a request did or did not materialize into a canonical rollup.
 ---
 
 # Wide Events Observability

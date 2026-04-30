@@ -4,7 +4,7 @@ set -euo pipefail
 HOST="${1:?usage: setup.sh <host-or-ip>}"
 PORT="${2:-2222}"
 REMOTE_SCRIPT="/root/setup-preview-box.sh"
-REMOTE_PREVIEW_ENV="/opt/redc-previews/.env.preview"
+REMOTE_PREVIEW_ENV="/opt/red-previews/.env.preview"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TMP_KEY="$(mktemp)"

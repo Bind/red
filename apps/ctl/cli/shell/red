@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# redc — agent-native code forge CLI
+# red — agent-native code forge CLI
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
-USAGE="redc — agent-native code forge
+USAGE="red — agent-native code forge
 
 Usage:
-  redc <command> [args...]
+  red <command> [args...]
 
 Commands:
   changes                List review queue
@@ -31,7 +31,7 @@ Commands:
   events <changeId>      Stream agent events (SSE)
 
 Options:
-  --api-url <url>   API base URL (default: http://localhost:3000, env: REDC_API_URL)
+  --api-url <url>   API base URL (default: http://localhost:3000, env: RED_API_URL)
   --json            Machine-readable JSON output
   help              Show this help message
 "
@@ -41,7 +41,7 @@ ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --api-url)
-      REDC_API="${2:?missing value for --api-url}"
+      RED_API="${2:?missing value for --api-url}"
       shift 2
       ;;
     --json)
@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Export for subcommands
-export REDC_API JSON_OUTPUT
+export RED_API JSON_OUTPUT
 
 COMMAND="${ARGS[0]:-help}"
 CMD_ARGS=()

@@ -34,7 +34,7 @@ done
 
 cat > "$job_file" <<'EOF'
 {
-  "repoId": "redc/example",
+  "repoId": "red/example",
   "commitSha": "0123456789abcdef0123456789abcdef01234567",
   "jobName": "test",
   "env": {
@@ -59,7 +59,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-jq -e '.job.repoId == "redc/example"' "$result_file" >/dev/null
+jq -e '.job.repoId == "red/example"' "$result_file" >/dev/null
 jq -e '.job.attempts | length == 1' "$result_file" >/dev/null
 jq -e '.job.attempts[0].artifacts[0] | contains("artifacts/result.txt")' "$result_file" >/dev/null
 

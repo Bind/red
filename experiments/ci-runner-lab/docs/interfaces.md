@@ -88,4 +88,4 @@ The backend must not know about:
 - repo contract semantics
 - retry policy
 
-Those remain redc-owned worker/control-plane concerns.
+Those remain red-owned worker/control-plane concerns.

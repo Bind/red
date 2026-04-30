@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc velocity — merge velocity metrics
+# red velocity — merge velocity metrics
 
 hours=""
 while [[ $# -gt 0 ]]; do
@@ -22,7 +22,7 @@ fi
 merged=$(echo "$body" | jq -r '.merged // 0' 2>/dev/null || echo "?")
 pending=$(echo "$body" | jq -r '.pending_review // 0' 2>/dev/null || echo "?")
 
-echo "redc velocity"
+echo "red velocity"
 separator
 echo
 echo "Merge velocity (${hours:-24}h):"

@@ -43,7 +43,7 @@ describe("LocalJobsService", () => {
   test("creates a queued job and runs it through the worker", async () => {
     const { jobs } = createServices();
     const created = jobs.createJob({
-      repoId: "redc/example",
+      repoId: "red/example",
       commitSha: "0123456789abcdef0123456789abcdef01234567",
       jobName: "test",
       gitCredentialGrant: "grant-1",
@@ -64,7 +64,7 @@ describe("LocalJobsService", () => {
   test("creates a retry attempt on the same job", async () => {
     const { jobs } = createServices();
     const created = jobs.createJob({
-      repoId: "redc/example",
+      repoId: "red/example",
       commitSha: "0123456789abcdef0123456789abcdef01234567",
       jobName: "test",
       gitCredentialGrant: "grant-1",

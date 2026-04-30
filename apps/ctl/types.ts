@@ -1,5 +1,5 @@
 /**
- * Core domain types for redc.
+ * Core domain types for red.
  *
  * Change lifecycle state machine:
  *

@@ -25,7 +25,7 @@ import {
   serializeRegistrationCredential,
 } from "@/lib/webauthn";
 
-const WEB_CLIENT_ID = "redc-web";
+const WEB_CLIENT_ID = "red-web";
 
 function parseApiMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
@@ -66,7 +66,7 @@ function PasskeyEnrollmentCard({ onComplete }: { onComplete: () => Promise<void>
         throw new Error("Passkey creation was cancelled.");
       }
 
-      await verifyPasskeyRegistration(serializeRegistrationCredential(registration), "redc passkey");
+      await verifyPasskeyRegistration(serializeRegistrationCredential(registration), "red passkey");
 
       setMessage("Confirming the new passkey.");
       const authenticateOptions = await fetchPasskeyAuthenticateOptions();

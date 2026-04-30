@@ -3,7 +3,7 @@
 Hetzner doesn't expose an AWS-style AMI marketplace, but named **snapshots**
 fill the same niche: a per-account, reusable image referenced by ID anywhere
 a server's `image:` field accepts one. We use [Packer](https://www.packer.io)
-to build a `redc-base` snapshot so every new box boots in ~1 min with
+to build a `red-base` snapshot so every new box boots in ~1 min with
 docker / dotenvx / sshd-on-2222 already in place, instead of running a
 5–10 min cloud-init bootstrap each time.
 
@@ -11,14 +11,14 @@ docker / dotenvx / sshd-on-2222 already in place, instead of running a
 
 ```
 infra/platform/packer/
-  redc-base.pkr.hcl          builder config (hcloud plugin)
+  red-base.pkr.hcl          builder config (hcloud plugin)
   provisioners/
     01-apt.sh                apt update + base tools (curl, jq, rsync, …)
     02-sshd.sh               move sshd to port 2222 (no restart yet)
     03-docker.sh             official docker repo, compose plugin, log rotation
     04-dotenvx.sh            install dotenvx + sanity check
     05-preload-images.sh     docker pull every public base image we use
-    06-system.sh             /opt/redc layout, sysctl tuning, ufw default-deny
+    06-system.sh             /opt/red layout, sysctl tuning, ufw default-deny
 ```
 
 Provisioners run in order on a temporary `cax11` in `nbg1`. At the end,
@@ -33,7 +33,7 @@ just image-build
 
 This runs `packer init` + `packer build` through `dotenvx run -f .env.ci`
 so `HCLOUD_TOKEN` is injected from the encrypted env. The snapshot is
-named `redc-base-<unix-timestamp>` by default; override with a direct
+named `red-base-<unix-timestamp>` by default; override with a direct
 `packer build -var snapshot_name=...` invocation if you need a specific
 name.
 
@@ -45,12 +45,12 @@ cax11 takes 4–6 min (the bulk is `docker pull` of the preloaded images).
 Export the ID alongside the other CI secrets:
 
 ```bash
-dotenvx set REDC_BASE_SNAPSHOT_ID="<id>" -f .env.ci
-git add .env.ci && git commit -m "chore: pin redc-base snapshot"
+dotenvx set RED_BASE_SNAPSHOT_ID="<id>" -f .env.ci
+git add .env.ci && git commit -m "chore: pin red-base snapshot"
 ```
 
 Next `sst deploy --stage production` will build the prod server on top of
-the snapshot. When `REDC_BASE_SNAPSHOT_ID` is unset, `sst.config.ts` falls
+the snapshot. When `RED_BASE_SNAPSHOT_ID` is unset, `sst.config.ts` falls
 back to stock `ubuntu-24.04` plus a minimal cloud-init — so the snapshot
 is a pure optimisation, never a hard requirement.
 
@@ -64,7 +64,7 @@ manually but you can create it from the snapshot via the Hetzner console
 just image-list
 ```
 
-Returns every snapshot with the `role=redc-base` label (applied by packer)
+Returns every snapshot with the `role=red-base` label (applied by packer)
 so rogue snapshots from unrelated experiments don't clutter the output.
 
 ## Rebuild cadence
@@ -80,7 +80,7 @@ around for rollback.
 
 ## Rollback
 
-If a new snapshot breaks `sst deploy`, point `REDC_BASE_SNAPSHOT_ID` at
+If a new snapshot breaks `sst deploy`, point `RED_BASE_SNAPSHOT_ID` at
 the previous snapshot ID, re-commit `.env.ci`, and redeploy. SST will
 recreate the prod server on the known-good image.
 

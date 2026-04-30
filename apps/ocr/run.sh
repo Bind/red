@@ -104,7 +104,7 @@ const annotationSchema = tool.schema.object({
 })
 
 export default tool({
-  description: "Persist the final redc summary JSON and mark the batch run as complete.",
+  description: "Persist the final red summary JSON and mark the batch run as complete.",
   args: {
     title: tool.schema.string(),
     what_changed: tool.schema.string(),

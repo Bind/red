@@ -87,7 +87,7 @@ describe("BashRuntimeService", () => {
     });
 
     const run = await runtime.getRun("inspect-demo");
-    expect(run?.transformedScript).toContain("__redc_before");
+    expect(run?.transformedScript).toContain("__red_before");
     expect(run?.commandNodes["script.stmt0.pipe0.cmd0"]?.commandName).toBe("echo");
   });
 

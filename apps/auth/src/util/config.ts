@@ -147,7 +147,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   }
   const hostname = env.AUTH_LAB_HOST ?? "127.0.0.1";
   const issuer = env.AUTH_LAB_ISSUER ?? `http://${hostname}:${port}`;
-  const audience = env.AUTH_LAB_AUDIENCE ?? "redc-api";
+  const audience = env.AUTH_LAB_AUDIENCE ?? "red-api";
   const clientId = env.AUTH_LAB_BOOTSTRAP_CLIENT_ID ?? "claw-runner-dev";
   const bootstrapClientSecret = env.AUTH_LAB_BOOTSTRAP_CLIENT_SECRET ?? generateClientSecret();
   const scopes = (env.AUTH_LAB_BOOTSTRAP_SCOPES ?? "prs:create changes:read")
@@ -175,9 +175,9 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     allowAnyTotpCode: env.AUTH_LAB_ALLOW_ANY_TOTP_CODE === "true",
     database: {
       kind: "sqlite",
-      sqlitePath: env.AUTH_LAB_DB_PATH ?? join(tmpdir(), "redc-auth-lab.sqlite"),
+      sqlitePath: env.AUTH_LAB_DB_PATH ?? join(tmpdir(), "red-auth-lab.sqlite"),
     },
-    userAuthSecret: env.AUTH_LAB_BETTER_AUTH_SECRET ?? "redc-auth-lab-dev-secret",
+    userAuthSecret: env.AUTH_LAB_BETTER_AUTH_SECRET ?? "red-auth-lab-dev-secret",
     signingPrivateJwk: optionalString(env.AUTH_LAB_SIGNING_PRIVATE_JWK),
     seedClients: [
       {

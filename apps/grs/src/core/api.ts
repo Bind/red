@@ -149,12 +149,12 @@ export function describeExperimentArchitecture() {
         "file reads",
       ],
       product: [
-        "redc review/change lifecycle",
+        "red review/change lifecycle",
         "policy",
         "audit trail",
         "permissions",
       ],
     },
-    principle: "match code.storage semantics at the SDK layer; keep redc review semantics above it",
+    principle: "match code.storage semantics at the SDK layer; keep red review semantics above it",
   };
 }

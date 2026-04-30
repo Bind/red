@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 import { statusCommand } from "./status";
 
-const USAGE = `redc — agent-native code forge
+const USAGE = `red — agent-native code forge
 
 Usage:
-  redc status              Show summary throughput and pending reviews
-  redc help                Show this help message
+  red status              Show summary throughput and pending reviews
+  red help                Show this help message
 
 Options:
-  --api-url <url>   API base URL (default: http://localhost:3000, env: REDC_API_URL)
+  --api-url <url>   API base URL (default: http://localhost:3000, env: RED_API_URL)
   --format <fmt>    Output format: text | json (default: text)
 `;
 
@@ -20,7 +20,7 @@ export interface CliContext {
 
 export function parseArgs(argv: string[]): CliContext {
   const args: string[] = [];
-  let apiUrl = process.env.REDC_API_URL ?? "http://localhost:3000";
+  let apiUrl = process.env.RED_API_URL ?? "http://localhost:3000";
   let format: "text" | "json" = "text";
 
   for (let i = 0; i < argv.length; i++) {

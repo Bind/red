@@ -10,7 +10,7 @@ triggers `.github/workflows/release.yml`, which:
    then syncs exported SST env vars into the target env file.
 4. Writes the SSH private key from secrets.
 5. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
-   working tree to `/opt/redc`, decrypts `.env.production`, pulls the tagged GHCR
+   working tree to `/opt/red`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
 6. Runs `just deploy-check https://red.computer` → curl `/health` and fail
    the workflow unless `status == "ok"`.
@@ -49,7 +49,7 @@ Docker named volumes also survive every deploy; releases now pull immutable GHCR
 image tags instead of rebuilding service images on the box.
 
 First-time-server bootstrap still needs a `.env` file dropped in
-`/opt/redc/.env` manually.
+`/opt/red/.env` manually.
 
 ## Cutting a release
 

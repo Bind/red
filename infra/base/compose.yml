@@ -25,14 +25,14 @@ services:
     image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-api:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
     environment:
-      REDC_PORT: 3000
-      REDC_DB_PATH: /data/redc.db
+      RED_PORT: 3000
+      RED_DB_PATH: /data/red.db
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
       MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_BUCKET: ${MINIO_BUCKET:-red-artifacts}
       MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:
@@ -50,7 +50,7 @@ services:
       - mcp
     environment:
       BFF_PORT: 3001
-      REDC_API_BASE_URL: http://api:3000
+      RED_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
       OBS_BASE_URL: http://obs:4090
       TRIAGE_BASE_URL: http://triage:7000
@@ -67,10 +67,10 @@ services:
     environment:
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
-      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-redc-api}
+      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-red-api}
       AUTH_LAB_DB_URL: postgres://${AUTH_DB_USER:-auth_lab}:${AUTH_DB_PASSWORD:-auth_lab_password}@db-auth:5432/${AUTH_DB_NAME:-auth_lab}
       AUTH_LAB_BOOTSTRAP_SCOPES: ${AUTH_BOOTSTRAP_SCOPES:-prs:create changes:read}
-      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-red-api}
       AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
       AUTH_LAB_ALLOW_ANY_TOTP_CODE: ${AUTH_ALLOW_ANY_TOTP_CODE:-false}
       AUTH_LAB_BETTER_AUTH_SECRET: ${AUTH_BETTER_AUTH_SECRET:?AUTH_BETTER_AUTH_SECRET is required}
@@ -148,10 +148,10 @@ services:
       TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
       TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
       TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
       TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      REDC_API_BASE_URL: http://api:3000
+      RED_API_BASE_URL: http://api:3000
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:
       - smithers-data:/smithers-data
@@ -170,7 +170,7 @@ services:
       TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
       TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
       TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
       TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     volumes:

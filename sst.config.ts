@@ -3,7 +3,7 @@
 export default $config({
   app(input) {
     return {
-      name: "redc",
+      name: "red",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "cloudflare",
       providers: {
@@ -26,13 +26,13 @@ export default $config({
       throw new Error("CLOUDFLARE_API_TOKEN is required");
     }
     const isProduction = $app.stage === "production";
-    const serverName = isProduction ? "redc-server" : "redc-dev-server";
-    const sshKeyName = isProduction ? "redc-ssh-key" : "redc-dev-ssh-key";
+    const serverName = isProduction ? "red-server" : "red-dev-server";
+    const sshKeyName = isProduction ? "red-ssh-key" : "red-dev-ssh-key";
     const dnsName = isProduction ? "red.computer" : "*.preview.red.computer";
-    const dnsRecordName = isProduction ? "redc-dns" : "redc-preview-wildcard";
+    const dnsRecordName = isProduction ? "red-dns" : "red-preview-wildcard";
     const daemonMemoryBucketName = isProduction
-      ? "redc-daemon-memory"
-      : `redc-daemon-memory-${$app.stage}`;
+      ? "red-daemon-memory"
+      : `red-daemon-memory-${$app.stage}`;
     const sshPublicKey = isProduction
       ? process.env.HETZNER_SSH_PUBLIC_KEY
       : process.env.DEV_SSH_PUBLIC_KEY;
@@ -46,7 +46,7 @@ export default $config({
       publicKey: sshPublicKey,
     });
 
-    const firewall = new hcloud.Firewall("redc-firewall", {
+    const firewall = new hcloud.Firewall("red-firewall", {
       rules: [
         { description: "Git SSH", direction: "in", protocol: "tcp", port: "22", sourceIps: ["0.0.0.0/0", "::/0"] },
         { description: "HTTP", direction: "in", protocol: "tcp", port: "80", sourceIps: ["0.0.0.0/0", "::/0"] },
@@ -55,12 +55,12 @@ export default $config({
       ],
     });
 
-    // Prefer the packer-baked redc-base snapshot when available; fall back
+    // Prefer the packer-baked red-base snapshot when available; fall back
     // to stock Ubuntu + cloud-init bootstrap. When the snapshot is in use,
-    // all of docker / dotenvx / sshd:2222 / /opt/redc are already baked in,
+    // all of docker / dotenvx / sshd:2222 / /opt/red are already baked in,
     // so userData shrinks to a no-op marker (cloud-init is happier with a
     // non-empty script).
-    const baseImage = process.env.REDC_BASE_SNAPSHOT_ID ?? "ubuntu-24.04";
+    const baseImage = process.env.RED_BASE_SNAPSHOT_ID ?? "ubuntu-24.04";
     const usingBakedImage = baseImage !== "ubuntu-24.04";
 
     const userData = usingBakedImage
@@ -77,7 +77,7 @@ export default $config({
           "",
           "curl -fsS https://dotenvx.sh | sh",
           "",
-          `mkdir -p ${isProduction ? "/opt/redc" : "/opt/redc-previews"}`,
+          `mkdir -p ${isProduction ? "/opt/red" : "/opt/red-previews"}`,
         ].join("\n");
 
     const server = new hcloud.Server(serverName, {
@@ -98,7 +98,7 @@ export default $config({
       proxied: false,
     });
 
-    const daemonMemoryBucket = new cloudflare.R2Bucket("redc-daemon-memory", {
+    const daemonMemoryBucket = new cloudflare.R2Bucket("red-daemon-memory", {
       accountId: cloudflareAccountId,
       name: daemonMemoryBucketName,
       jurisdiction: "default",
@@ -128,9 +128,9 @@ export default $config({
       throw new Error("failed to resolve permission group id for Workers R2 Storage Bucket Item Write");
     }
 
-    const daemonMemoryToken = new cloudflare.AccountToken("redc-daemon-memory-token", {
+    const daemonMemoryToken = new cloudflare.AccountToken("red-daemon-memory-token", {
       accountId: cloudflareAccountId,
-      name: isProduction ? "redc-daemon-memory" : `redc-daemon-memory-${$app.stage}`,
+      name: isProduction ? "red-daemon-memory" : `red-daemon-memory-${$app.stage}`,
       policies: [
         {
           effect: "allow",

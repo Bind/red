@@ -15,7 +15,7 @@ export interface PolicyDecision {
 }
 
 /**
- * Policy engine — reads .redc/policy.yaml from the base branch and evaluates
+ * Policy engine — reads .red/policy.yaml from the base branch and evaluates
  * rules against a change's diff stats and confidence level.
  *
  * Policy is always pinned to the base branch (never the PR branch) to prevent
@@ -26,7 +26,7 @@ export class PolicyEngine {
 
   /**
    * Load policy from the repo's base branch.
-   * Returns null if no policy file exists (repo hasn't configured redc).
+   * Returns null if no policy file exists (repo hasn't configured red).
    */
   async loadPolicy(
     owner: string,
@@ -36,7 +36,7 @@ export class PolicyEngine {
     const content = await this.repositoryProvider.getFileContent(
       owner,
       repo,
-      ".redc/policy.yaml",
+      ".red/policy.yaml",
       baseBranch
     );
 

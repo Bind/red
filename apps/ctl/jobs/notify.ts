@@ -62,7 +62,7 @@ export class NotificationSender {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "User-Agent": "redc/0.1.0",
+            "User-Agent": "red/0.1.0",
           },
           body,
           signal: AbortSignal.timeout(10_000),

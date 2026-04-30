@@ -27,7 +27,7 @@ services:
       - ../../.env
     environment:
       AUTH_LAB_ISSUER: ${AUTH_ISSUER:-https://red.computer}
-      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-redc-web=https://red.computer}
+      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-red-web=https://red.computer}
       AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-https://red.computer}
       AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-red.computer}
       AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-prod}

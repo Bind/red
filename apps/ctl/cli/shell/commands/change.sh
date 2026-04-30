@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc change <id> — show change detail
+# red change <id> — show change detail
 
 id="${1:-}"
 require_arg "id" "$id"
@@ -19,7 +19,7 @@ created_by=$(echo "$body" | jq -r '.created_by // "—"')
 summary=$(echo "$body" | jq -r '.summary // "—"')
 updated_at=$(echo "$body" | jq -r '.updated_at // "—"')
 
-echo "redc change #$id"
+echo "red change #$id"
 separator
 echo
 echo "  Repo:        $repo"

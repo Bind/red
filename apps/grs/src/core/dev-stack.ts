@@ -103,7 +103,7 @@ async function waitForHttpServer(baseUrl: string) {
 }
 
 async function waitForGitSmartHttpRoute(baseUrl: string, username: string, password: string) {
-  const target = new URL("/redc/__healthcheck__.git/info/refs?service=git-upload-pack", baseUrl);
+  const target = new URL("/red/__healthcheck__.git/info/refs?service=git-upload-pack", baseUrl);
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 50; attempt++) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc sessions <changeId> — list agent sessions for a change
+# red sessions <changeId> — list agent sessions for a change
 
 change_id="${1:-}"
 require_arg "changeId" "$change_id"
@@ -11,7 +11,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-echo "redc sessions — change #$change_id"
+echo "red sessions — change #$change_id"
 separator
 echo
 

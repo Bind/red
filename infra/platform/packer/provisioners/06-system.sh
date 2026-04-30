@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> creating redc directory layout"
-mkdir -p /opt/redc /opt/redc-previews
-chmod 755 /opt/redc /opt/redc-previews
+echo "==> creating red directory layout"
+mkdir -p /opt/red /opt/red-previews
+chmod 755 /opt/red /opt/red-previews
 
 echo "==> kernel tuning: fs.inotify.max_user_watches (bun --watch friendly)"
-cat > /etc/sysctl.d/99-redc.conf <<'SYSCTL'
+cat > /etc/sysctl.d/99-red.conf <<'SYSCTL'
 fs.inotify.max_user_watches = 524288
 vm.max_map_count = 262144
 SYSCTL

@@ -18,6 +18,6 @@ COPY pkg/server ./pkg/server
 COPY package.json tsconfig.json ./
 
 EXPOSE 3000
-ENV REDC_PORT=3000
+ENV RED_PORT=3000
 ENV GIT_COMMIT=${GIT_COMMIT}
 CMD ["bun", "run", "apps/ctl/index.ts"]

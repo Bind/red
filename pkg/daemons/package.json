@@ -8,7 +8,7 @@
     "./cli": "./src/cli.ts"
   },
   "bin": {
-    "redc-daemons": "./src/cli.ts"
+    "red-daemons": "./src/cli.ts"
   },
   "scripts": {
     "test": "bun test",

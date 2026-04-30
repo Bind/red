@@ -1,4 +1,4 @@
-name: redc
+name: red
 
 services:
   s3:
@@ -26,7 +26,7 @@ services:
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_BUCKET: ${MINIO_BUCKET:-red-artifacts}
       GIT_SERVER_S3_BUCKET: ${GIT_SERVER_S3_BUCKET:-grs-repos}
       WIDE_EVENTS_RAW_BUCKET: ${WIDE_EVENTS_RAW_BUCKET:-wide-events-raw}
       WIDE_EVENTS_ROLLUP_BUCKET: ${WIDE_EVENTS_ROLLUP_BUCKET:-wide-events-rollup}
@@ -79,7 +79,7 @@ services:
       bun run --watch src/index.ts"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
     healthcheck:
       test:
         [
@@ -122,7 +122,7 @@ services:
     ports:
       - "${GIT_SERVER_PUBLIC_PORT:-9080}:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -157,8 +157,8 @@ services:
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
       AUTH_LAB_ISSUER: ${AUTH_ISSUER:-http://localhost:4020}
-      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-redc-api}
-      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-redc-web=http://localhost:5173}
+      AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-red-api}
+      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-red-web=http://localhost:5173}
       AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-http://localhost:5173}
       AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-localhost}
       AUTH_LAB_STEALTH_TOTP_EMAILS: ${AUTH_LAB_STEALTH_TOTP_EMAILS:-douglasjbinder@gmail.com}
@@ -172,7 +172,7 @@ services:
       AUTH_LAB_BOOTSTRAP_CLIENT_ID: ${AUTH_BOOTSTRAP_CLIENT_ID:-claw-runner-compose}
       AUTH_LAB_BOOTSTRAP_CLIENT_SECRET: ${AUTH_BOOTSTRAP_CLIENT_SECRET:-auth-lab-compose-client-secret}
       AUTH_LAB_BOOTSTRAP_SCOPES: ${AUTH_BOOTSTRAP_SCOPES:-prs:create changes:read}
-      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-redc-api}
+      AUTH_LAB_BOOTSTRAP_AUDIENCES: ${AUTH_BOOTSTRAP_AUDIENCES:-red-api}
       AUTH_LAB_BOOTSTRAP_TTL_SECONDS: ${AUTH_BOOTSTRAP_TTL_SECONDS:-300}
       AUTH_LAB_EXPOSE_TEST_MAILBOX: ${AUTH_EXPOSE_TEST_MAILBOX:-true}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
@@ -214,27 +214,27 @@ services:
     env_file:
       - ../../.env
     environment:
-      REDC_PORT: 3000
-      REDC_DB_PATH: ${REDC_DB_PATH:-/data/redc-dev.db}
-      REDC_REPOS: ${REDC_REPOS:-redc/redc}
+      RED_PORT: 3000
+      RED_DB_PATH: ${RED_DB_PATH:-/data/red-dev.db}
+      RED_REPOS: ${RED_REPOS:-red/red}
       GIT_STORAGE_PUBLIC_URL: ${GIT_STORAGE_PUBLIC_URL:-http://grs:8080}
-      GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-redc}
+      GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-red}
       GIT_STORAGE_CONTROL_PLANE_URL: ${GIT_STORAGE_CONTROL_PLANE_URL:-http://grs:8080}
       GIT_STORAGE_CONTROL_PLANE_USERNAME: ${GIT_STORAGE_CONTROL_PLANE_USERNAME:-admin}
       GIT_STORAGE_CONTROL_PLANE_PASSWORD: ${GIT_STORAGE_CONTROL_PLANE_PASSWORD:-admin}
       GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
       GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
-      OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-redc-claw-runner}}
+      OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-red-claw-runner}}
       FETCH_REMOTE_AFTER_MERGE: ${FETCH_REMOTE_AFTER_MERGE:-}
       HOST_OPENCODE_DIR: ${HOME}/.local/share/opencode
       HOST_CODEX_DIR: ${HOME}/.codex
-      DOCKER_RUN_NETWORK: ${COMPOSE_PROJECT_NAME:-redc}_default
+      DOCKER_RUN_NETWORK: ${COMPOSE_PROJECT_NAME:-red}_default
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
       MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-redc-artifacts}
+      MINIO_BUCKET: ${MINIO_BUCKET:-red-artifacts}
       MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
@@ -246,9 +246,9 @@ services:
       sh -lc "bun run --watch apps/ctl/index.ts"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
-      - redc-data:/data
+      - red-data:/data
       - /tmp:/tmp
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
@@ -276,13 +276,13 @@ services:
     working_dir: /app
     environment:
       BFF_PORT: 3001
-      REDC_API_BASE_URL: http://ctl:3000
+      RED_API_BASE_URL: http://ctl:3000
       AUTH_BASE_URL: http://auth:4020
       OBS_BASE_URL: http://obs:4090
       TRIAGE_BASE_URL: http://triage:7000
       BFF_DISABLE_AUTH: ${BFF_DISABLE_AUTH:-true}
-      BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-redc/redc}
-      BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-redc-bff-hosted-repo}
+      BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-red/red}
+      BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-red-bff-hosted-repo}
       BFF_HOSTED_REPO_DEFAULT_BRANCH: ${BFF_HOSTED_REPO_DEFAULT_BRANCH:-main}
       BFF_HOSTED_REPO_README_PATH: ${BFF_HOSTED_REPO_README_PATH:-README.md}
       BFF_HOSTED_REPO_TOKEN_TTL_SECONDS: ${BFF_HOSTED_REPO_TOKEN_TTL_SECONDS:-300}
@@ -299,7 +299,7 @@ services:
       bun run --watch apps/bff/src/index.ts"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
     healthcheck:
       test:
@@ -329,7 +329,7 @@ services:
       bun run dev --host 0.0.0.0 --port 5173"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
 
   triage:
@@ -352,10 +352,10 @@ services:
       TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
       TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
       TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
       TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      REDC_API_BASE_URL: ${REDC_API_BASE_URL:-http://ctl:3000}
+      RED_API_BASE_URL: ${RED_API_BASE_URL:-http://ctl:3000}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
       - "${TRIAGE_PORT:-7000}:7000"
@@ -365,7 +365,7 @@ services:
       bun run --watch src/index.ts"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
       - smithers-data:/smithers-data
     healthcheck:
       test:
@@ -398,7 +398,7 @@ services:
       TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
       TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
       TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-redc}
+      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
       TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
     ports:
       - "${SMITHERS_SERVER_PORT:-7331}:7331"
@@ -409,7 +409,7 @@ services:
       bun run src/smithers-server.ts"
     volumes:
       - ../..:/app
-      - redc-node-modules:/app/node_modules
+      - red-node-modules:/app/node_modules
       - smithers-data:/smithers-data
       - ${HOME}/.codex:/root/.codex:ro
     healthcheck:
@@ -427,8 +427,8 @@ services:
 
 volumes:
   minio-data:
-  redc-data:
-  redc-node-modules:
+  red-data:
+  red-node-modules:
   web-node-modules:
   auth-node-modules:
   smithers-data:

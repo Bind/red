@@ -174,7 +174,7 @@ export function createHostedRepoReader(
             }),
           commits,
           access: {
-            actor_id: "redc-bff-hosted-repo",
+            actor_id: "red-bff-hosted-repo",
             mode: "read",
             token_ttl_seconds: 300,
           },
@@ -197,7 +197,7 @@ export function createHostedRepoReader(
           branches: [],
           commits: [],
           access: {
-            actor_id: "redc-bff-hosted-repo",
+            actor_id: "red-bff-hosted-repo",
             mode: "read",
             token_ttl_seconds: 300,
           },

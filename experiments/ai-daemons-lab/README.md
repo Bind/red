@@ -41,7 +41,7 @@ Frontmatter is two fields:
 ```yaml
 ---
 name: kebab-case-unique
-description: One sentence for `redc daemons list`.
+description: One sentence for `red daemons list`.
 ---
 ```
 

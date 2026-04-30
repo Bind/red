@@ -53,9 +53,9 @@ git push http://localhost:8080/myrepo.git main
 
 The server handles push, clone, fetch, pull, branches, tags, and large files (10MB+ tested). Storage is a flat directory of loose objects and refs — compatible with standard git tooling.
 
-### redc Observability Contract
+### red Observability Contract
 
-The `redc` integration emits one JSON wide event per inbound HTTP request from [`src/obs.zig`](src/obs.zig). This behavior should stay aligned with `pkg/obs`.
+The `red` integration emits one JSON wide event per inbound HTTP request from [`src/obs.zig`](src/obs.zig). This behavior should stay aligned with `pkg/obs`.
 
 Sink behavior:
 

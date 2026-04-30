@@ -345,8 +345,8 @@ async function main() {
         });
         await saveState(statePath, state);
         emitAssignments({
-          REDC_ACTION: "replay",
-          REDC_EXIT: cacheEntry.exitCode,
+          RED_ACTION: "replay",
+          RED_EXIT: cacheEntry.exitCode,
         });
         return;
       }
@@ -374,8 +374,8 @@ async function main() {
       });
       await saveState(statePath, state);
       emitAssignments({
-        REDC_ACTION: "run",
-        REDC_EXIT: 0,
+        RED_ACTION: "run",
+        RED_EXIT: 0,
       });
       return;
     }
@@ -446,7 +446,7 @@ async function main() {
       envDelta: diffEnv(pending.env, env),
       exitCode:
         action === "replay"
-          ? Number.parseInt(process.env.REDC_EXIT ?? `${exitCode}`, 10) || exitCode
+          ? Number.parseInt(process.env.RED_EXIT ?? `${exitCode}`, 10) || exitCode
           : exitCode,
       fileMutations: mutations,
       at: new Date().toISOString(),

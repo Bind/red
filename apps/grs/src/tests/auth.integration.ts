@@ -10,17 +10,17 @@ describe("git-sdk auth integration", () => {
   test("allows clone with read credentials and rejects push with read-only credentials", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const writerDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-write-"));
-    const readerCloneDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-read-"));
+    const writerDir = await mkdtemp(join(tmpdir(), "red-gitty-auth-write-"));
+    const readerCloneDir = await mkdtemp(join(tmpdir(), "red-gitty-auth-read-"));
 
     try {
-      const repoId = `redc/auth-repo-${runId}`;
+      const repoId = `red/auth-repo-${runId}`;
       const writeRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "write");
       const readRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "read");
 
       await runCommand("git", ["init"], { cwd: writerDir });
       await runCommand("git", ["config", "user.name", "auth test"], { cwd: writerDir });
-      await runCommand("git", ["config", "user.email", "auth@redc.local"], { cwd: writerDir });
+      await runCommand("git", ["config", "user.email", "auth@red.local"], { cwd: writerDir });
       await Bun.write(join(writerDir, "README.md"), "# auth repo\n");
       await runCommand("git", ["add", "README.md"], { cwd: writerDir });
       await runCommand("git", ["commit", "-m", "seed repo"], { cwd: writerDir });
@@ -30,7 +30,7 @@ describe("git-sdk auth integration", () => {
 
       await runCommand("git", ["clone", readRemote.fetchUrl, readerCloneDir]);
       await runCommand("git", ["-C", readerCloneDir, "config", "user.name", "read only"]);
-      await runCommand("git", ["-C", readerCloneDir, "config", "user.email", "readonly@redc.local"]);
+      await runCommand("git", ["-C", readerCloneDir, "config", "user.email", "readonly@red.local"]);
       await Bun.write(join(readerCloneDir, "readonly.txt"), "should not push\n");
       await runCommand("git", ["-C", readerCloneDir, "add", "readonly.txt"]);
       await runCommand("git", ["-C", readerCloneDir, "commit", "-m", "read only change"]);

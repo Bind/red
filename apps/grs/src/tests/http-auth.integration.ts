@@ -10,18 +10,18 @@ describe("native HTTP auth integration", () => {
   test("enforces control-plane and smart-http auth parity", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const repoDir = await mkdtemp(join(tmpdir(), "redc-gitty-auth-http-"));
+    const repoDir = await mkdtemp(join(tmpdir(), "red-gitty-auth-http-"));
 
     try {
       const repoName = `auth-http-${runId}`;
-      const repoId = `redc/${repoName}`;
+      const repoId = `red/${repoName}`;
       const otherRepoName = `auth-http-other-${runId}`;
       const readRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-http-reader", "read");
       const writeRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-http-writer", "write");
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "auth http seed"], { cwd: repoDir });
-      await runCommand("git", ["config", "user.email", "auth-http@redc.local"], { cwd: repoDir });
+      await runCommand("git", ["config", "user.email", "auth-http@red.local"], { cwd: repoDir });
       await Bun.write(join(repoDir, "README.md"), "# auth http\n");
       await runCommand("git", ["add", "README.md"], { cwd: repoDir });
       await runCommand("git", ["commit", "-m", "seed auth http repo"], { cwd: repoDir });
@@ -29,10 +29,10 @@ describe("native HTTP auth integration", () => {
       await runCommand("git", ["remote", "add", "origin", writeRemote.pushUrl], { cwd: repoDir });
       await runCommandWithRetry("git", ["push", "origin", "HEAD:refs/heads/main"], { cwd: repoDir });
 
-      const controlUrl = new URL(`/api/repos/redc/${repoName}`, server.publicUrl);
-      const otherControlUrl = new URL(`/api/repos/redc/${otherRepoName}`, server.publicUrl);
-      const receivePackInfoRefs = new URL(`/redc/${repoName}.git/info/refs?service=git-receive-pack`, server.publicUrl);
-      const uploadPackInfoRefs = new URL(`/redc/${repoName}.git/info/refs?service=git-upload-pack`, server.publicUrl);
+      const controlUrl = new URL(`/api/repos/red/${repoName}`, server.publicUrl);
+      const otherControlUrl = new URL(`/api/repos/red/${otherRepoName}`, server.publicUrl);
+      const receivePackInfoRefs = new URL(`/red/${repoName}.git/info/refs?service=git-receive-pack`, server.publicUrl);
+      const uploadPackInfoRefs = new URL(`/red/${repoName}.git/info/refs?service=git-upload-pack`, server.publicUrl);
 
       const noAuth = await fetch(controlUrl);
       expect(noAuth.status).toBe(401);

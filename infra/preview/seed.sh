@@ -20,7 +20,7 @@ TMP_DIR="$(mktemp -d)"
 PAYLOAD_DIR="${TMP_DIR}/payloads"
 REPO_DIR="${TMP_DIR}/repo"
 REPO_DIR_REAL=""
-MINIO_BUCKET_NAME="${MINIO_BUCKET:-redc-artifacts}"
+MINIO_BUCKET_NAME="${MINIO_BUCKET:-red-artifacts}"
 GIT_SERVER_BUCKET_NAME="${GIT_SERVER_S3_BUCKET:-grs-repos}"
 WIDE_EVENTS_RAW_BUCKET_NAME="${WIDE_EVENTS_RAW_BUCKET:-wide-events-raw}"
 WIDE_EVENTS_ROLLUP_BUCKET_NAME="${WIDE_EVENTS_ROLLUP_BUCKET:-wide-events-rollup}"
@@ -166,7 +166,7 @@ wait_for_grs() {
   local attempts="${1:-30}"
   local username="${GIT_SERVER_ADMIN_USERNAME:-admin}"
   local password="${GIT_SERVER_ADMIN_PASSWORD:-admin}"
-  local url="http://grs:8080/redc/__healthcheck__.git/info/refs?service=git-upload-pack"
+  local url="http://grs:8080/red/__healthcheck__.git/info/refs?service=git-upload-pack"
 
   for attempt in $(seq 1 "${attempts}"); do
     status="$(
@@ -233,7 +233,7 @@ echo "==> Seeding ${REPO_ID} base branch ${BASE_BRANCH}"
 rsync -a --delete --exclude='.git' "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
 bootstrap_seed_repo
 run_seed_git config user.name "preview seeder"
-run_seed_git config user.email "preview-seed@redc.local"
+run_seed_git config user.email "preview-seed@red.local"
 run_seed_git add -A
 run_seed_git commit --allow-empty -m "seed ${BASE_BRANCH}"
 run_git_push "HEAD:refs/heads/${BASE_BRANCH}" "${PUSH_REMOTE_URL}"

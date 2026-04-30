@@ -37,7 +37,7 @@ export class RepoTaskRunner {
       .replace(/\/+$/, "")
       .replace(/localhost|127\.0\.0\.1/, "host.docker.internal");
     const repoUrl = `${dockerBaseUrl}/${request.repo}.git`;
-    const tmpDir = await mkdtemp(join(tmpdir(), "redc-runner-"));
+    const tmpDir = await mkdtemp(join(tmpdir(), "red-runner-"));
     const start = Date.now();
 
     try {

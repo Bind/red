@@ -35,7 +35,7 @@ describe("isPrivateUrl", () => {
 
   test("allows public URLs", () => {
     expect(isPrivateUrl("https://hooks.slack.com/services/xxx")).toBe(false);
-    expect(isPrivateUrl("https://webhook.example.com/redc")).toBe(false);
+    expect(isPrivateUrl("https://webhook.example.com/red")).toBe(false);
     expect(isPrivateUrl("http://203.0.113.1/hook")).toBe(false);
   });
 

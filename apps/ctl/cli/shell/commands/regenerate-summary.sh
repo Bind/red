@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# redc regenerate-summary <id> — regenerate summary
+# red regenerate-summary <id> — regenerate summary
 
 id="${1:-}"
 require_arg "id" "$id"

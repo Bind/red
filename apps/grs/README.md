@@ -22,7 +22,7 @@ That means:
 - mint authenticated remote URLs for standard Git clients
 - read repo state, branches, commits, files, and diffs through HTTP
 - avoid hidden local workflows in API or SDK code
-- keep `redc` review/change semantics above the storage layer
+- keep `red` review/change semantics above the storage layer
 
 ## Layout
 
@@ -215,7 +215,7 @@ The local compose defaults are:
 That means:
 
 - `gitty` owns Git protocol behavior
-- `redc` owns change/review behavior
+- `red` owns change/review behavior
 - standard Git clients should still be able to clone, fetch, and push against repos served by the system
 
 ## App Boundary
@@ -237,4 +237,4 @@ The broader app should remain the source of truth for:
 - whether a repo exists
 - repo settings and lifecycle
 - access policy above Git transport
-- `redc` review/change integration
+- `red` review/change integration
