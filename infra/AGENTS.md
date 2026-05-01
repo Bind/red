@@ -14,12 +14,12 @@ Read only the files needed for the task at hand.
 
 Start from the narrowest relevant area:
 
-- `compose/` for service topology, ports, volumes, env wiring, and runtime
-  dependencies
-- `scripts/` for bootstrap, deploy, teardown, and operator workflows
+- `base/`, `preview/`, `prod/` compose files for service topology, ports, volumes,
+  env wiring, and runtime dependencies
+- `dev/` for local development compose and run helpers
 - `platform/caddy/` for public HTTP entrypoints and host/path routing
-- `gateway/` for Envoy config and gateway container behavior
-- `packer/` for base image provisioning and snapshot build concerns
+- `platform/gateway/` for Envoy config and gateway container behavior
+- `platform/packer/` for base image provisioning and snapshot build concerns
 
 Pull in broader context only when the local file points to it:
 
@@ -37,8 +37,6 @@ are auditing clearly depends on an external contract.
   - `compose.yml` is the immutable-image runtime layer shared by preview and
     production deploys
   - Dockerfiles here are shared container build primitives
-- `ci/`
-  - owns CI/bootstrap helpers such as env seeding and Codex auth setup
 - `platform/`
   - owns Caddy, gateway, Packer, and other machine-facing bootstrap assets
   - `preview-caddy.yml` defines the permanent wildcard ingress for preview
