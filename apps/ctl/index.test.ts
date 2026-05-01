@@ -79,6 +79,96 @@ describe("App integration", () => {
     expect(json.pending).toBe(0);
   });
 
+  test("logs endpoint returns parsed loki entries and summary", async () => {
+    const { app } = createApp(testConfig);
+    const originalFetch = globalThis.fetch;
+    const originalLokiUrl = process.env.LOKI_URL;
+    process.env.LOKI_URL = "http://loki.test";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith("http://loki.test/loki/api/v1/query_range")) {
+        return new Response(JSON.stringify({
+          data: {
+            result: [
+              {
+                stream: {
+                  app: "red",
+                  service: "api",
+                  level: "info",
+                  logger: "red.api.http",
+                },
+                values: [
+                  [
+                    "1714521000000000000",
+                    JSON.stringify({
+                      timestamp: "2026-04-30T12:30:00.000Z",
+                      level: "info",
+                      category: ["red", "api", "http"],
+                      message: "request complete",
+                      properties: {
+                        method: "GET",
+                        path: "/api/review",
+                        status: 200,
+                        response_time_ms: 12.5,
+                        request_id: "req-1",
+                      },
+                    }),
+                  ],
+                  [
+                    "1714521060000000000",
+                    JSON.stringify({
+                      timestamp: "2026-04-30T12:31:00.000Z",
+                      level: "error",
+                      category: ["red", "api", "http"],
+                      message: "request failed",
+                      properties: {
+                        method: "POST",
+                        path: "/api/daemon-review/playground",
+                        status: 500,
+                        response_time_ms: 87.2,
+                        request_id: "req-2",
+                      },
+                    }),
+                  ],
+                ],
+              },
+            ],
+          },
+        }));
+      }
+      return originalFetch(input as RequestInfo | URL);
+    }) as typeof globalThis.fetch;
+
+    try {
+      const res = await app.fetch(new Request("http://localhost/api/logs?logger=http&window=1h&limit=10"));
+      expect(res.status).toBe(200);
+      const json = await res.json() as {
+        entries: Array<{ service: string; status: number | null; path: string | null }>;
+        summary: {
+          total: number;
+          serviceCounts: Array<{ value: string; count: number }>;
+          statusClassCounts: Array<{ value: string; count: number }>;
+        };
+      };
+      expect(json.entries).toHaveLength(2);
+      expect(json.entries[0]?.service).toBe("api");
+      expect(json.entries[0]?.path).toBe("/api/daemon-review/playground");
+      expect(json.summary.total).toBe(2);
+      expect(json.summary.serviceCounts[0]).toEqual({ value: "api", count: 2 });
+      expect(json.summary.statusClassCounts).toEqual([
+        { value: "2xx", count: 1 },
+        { value: "5xx", count: 1 },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalLokiUrl === undefined) {
+        delete process.env.LOKI_URL;
+      } else {
+        process.env.LOKI_URL = originalLokiUrl;
+      }
+    }
+  });
+
   test("repo listing is durable and repo creation persists across app instances", async () => {
     const dir = await mkdtemp(join(tmpdir(), "red-repos-"));
     const dbPath = join(dir, "repos.db");

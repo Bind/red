@@ -6,6 +6,7 @@ import { HostedRepoCommitPage } from "@/routes/hosted-repo-commit";
 import { ChangeDetailPage } from "@/routes/change";
 import { TriagePage } from "@/routes/triage";
 import { StatusPage } from "@/routes/status";
+import { DaemonPlaygroundPage } from "@/routes/daemon-playground";
 import { Demo } from "@/components/demo";
 import { AuthSessionProvider } from "@/lib/auth";
 import { AuthEnrollPage } from "@/routes/auth-enroll";
@@ -24,6 +25,7 @@ export function App() {
             <Route path="changes/:id" element={<ChangeDetailPage />} />
             <Route path="triage" element={<TriagePage />} />
             <Route path="status" element={<StatusPage />} />
+            <Route path="playground/daemons" element={<DaemonPlaygroundPage />} />
             <Route path="auth/enroll" element={<AuthEnrollPage />} />
             <Route path="auth/yubikey" element={<AuthYubikeyPage />} />
             <Route path="auth/magic-link" element={<MagicLinkPage />} />

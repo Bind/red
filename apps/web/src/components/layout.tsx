@@ -49,6 +49,9 @@ export function Layout() {
                 <Link to="/status" className="transition-colors hover:text-foreground">
                   status
                 </Link>
+                <Link to="/playground/daemons" className="transition-colors hover:text-foreground">
+                  playground
+                </Link>
               </nav>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="outline">

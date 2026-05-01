@@ -1,6 +1,6 @@
 import { buildHealth, statusHttpCode } from "@red/health";
 import type { DaemonMemoryRecord, DaemonRunIndexEntry, DaemonRunRecord } from "@red/daemons";
-import { Hono } from "@red/server";
+import { Hono, createHttpLogger } from "@red/server";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
 	acceptCollectorBatch,
@@ -105,6 +105,7 @@ function renderDaemonDebugPage(
 
 export function createApp(deps: CollectorDependencies): CollectorApp {
 	const app = new Hono();
+	app.use("*", createHttpLogger({ service: "obs", app: "red" }));
 
 	app.get("/health", (c) => {
 		const health = buildHealth({ service: "obs" });

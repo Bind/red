@@ -9,6 +9,13 @@ export type DaemonSpec = {
   file: string;
   scopeRoot: string;
   body: string;
+  review: {
+    maxTurns: number;
+    routingCategories: Array<{
+      name: string;
+      description: string;
+    }>;
+  };
 };
 
 export type LoadError = {
@@ -88,6 +95,10 @@ export async function loadDaemons(root: string = process.cwd()): Promise<LoadRes
         file,
         scopeRoot: dirname(file),
         body: content.trim(),
+        review: {
+          maxTurns: parsed.data.review?.max_turns ?? 18,
+          routingCategories: parsed.data.review?.routing_categories ?? [],
+        },
       });
     } catch (err) {
       errors.push({

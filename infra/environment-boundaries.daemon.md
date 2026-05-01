@@ -1,6 +1,13 @@
 ---
 name: environment-boundaries
 description: Audit the infra environment contract so base/platform/dev/preview/prod stay cleanly separated.
+review:
+  max_turns: 18
+  routing_categories:
+    - name: infra-layering
+      description: Base versus dev versus preview versus prod versus platform responsibilities, overlay boundaries, and shared runtime placement.
+    - name: preview-operator-surface
+      description: Preview host topology, debug-preview skill guidance, and operator-facing docs or scripts that describe environment boundaries.
 ---
 
 Simple job: make sure each infra part lives in the right layer.

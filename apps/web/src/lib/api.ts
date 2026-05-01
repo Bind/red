@@ -637,9 +637,7 @@ export async function fetchRollups(query: RollupListQuery = {}): Promise<{
   if (query.since) params.set("since", query.since);
   if (query.limit) params.set("limit", String(query.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  const res = await fetch(`/rpc/rollups${suffix}`);
-  if (!res.ok) throw new ApiError(`rollups ${res.status}`, res.status);
-  return res.json();
+  return requestJson<{ rollups: WideRollup[]; count: number }>(`/rpc/rollups${suffix}`);
 }
 
 export async function fetchRollupDetail(requestId: string): Promise<WideRollup> {
@@ -671,9 +669,7 @@ export interface TriageRunSummary {
 }
 
 export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
-  const res = await fetch(`/rpc/triage/runs`);
-  if (!res.ok) throw new ApiError(`triage runs ${res.status}`, res.status);
-  return res.json();
+  return requestJson<{ runs: TriageRunSummary[] }>(`/rpc/triage/runs`);
 }
 
 export type ServiceProbeStatus = "ok" | "error" | "unconfigured";
@@ -695,6 +691,77 @@ export interface ServiceStatusReport {
   services: ServiceStatusProbe[];
 }
 
+export interface LogEntry {
+  timestamp: string;
+  service: string;
+  level: string;
+  logger: string;
+  message: string;
+  requestId: string | null;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  responseTimeMs: number | null;
+  properties: Record<string, unknown>;
+  line: Record<string, unknown> | null;
+}
+
+export interface LogCount {
+  value: string;
+  count: number;
+}
+
+export interface LogTimelineBucket {
+  minute: string;
+  total: number;
+  errors: number;
+  status5xx: number;
+}
+
+export interface LogSummary {
+  total: number;
+  serviceCounts: LogCount[];
+  levelCounts: LogCount[];
+  statusCounts: LogCount[];
+  statusClassCounts: LogCount[];
+  timeline: LogTimelineBucket[];
+}
+
+export interface LogQueryResult {
+  query: {
+    service: string | null;
+    level: string | null;
+    logger: "all" | "http";
+    search: string | null;
+    window: string;
+    limit: number;
+    statusCode: number | null;
+    statusClass: "2xx" | "3xx" | "4xx" | "5xx" | null;
+  };
+  entries: LogEntry[];
+  summary: LogSummary;
+}
+
+export interface LogQueryInput {
+  service?: string;
+  level?: string;
+  logger?: "all" | "http";
+  search?: string;
+  window?: string;
+  limit?: number;
+  statusCode?: number;
+  statusClass?: "2xx" | "3xx" | "4xx" | "5xx";
+}
+
+export interface LogStreamInput {
+  service?: string;
+  level?: string;
+  logger?: "all" | "http";
+  search?: string;
+  statusClass?: "2xx" | "3xx" | "4xx" | "5xx";
+  historyWindow?: string;
+}
+
 export async function fetchStatusReport(): Promise<ServiceStatusReport> {
   const res = await fetch("/rpc/status");
   const body = (await res.json().catch(() => null)) as ServiceStatusReport | null;
@@ -705,4 +772,117 @@ export async function fetchStatusReport(): Promise<ServiceStatusReport> {
     throw new ApiError("status response missing body", res.status);
   }
   return body;
+}
+
+export async function fetchLogs(query: LogQueryInput = {}): Promise<LogQueryResult> {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.level) params.set("level", query.level);
+  if (query.logger) params.set("logger", query.logger);
+  if (query.search) params.set("search", query.search);
+  if (query.window) params.set("window", query.window);
+  if (query.limit) params.set("limit", String(query.limit));
+  if (query.statusCode !== undefined) params.set("status_code", String(query.statusCode));
+  if (query.statusClass) params.set("status_class", query.statusClass);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<LogQueryResult>(`/rpc/logs${suffix}`);
+}
+
+export function subscribeToLogStream(
+  query: LogStreamInput,
+  onEntry: (entry: LogEntry) => void,
+  onError?: (message: string) => void,
+): () => void {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.level) params.set("level", query.level);
+  if (query.logger) params.set("logger", query.logger);
+  if (query.search) params.set("search", query.search);
+  if (query.statusClass) params.set("status_class", query.statusClass);
+  if (query.historyWindow) params.set("history_window", query.historyWindow);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const es = new EventSource(`/rpc/logs/stream${suffix}`);
+
+  es.addEventListener("log", (event) => {
+    onEntry(JSON.parse(event.data) as LogEntry);
+  });
+
+  es.addEventListener("stream-error", (event) => {
+    try {
+      const payload = JSON.parse(event.data) as { error?: string };
+      onError?.(payload.error ?? "log stream failed");
+    } catch {
+      onError?.("log stream failed");
+    }
+  });
+
+  es.onerror = () => {
+    onError?.("log stream disconnected");
+  };
+
+  return () => es.close();
+}
+
+export type DaemonPlaygroundProfile = {
+  id: string;
+  name: string;
+  mode:
+    | "memory_only"
+    | "embedding_only"
+    | "memory_embedding"
+    | "memory_embedding_librarian";
+  routerProvider?: "local" | "openrouter";
+  routerModel?: string;
+  librarianModel?: string;
+};
+
+export type DaemonPlaygroundFileScore = {
+  daemonName: string;
+  semanticScore: number;
+  scoreBoost: number;
+  finalScore: number;
+  dependencyExact: boolean;
+  checkedExact: boolean;
+  pathNeighborScore: number;
+  selected: boolean;
+};
+
+export type DaemonPlaygroundFileDebug = {
+  file: string;
+  fileSummary: string;
+  selectedDaemons: string[];
+  scores: DaemonPlaygroundFileScore[];
+  mode: string;
+  librarianRationale?: string;
+  librarianConfidence?: number;
+};
+
+export type DaemonPlaygroundScenarioResult = {
+  scenario: string;
+  files: string[];
+  expectedByFile: Record<string, string[]>;
+  evaluation: {
+    routedDaemons: Array<{ name: string; relevantFiles: string[] }>;
+    fileDebug: DaemonPlaygroundFileDebug[];
+  };
+};
+
+export type DaemonPlaygroundRunResult = {
+  generatedAt: string;
+  profiles: Array<{
+    profile: DaemonPlaygroundProfile;
+    scenarios: DaemonPlaygroundScenarioResult[];
+  }>;
+};
+
+export async function fetchDaemonPlayground(
+  profiles?: DaemonPlaygroundProfile[],
+): Promise<DaemonPlaygroundRunResult> {
+  return requestJson("/api/daemon-review/playground", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ profiles }),
+  });
 }

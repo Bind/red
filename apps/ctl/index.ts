@@ -1,4 +1,9 @@
-import { Hono } from "@red/server";
+import {
+  Hono,
+  configureServerLogging,
+  createHttpLogger,
+  getServerLogger,
+} from "@red/server";
 import {
   createObsSinkFromEnv,
   getEnvelope,
@@ -7,7 +12,6 @@ import {
 } from "@red/obs";
 import { buildHealth, statusHttpCode } from "@red/health";
 import { streamSSE } from "hono/streaming";
-import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/schema";
 import {
   ChangeQueries,
@@ -43,6 +47,13 @@ import {
 import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "./claw/actions";
 import { ingestRefUpdate } from "./ingest/ref-updates";
 import type { RepoVisibility } from "./types";
+import {
+  DEFAULT_PLAYGROUND_PROFILES,
+  runDaemonPlayground,
+  type PlaygroundProfile,
+} from "../../workflows/daemon-review/src/playground";
+import { queryLokiLogEvents, queryLokiLogs } from "./logs/loki";
+import type { LogQueryInput } from "./logs/loki";
 
 export interface AppConfig {
   port: number;
@@ -138,9 +149,11 @@ export function createApp(config: AppConfig) {
   const clawTracker = new SqliteClawRunTracker();
   const localClawArtifactStore = new LocalClawArtifactStore();
   const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
+  const logger = getServerLogger(["ctl"]);
 
   const app = new Hono<{ Variables: { envelope: EventEnvelope } }>();
   app.use("*", obsMiddleware({ service: "api", sink: createObsSinkFromEnv({ service: "api" }) }));
+  app.use("*", createHttpLogger({ service: "api", app: "red" }));
 
   // Health check
   app.get("/health", (c) => {
@@ -189,6 +202,114 @@ export function createApp(config: AppConfig) {
   // Pending jobs count
   app.get("/api/jobs/pending", (c) => {
     return c.json({ pending: jobs.pendingCount() });
+  });
+
+  app.post("/api/daemon-review/playground", async (c) => {
+    try {
+      const body: { profiles?: PlaygroundProfile[] } =
+        await c.req.json<{ profiles?: PlaygroundProfile[] }>().catch(() => ({}));
+      const requestedProfiles = Array.isArray(body.profiles) && body.profiles.length > 0
+        ? body.profiles
+        : DEFAULT_PLAYGROUND_PROFILES;
+      const result = await runDaemonPlayground(requestedProfiles);
+      return c.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Playground run failed";
+      logger.error`daemon playground failed: ${message}`;
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  app.get("/api/logs", async (c) => {
+    try {
+      const statusCodeRaw = c.req.query("status_code");
+      const limitRaw = c.req.query("limit");
+      const result = await queryLokiLogs({
+        service: c.req.query("service") ?? undefined,
+        level: c.req.query("level") ?? undefined,
+        logger: c.req.query("logger") === "http" ? "http" : "all",
+        search: c.req.query("search") ?? undefined,
+        window: c.req.query("window") ?? undefined,
+        statusClass: (() => {
+          const value = c.req.query("status_class");
+          return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
+            ? value
+            : undefined;
+        })(),
+        statusCode: statusCodeRaw ? Number.parseInt(statusCodeRaw, 10) : undefined,
+        limit: limitRaw ? Number.parseInt(limitRaw, 10) : undefined,
+      });
+      return c.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Log query failed";
+      logger.error`log query failed: ${message}`;
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  app.get("/api/logs/stream", (c) => {
+    const statusClass: LogQueryInput["statusClass"] = (() => {
+      const value = c.req.query("status_class");
+      return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
+        ? value
+        : undefined;
+    })();
+    const query: LogQueryInput = {
+      service: c.req.query("service") ?? undefined,
+      level: c.req.query("level") ?? undefined,
+      logger: c.req.query("logger") === "http" ? "http" as const : "all" as const,
+      search: c.req.query("search") ?? undefined,
+      statusClass,
+    };
+    const historyWindowRaw = c.req.query("history_window");
+    const historyWindowMs = (() => {
+      const raw = historyWindowRaw?.trim() ?? "15s";
+      const match = raw.match(/^(\d+)([smh])$/);
+      if (!match) return 15_000;
+      const amount = Number.parseInt(match[1], 10);
+      const unit = match[2];
+      if (unit === "s") return amount * 1000;
+      if (unit === "m") return amount * 60_000;
+      return amount * 60 * 60_000;
+    })();
+
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      let cursorNs = `${BigInt(Date.now() - historyWindowMs) * 1000000n}`;
+      const seenIds = new Set<string>();
+      stream.onAbort(() => {
+        closed = true;
+      });
+
+      while (!closed) {
+        try {
+          const events = await queryLokiLogEvents(query, {
+            startNs: cursorNs,
+            endNs: `${BigInt(Date.now()) * 1000000n}`,
+            limit: 5000,
+            direction: "FORWARD",
+          });
+          for (const event of events) {
+            if (seenIds.has(event.id)) continue;
+            seenIds.add(event.id);
+            cursorNs = event.timestampNs;
+            await stream.writeSSE({
+              event: "log",
+              id: event.id,
+              data: JSON.stringify(event.entry),
+            });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Log stream failed";
+          logger.error`log stream failed: ${message}`;
+          await stream.writeSSE({
+            event: "stream-error",
+            data: JSON.stringify({ error: message }),
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    });
   });
 
   app.post("/api/ingest/ref-update", async (c) => {
@@ -689,10 +810,6 @@ export function createApp(config: AppConfig) {
     remoteStore: remoteClawArtifactStore,
   });
 
-  // Serve frontend static files (production)
-  app.use("/*", serveStatic({ root: "./apps/web/dist" }));
-  app.get("/*", serveStatic({ path: "./apps/web/dist/index.html" }));
-
   return {
     app,
     db,
@@ -727,13 +844,15 @@ function eventToLogLines(event: { kind: string; type: string; text: string | nul
 
 // Start server when run directly
 if (import.meta.main) {
+  await configureServerLogging({ app: "red", lowestLevel: "info" });
+  const logger = getServerLogger(["ctl"]);
   const config = loadConfig();
   const { app, worker, clawReconciler, clawArtifactUploader } = createApp(config);
 
   worker.start();
   clawReconciler.start();
   clawArtifactUploader.start();
-  console.log(`red listening on port ${config.port}`);
+  logger.info("ctl listening on {url}", { url: `http://0.0.0.0:${config.port}` });
   Bun.serve({
     port: config.port,
     fetch: app.fetch,

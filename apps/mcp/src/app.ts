@@ -1,5 +1,5 @@
 import { buildHealth, statusHttpCode } from "@red/health";
-import { Hono } from "@red/server";
+import { Hono, createHttpLogger } from "@red/server";
 import { OAuthIntrospector, oauthMiddleware } from "./auth";
 import type { McpConfig } from "./config";
 import type { McpEndpoint } from "./mcp-server";
@@ -13,6 +13,7 @@ export interface McpAppDeps {
 export function createApp(deps: McpAppDeps): Hono {
 	const app = new Hono();
 	const introspector = deps.introspector ?? new OAuthIntrospector(deps.config);
+	app.use("*", createHttpLogger({ service: "mcp", app: "red" }));
 
 	app.get("/health", (c) => {
 		const health = buildHealth({ service: "mcp" });

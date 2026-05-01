@@ -2,7 +2,8 @@
 
 Markdown-authored AI daemons for red.
 
-A daemon is a `*.daemon.md` file with two-field frontmatter and a prose body.
+A daemon is a `*.daemon.md` file with required identity frontmatter, optional
+review metadata, and a prose body.
 The file's directory is the daemon's working directory and the limit of its
 scope — it can only read and write files under that subtree.
 
@@ -19,6 +20,11 @@ later.
 ---
 name: pr-health
 description: Keep PR summaries current with their commit SHA.
+review:
+  max_turns: 12
+  routing_categories:
+    - name: command-surface
+      description: Root docs and CLI entrypoints that define the operator surface.
 ---
 
 # PR Health
@@ -30,12 +36,72 @@ You maintain PR summaries for this directory. On invocation:
 3. When finished, call the `complete` tool with a summary and any findings.
 ```
 
-Both frontmatter fields are required:
+Required frontmatter fields:
 
 - `name` — kebab-case, 1-64 chars, starts with a letter, unique in the repo.
 - `description` — one sentence, under 200 chars, shown in `daemons list`.
 
-Nothing else is valid frontmatter; unknown keys fail validation.
+Optional review metadata:
+
+- `review.max_turns` — daemon-specific turn budget override for review workflows.
+- `review.routing_categories` — cheap-routing hints used by daemon-review's
+  local router to map changed files to the right daemon before the full audit runs.
+
+Unknown keys still fail validation.
+
+## Daemon Review Routing
+
+`daemon-review` routes changed files to zero, one, or multiple daemons before
+running the full audits.
+
+The intended routing policy is:
+
+- use structured signals first for known files: PR diff info, tracked subject
+  dependencies, and other daemon-memory links
+- use local embeddings primarily for cold-start routing of new files or weak-
+  confidence files, especially when a PR introduces many new files
+- allow zero daemons when no daemon scores strongly enough
+- allow multiple daemons when several daemon surfaces are meaningfully similar
+
+The semantic daemon profile should come from high-intent daemon-owned data:
+
+- daemon `name`
+- daemon `description`
+- `review.routing_categories`
+- daemon body text
+- tracked subject names
+- invariant names from prior findings
+
+Do **not** use broad historical checked-file vocabulary as embedding text.
+Daemons can open files during exploration and decide they are irrelevant, so
+"file was once checked" is too noisy to define semantic ownership.
+
+Checked-file history may still be useful as a separate structural routing
+signal, for example:
+
+- exact file revisit boosts
+- path-neighborhood boosts
+- tracked `depends_on` file boosts
+
+but that should stay outside the embedding text itself.
+
+When embeddings are used for file routing, prefer compact file summaries over
+raw full-file bodies. Useful file-summary inputs include:
+
+- file path, filename, extension, and path tokens
+- imports, includes, env vars, config keys, exported symbols, and commands
+- headings, docstrings, or comments that expose intent
+- short content excerpts only when they materially improve classification
+
+This keeps routing focused on:
+
+- memory and dependency structure for known surfaces
+- semantic placement for newly introduced surfaces
+
+instead of forcing every daemon to rediscover large new PRs from scratch.
+
+For the workflow-specific implementation plan, see
+[workflows/daemon-review/README.md](../../workflows/daemon-review/README.md).
 
 ## The `complete` tool
 
@@ -99,7 +165,7 @@ current supported machine-auth path is OpenRouter:
 
 ```bash
 export AI_DAEMONS_PROVIDER=openrouter
-export AI_DAEMONS_MODEL=deepseek/deepseek-v4-pro
+export AI_DAEMONS_MODEL=deepseek/deepseek-v4-flash
 export OPENROUTER_API_KEY=...
 ```
 
@@ -220,7 +286,7 @@ these caps.
 
 ## What's deferred
 
-- `on:` event triggers and `cron:` — frontmatter is MVP two-field.
+- `on:` event triggers and `cron:` — event scheduling still lives outside daemon frontmatter.
 - Claude Agent SDK provider — same `AgentProvider` interface, swap in later.
 - Hot reload, per-daemon budgets, per-daemon tool allowlists.
 

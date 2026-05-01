@@ -4,11 +4,14 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import {
+  loadDaemons,
   loadMemorySnapshot,
-  resolveDaemon,
   runDaemon,
+  type DaemonSpec,
   type CompleteFinding,
 } from "../../../pkg/daemons/src/index";
+import { buildDaemonRoutingMemory } from "./routing-memory";
+import { reviewParallelism, routeDaemons, type RoutedDaemon } from "./routing";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -27,82 +30,7 @@ type DaemonOutcome = {
 };
 
 type DaemonReviewConfig = {
-  authorityPaths: string[];
   maxTurns: number;
-};
-
-function reviewParallelism(totalDaemons: number): number {
-  const raw = process.env.DAEMON_REVIEW_MAX_PARALLEL;
-  const parsed = raw ? Number.parseInt(raw, 10) : 3;
-  if (!Number.isFinite(parsed) || parsed < 1) return 1;
-  return Math.min(totalDaemons, parsed);
-}
-
-const DOC_SURFACE_PATHS = [
-  "README.md",
-  "justfile",
-  "scripts/red",
-  "apps/ctl/cli/",
-];
-
-const INFRA_PATHS = [
-  "infra/",
-  "docs/dev-preview.md",
-  "docs/release.md",
-  "docs/base-image.md",
-  "docs/secrets.md",
-  ".github/workflows/preview-deploy.yml",
-  ".github/workflows/release.yml",
-  ".github/workflows/build-images.yml",
-  ".agents/skills/debug-preview/",
-];
-
-const DAEMON_CONFIG: Record<string, DaemonReviewConfig> = {
-  "docs-command-surface": {
-    authorityPaths: ["README.md", "justfile", "scripts/red", "apps/ctl/cli/"],
-    maxTurns: 12,
-  },
-  "compose-contract": {
-    authorityPaths: [
-      "infra/base/",
-      "infra/dev/",
-      "infra/preview/",
-      "infra/prod/",
-      "infra/platform/caddy/",
-      "infra/platform/gateway/",
-      "justfile",
-    ],
-    maxTurns: 18,
-  },
-  "environment-boundaries": {
-    authorityPaths: [
-      "infra/AGENTS.md",
-      "infra/base/",
-      "infra/dev/",
-      "infra/preview/",
-      "infra/prod/",
-      "infra/platform/",
-      "docs/dev-preview.md",
-      "docs/release.md",
-      "docs/base-image.md",
-      "docs/secrets.md",
-      ".agents/skills/debug-preview/",
-      "justfile",
-    ],
-    maxTurns: 18,
-  },
-  "infra-audit": {
-    authorityPaths: [
-      "infra/",
-      "docs/dev-preview.md",
-      "docs/release.md",
-      "docs/base-image.md",
-      "docs/secrets.md",
-      "justfile",
-      "sst.config.ts",
-    ],
-    maxTurns: 18,
-  },
 };
 
 async function fetchChangedFiles(
@@ -139,36 +67,11 @@ async function fetchChangedFiles(
   return filenames;
 }
 
-function matchesAnyPrefix(path: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
-}
-
-function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-}
-
-function selectDaemons(changedFiles: string[]): string[] {
-  const selected = new Set<string>();
-
-  if (changedFiles.some((path) => matchesAnyPrefix(path, DOC_SURFACE_PATHS))) {
-    selected.add("docs-command-surface");
-  }
-
-  if (changedFiles.some((path) => matchesAnyPrefix(path, INFRA_PATHS))) {
-    selected.add("compose-contract");
-    selected.add("environment-boundaries");
-    selected.add("infra-audit");
-  }
-
-  return [...selected];
-}
-
 async function syncTrustedDaemonIntoPrCheckout(
-  daemonName: string,
+  spec: DaemonSpec,
   trustedRoot: string,
   prRoot: string,
 ): Promise<void> {
-  const spec = await resolveDaemon(daemonName, trustedRoot);
   const rel = relative(trustedRoot, spec.file);
   const dest = join(prRoot, rel);
   await mkdir(dirname(dest), { recursive: true });
@@ -219,38 +122,21 @@ async function copyRepoTree(source: string, dest: string): Promise<void> {
   });
 }
 
-function matchAuthorityPaths(paths: string[], authorityPaths: string[]): string[] {
-  return uniqueSorted(paths.filter((path) => matchesAnyPrefix(path, authorityPaths)));
-}
-
 async function buildDaemonReviewInput(
-  daemonName: string,
+  spec: DaemonSpec,
+  trustedRoot: string,
   prRoot: string,
-  changedFiles: string[],
+  relevantFiles: string[],
 ): Promise<string> {
-  const config = DAEMON_CONFIG[daemonName] ?? { authorityPaths: [], maxTurns: 18 };
-  const relevantChangedFiles =
-    config.authorityPaths.length > 0
-      ? matchAuthorityPaths(changedFiles, config.authorityPaths)
-      : uniqueSorted(changedFiles);
-  const snapshot = await loadMemorySnapshot(daemonName, prRoot);
-  const unchangedAuthorityFiles = snapshot
-    ? matchAuthorityPaths(
-        snapshot.unchangedFiles.map((file) => file.path),
-        config.authorityPaths,
-      )
-    : [];
-  const changedAuthorityFiles = snapshot
-    ? matchAuthorityPaths(
-        [...snapshot.changedFiles, ...snapshot.newFiles, ...snapshot.changedScopeFiles].map((file) => file.path),
-        config.authorityPaths,
-      )
-    : [];
+  const config: DaemonReviewConfig = {
+    maxTurns: spec.review.maxTurns,
+  };
+  const scopeRoot = resolve(prRoot, relative(trustedRoot, spec.scopeRoot));
+  const snapshot = await loadMemorySnapshot(spec.name, scopeRoot);
   const lines = [
     "PR review guidance:",
     "- Start with the changed files listed below.",
-    "- Treat the listed authority files as the default source of truth.",
-    "- Do not explore outside that set unless a specific mismatch requires it.",
+    "- Stay inside your daemon's declared scope and routing intent.",
     "- Prefer file reads over shell commands.",
     "- Once one clear mismatch explains an invariant, classify it and move on.",
   ];
@@ -262,23 +148,8 @@ async function buildDaemonReviewInput(
   }
 
   lines.push("", "Changed files relevant to this daemon:");
-  for (const path of relevantChangedFiles.length > 0 ? relevantChangedFiles : ["(none matched authority paths)"]) {
+  for (const path of relevantFiles.length > 0 ? relevantFiles : ["(none selected by router)"]) {
     lines.push(`- ${path}`);
-  }
-
-  if (config.authorityPaths.length > 0) {
-    lines.push("", "Authority files and paths for this daemon:");
-    for (const path of config.authorityPaths) lines.push(`- ${path}`);
-  }
-
-  if (unchangedAuthorityFiles.length > 0) {
-    lines.push("", "Authority files unchanged since the nearest verified snapshot:");
-    for (const path of unchangedAuthorityFiles) lines.push(`- ${path}`);
-  }
-
-  if (changedAuthorityFiles.length > 0) {
-    lines.push("", "Authority files changed or newly present since the nearest verified snapshot:");
-    for (const path of changedAuthorityFiles) lines.push(`- ${path}`);
   }
 
   if (snapshot?.staleTrackedSubjects.length) {
@@ -290,16 +161,19 @@ async function buildDaemonReviewInput(
 }
 
 async function runSingleDaemon(
-  daemonName: string,
+  spec: DaemonSpec,
+  trustedRoot: string,
   prRoot: string,
-  changedFiles: string[],
+  relevantFiles: string[],
 ): Promise<DaemonOutcome> {
   const proposalMode = proposalModeEnabled();
   const workingRoot = proposalMode
-    ? await mkdtemp(join(tmpdir(), `daemon-review-${daemonName}-`))
+    ? await mkdtemp(join(tmpdir(), `daemon-review-${spec.name}-`))
     : prRoot;
-  const reviewInput = await buildDaemonReviewInput(daemonName, prRoot, changedFiles);
-  const config = DAEMON_CONFIG[daemonName] ?? { authorityPaths: [], maxTurns: 18 };
+  const reviewInput = await buildDaemonReviewInput(spec, trustedRoot, prRoot, relevantFiles);
+  const config: DaemonReviewConfig = {
+    maxTurns: spec.review.maxTurns,
+  };
 
   if (proposalMode) {
     await copyRepoTree(prRoot, workingRoot);
@@ -319,8 +193,8 @@ async function runSingleDaemon(
     ]);
   }
 
-  console.log(`running daemon ${daemonName} against ${workingRoot}`);
-  const result = await runDaemon(daemonName, {
+  console.log(`running daemon ${spec.name} against ${workingRoot}`);
+  const result = await runDaemon(spec.name, {
     root: workingRoot,
     input: reviewInput,
     maxTurns: config.maxTurns,
@@ -332,14 +206,14 @@ async function runSingleDaemon(
     try {
       diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
     } catch (error) {
-      console.error(`failed to capture daemon diff for ${daemonName}:`, error);
+      console.error(`failed to capture daemon diff for ${spec.name}:`, error);
     }
     await rm(workingRoot, { recursive: true, force: true });
   }
 
   if (result.ok === false) {
     return {
-      name: daemonName,
+      name: spec.name,
       ok: false,
       summary: "",
       findings: [],
@@ -350,7 +224,7 @@ async function runSingleDaemon(
   }
 
   return {
-    name: daemonName,
+    name: spec.name,
     ok: true,
     summary: result.payload.summary,
     findings: result.payload.findings,
@@ -359,20 +233,26 @@ async function runSingleDaemon(
 }
 
 async function runDaemonsInParallel(
-  daemonNames: string[],
+  routedDaemons: RoutedDaemon[],
+  specByName: Map<string, DaemonSpec>,
+  trustedRoot: string,
   prRoot: string,
-  changedFiles: string[],
 ): Promise<DaemonOutcome[]> {
-  const outcomes = new Array<DaemonOutcome>(daemonNames.length);
-  const parallelism = reviewParallelism(daemonNames.length);
+  const outcomes = new Array<DaemonOutcome>(routedDaemons.length);
+  const parallelism = reviewParallelism(routedDaemons.length);
   let nextIndex = 0;
 
   async function worker(): Promise<void> {
     while (true) {
       const index = nextIndex;
-      if (index >= daemonNames.length) return;
+      if (index >= routedDaemons.length) return;
       nextIndex += 1;
-      outcomes[index] = await runSingleDaemon(daemonNames[index], prRoot, changedFiles);
+      const routed = routedDaemons[index];
+      const spec = specByName.get(routed.name);
+      if (!spec) {
+        throw new Error(`missing daemon spec for ${routed.name}`);
+      }
+      outcomes[index] = await runSingleDaemon(spec, trustedRoot, prRoot, routed.relevantFiles);
     }
   }
 
@@ -891,7 +771,22 @@ async function main() {
   const prRoot = resolve(requiredEnv("REPO_ROOT"));
   const githubToken = requiredEnv("GITHUB_TOKEN");
   const changedFiles = await fetchChangedFiles(githubToken, owner, repo, prNumber);
-  const daemonNames = selectDaemons(changedFiles);
+  const { specs, errors } = await loadDaemons(trustedRoot);
+  if (errors.length > 0) {
+    throw new Error(
+      `failed to load daemons:\n${errors.map((error) => `- ${error.file}: ${error.message}`).join("\n")}`,
+    );
+  }
+  const specByName = new Map(specs.map((spec) => [spec.name, spec]));
+  const memoryByDaemon = new Map();
+  for (const spec of specs) {
+    const scopeRoot = resolve(prRoot, relative(trustedRoot, spec.scopeRoot));
+    const scopePrefix = relative(prRoot, scopeRoot).replace(/\\/g, "/");
+    const snapshot = await loadMemorySnapshot(spec.name, scopeRoot);
+    memoryByDaemon.set(spec.name, buildDaemonRoutingMemory(snapshot, scopePrefix));
+  }
+  const routedDaemons = await routeDaemons(changedFiles, specs, { memoryByDaemon });
+  const daemonNames = routedDaemons.map((entry) => entry.name);
 
   if (daemonNames.length === 0) {
     const summary = "No matching daemons for this PR diff.";
@@ -902,11 +797,15 @@ async function main() {
     return;
   }
 
-  for (const daemonName of daemonNames) {
-    await syncTrustedDaemonIntoPrCheckout(daemonName, trustedRoot, prRoot);
+  for (const routed of routedDaemons) {
+    const spec = specByName.get(routed.name);
+    if (!spec) {
+      throw new Error(`missing daemon spec for ${routed.name}`);
+    }
+    await syncTrustedDaemonIntoPrCheckout(spec, trustedRoot, prRoot);
   }
 
-  const outcomes = await runDaemonsInParallel(daemonNames, prRoot, changedFiles);
+  const outcomes = await runDaemonsInParallel(routedDaemons, specByName, trustedRoot, prRoot);
 
   const summaryLines = [
     "# Daemon Review",

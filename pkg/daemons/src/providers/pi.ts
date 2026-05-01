@@ -22,7 +22,7 @@ import type {
 export const CODEX_PROVIDER_ID = "openai-codex";
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
 export const OPENROUTER_PROVIDER_ID = "openrouter";
-export const DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
+export const DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash";
 export const OPENROUTER_FALLBACK_MODEL = "deepseek/deepseek-chat-v3.1";
 
 function resolveModel(opts: PiProviderOptions): Model<Api> {
@@ -37,16 +37,16 @@ function resolveModel(opts: PiProviderOptions): Model<Api> {
 
   if (providerId === OPENROUTER_PROVIDER_ID && modelId === DEFAULT_OPENROUTER_MODEL) {
     return {
-      id: "deepseek/deepseek-v4-pro",
-      name: "DeepSeek: DeepSeek V4 Pro",
+      id: "deepseek/deepseek-v4-flash",
+      name: "DeepSeek: DeepSeek V4 Flash",
       api: "openai-completions",
       provider: OPENROUTER_PROVIDER_ID,
       baseUrl: "https://openrouter.ai/api/v1",
       reasoning: true,
       input: ["text"],
       cost: {
-        input: 1.74,
-        output: 3.48,
+        input: 0.14,
+        output: 0.28,
         cacheRead: 0,
         cacheWrite: 0,
       },

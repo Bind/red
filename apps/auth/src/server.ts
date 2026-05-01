@@ -6,7 +6,7 @@ import {
   type ObsFields,
   obsMiddleware,
 } from "@red/obs";
-import { Hono, type MiddlewareHandler } from "@red/server";
+import { createHttpLogger, getServerLogger, Hono, type MiddlewareHandler } from "@red/server";
 import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
@@ -211,6 +211,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
   const app = new Hono();
+  const logger = getServerLogger(["auth"]);
   const authSecret = config.userAuthSecret ?? "red-auth-lab-dev-secret";
   const startedAt = Date.now();
 
@@ -345,9 +346,15 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       sink: createObsSinkFromEnv({ service: "auth" }),
     }) as MiddlewareHandler,
   );
+  app.use("*", createHttpLogger({ service: "auth", app: "red" }));
 
   app.onError((error, c) => {
     getEnvelope(c).fail(error);
+    logger.error("auth request failed", {
+      path: c.req.path,
+      method: c.req.method,
+      error: error instanceof Error ? error.message : String(error),
+    });
     const { status, body } = oauthError(error);
     c.header("x-request-id", getEnvelope(c).requestId);
     return c.json(body, status as 200 | 400 | 401 | 403 | 404 | 500);

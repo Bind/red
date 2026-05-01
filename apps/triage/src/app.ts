@@ -1,5 +1,5 @@
 import { buildHealth, statusHttpCode } from "@red/health";
-import { Hono } from "@red/server";
+import { Hono, createHttpLogger } from "@red/server";
 import type { TriageOrchestrator } from "./orchestrator";
 import type { RunStore } from "./runs/store";
 import { TriageRunRequestSchema } from "./types";
@@ -11,6 +11,7 @@ export interface TriageAppDeps {
 
 export function createApp(deps: TriageAppDeps): Hono {
 	const app = new Hono();
+	app.use("*", createHttpLogger({ service: "triage", app: "red" }));
 
 	app.get("/health", (c) => {
 		const health = buildHealth({ service: "triage" });

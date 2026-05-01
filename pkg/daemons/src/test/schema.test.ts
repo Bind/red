@@ -37,6 +37,23 @@ describe("DaemonFrontmatter", () => {
       DaemonFrontmatter.safeParse({ name: "x", description: "a".repeat(201) }).success,
     ).toBe(false);
   });
+
+  test("accepts review metadata", () => {
+    const parsed = DaemonFrontmatter.safeParse({
+      name: "infra-audit",
+      description: "Audit infra",
+      review: {
+        max_turns: 18,
+        routing_categories: [
+          {
+            name: "infra-ops",
+            description: "Deploy and operator workflow files.",
+          },
+        ],
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
 });
 
 describe("CompletePayload", () => {

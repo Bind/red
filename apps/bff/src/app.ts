@@ -1,4 +1,4 @@
-import { Hono } from "@red/server";
+import { Hono, createHttpLogger } from "@red/server";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
@@ -302,6 +302,7 @@ export function createApp(config: BffConfig) {
     "*",
     obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
   );
+  app.use("*", createHttpLogger({ service: "bff", app: "red" }));
 
   app.get("/health", async (c) => {
     const envelope = getEnvelope(c as any);
@@ -635,12 +636,37 @@ export function createApp(config: BffConfig) {
       const id = encodeURIComponent(c.req.param("request_id"));
       return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/rollups/${id}`));
     })
+    .get("/logs", async (c) => {
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs", query));
+    })
+    .get("/logs/stream", async (c) => {
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "level", "logger", "search", "status_class", "history_window"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyStream(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs/stream", query));
+    })
     .get("/triage/runs", async (c) => {
       if (!config.triageBaseUrl)
         return c.json({ error: "triage backend not configured" }, 503);
       const gate = await requireSession(c);
       if (gate) return gate;
-      return proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
+      try {
+        return await proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
+      } catch (error) {
+        console.warn("[bff] triage runs unavailable, returning empty list", error);
+        return c.json({ runs: [] });
+      }
     });
 
   app.route("/rpc", rpc);
