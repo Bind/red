@@ -3,6 +3,9 @@
 `daemon-review` maps changed files to zero, one, or multiple daemons before
 running the full audits.
 
+For the broader runtime/package direction beyond this one workflow, see
+[docs/agent-substrate.md](../../docs/agent-substrate.md).
+
 The current router code is a transition state. The target design is a hybrid:
 
 - use structured memory and dependency signals for known files
