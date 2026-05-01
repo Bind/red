@@ -135,7 +135,6 @@ The MCP spec doesn't dictate how you _exercise_ a server. Two paths:
 | `MCP_OAUTH_CLIENT_SECRET` | this service's own OAuth client secret | required |
 | `MCP_REQUIRED_SCOPE` | scope every inbound token must have | `mcp:read` |
 | `MCP_DISABLE_AUTH` | dev-only bypass of introspection | `false` |
-| `RED_ADMIN_TOKEN` | shared admin bearer; inbound `Authorization: Bearer <token>` skips introspection (also honored by `apps/auth` and `apps/bff`). `MCP_ADMIN_TOKEN` overrides per-service. | unset |
 | `GIT_COMMIT` | populated by Dockerfile ARG or deploy env | `unknown` |
 
 All production values land in `.env.production` (encrypted via dotenvx).

@@ -2,8 +2,6 @@ import { createApp, type BffConfig } from "./app";
 
 function loadConfig(): BffConfig {
   const hostedRepoId = process.env.BFF_HOSTED_REPO_ID?.trim();
-  const adminToken =
-    process.env.BFF_ADMIN_TOKEN?.trim() || process.env.RED_ADMIN_TOKEN?.trim() || undefined;
 
   return {
     port: parseInt(process.env.BFF_PORT ?? "3001", 10),
@@ -14,7 +12,6 @@ function loadConfig(): BffConfig {
     grsBaseUrl: process.env.GRS_BASE_URL ?? "http://grs:8080",
     mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",
-    adminToken,
     hostedRepo:
       hostedRepoId
         ? {
