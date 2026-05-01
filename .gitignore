@@ -22,7 +22,6 @@ apps/web/dist/
 .codex-debug/
 .daemons-artifacts/
 .daemons-cache/
-.flue-dist/
 .zig-cache/
 zig-cache/
 experiments/bash-runtime-lab/.tmp-compose-data/

@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { cp } from "node:fs/promises";
 import { runReviewExecution } from "./core";
 import { localReviewLogger } from "./logger";
-import type { ReviewExecutionContext, ReviewExecutionResult } from "./types";
+import type { ReviewExecutionContext } from "./types";
 
 function writeStdout(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -85,11 +85,10 @@ async function writeLocalArtifacts(
   repoRoot: string,
   baseRef: string,
   headRef: string,
-  result: ReviewExecutionResult,
-  outputRoot = defaultOutputRoot(repoRoot),
+  result: Awaited<ReturnType<typeof runReviewExecution>>,
 ): Promise<string | null> {
   const stamp = new Date().toISOString().replace(/[:]/g, "-");
-  const outputDir = join(outputRoot, stamp);
+  const outputDir = join(defaultOutputRoot(repoRoot), stamp);
   const patchesDir = join(outputDir, "patches");
   const eventsDir = join(outputDir, "events");
   const outcomesDir = join(outputDir, "outcomes");
@@ -136,23 +135,9 @@ async function writeLocalArtifacts(
   return outputDir;
 }
 
-export type LocalDaemonReviewOptions = {
-  repoRoot?: string;
-  baseRef?: string;
-  headRef?: string;
-  daemonName?: string;
-  daemonLimit?: number;
-  outputRoot?: string;
-  emitStdout?: boolean;
-};
-
-export async function runLocalDaemonReviewWithOptions(
-  options: LocalDaemonReviewOptions = {},
-): Promise<{ result: ReviewExecutionResult; artifactsDir: string | null }> {
-  const repoRoot = resolve(options.repoRoot ?? process.cwd());
-  const baseRef = options.baseRef ?? defaultBaseRef();
-  const headRef = options.headRef ?? defaultHeadRef();
-  const daemonName = options.daemonName;
+export async function runLocalDaemonReview(argv = process.argv.slice(2)): Promise<void> {
+  const repoRoot = resolve(process.cwd());
+  const { baseRef = defaultBaseRef(), headRef = defaultHeadRef(), daemonName } = parseArgs(argv);
   const changedFiles = await localChangedFiles(repoRoot, baseRef, headRef);
   const reviewRoot = await mkdtemp(join(tmpdir(), "daemon-review-local-"));
   try {
@@ -162,7 +147,7 @@ export async function runLocalDaemonReviewWithOptions(
       reviewRoot,
       changedFiles,
       daemonName,
-      daemonLimit: daemonName ? undefined : (options.daemonLimit ?? 1),
+      daemonLimit: daemonName ? undefined : 1,
     };
     localReviewLogger.info("starting local daemon review", {
       baseRef,
@@ -170,20 +155,16 @@ export async function runLocalDaemonReviewWithOptions(
       changedFiles,
       daemon: daemonName ?? "(first routed daemon only)",
     });
-    if (options.emitStdout !== false) {
-      writeStdout("# Local Daemon Review");
-      writeStdout(`Base: ${baseRef}`);
-      writeStdout(`Head: ${headRef}`);
-      writeStdout(`Daemon: ${daemonName ?? "(first routed daemon only)"}`);
-      writeStdout(`Changed files: ${changedFiles.join(", ") || "(none)"}`);
-      writeStdout("");
-      writeStdout("Running...");
-    }
+    writeStdout("# Local Daemon Review");
+    writeStdout(`Base: ${baseRef}`);
+    writeStdout(`Head: ${headRef}`);
+    writeStdout(`Daemon: ${daemonName ?? "(first routed daemon only)"}`);
+    writeStdout(`Changed files: ${changedFiles.join(", ") || "(none)"}`);
+    writeStdout("");
+    writeStdout("Running...");
     const result = await runReviewExecution(context);
-    if (options.emitStdout !== false) {
-      writeStdout("");
-      writeStdout(`Selected daemon(s): ${result.routedDaemons.map((entry) => entry.name).join(", ") || "(none)"}`);
-    }
+    writeStdout("");
+    writeStdout(`Selected daemon(s): ${result.routedDaemons.map((entry) => entry.name).join(", ") || "(none)"}`);
     localReviewLogger.info("local daemon review summary\n{summary}", {
       summary: [
         "# Daemon Review",
@@ -194,34 +175,15 @@ export async function runLocalDaemonReviewWithOptions(
         result.summary,
       ].join("\n"),
     });
-    const artifactsDir = await writeLocalArtifacts(
-      repoRoot,
-      baseRef,
-      headRef,
-      result,
-      options.outputRoot,
-    );
+    const artifactsDir = await writeLocalArtifacts(repoRoot, baseRef, headRef, result);
     if (artifactsDir) {
       localReviewLogger.info("daemon edits were written to {dir}", { dir: artifactsDir });
-      if (options.emitStdout !== false) {
-        writeStdout(`Artifacts: ${artifactsDir}`);
-      }
+      writeStdout(`Artifacts: ${artifactsDir}`);
     }
-    return { result, artifactsDir };
+    if (result.blockingFailures.length > 0) {
+      process.exit(1);
+    }
   } finally {
     await rm(reviewRoot, { recursive: true, force: true });
-  }
-}
-
-export async function runLocalDaemonReview(argv = process.argv.slice(2)): Promise<void> {
-  const { baseRef, headRef, daemonName } = parseArgs(argv);
-  const { result } = await runLocalDaemonReviewWithOptions({
-    baseRef,
-    headRef,
-    daemonName,
-    emitStdout: true,
-  });
-  if (result.blockingFailures.length > 0) {
-    process.exit(1);
   }
 }
