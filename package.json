@@ -25,6 +25,8 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@flue/cli": "^0.3.5",
+    "@flue/sdk": "^0.3.5",
     "@types/bun": "latest",
     "sst": "^3",
     "turbo": "^2.5.4",

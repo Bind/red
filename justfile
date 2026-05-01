@@ -42,6 +42,10 @@ playground-daemons:
 daemon-review-local *args:
     bun run workflows/daemon-review/src/local-entry.ts {{ args }}
 
+# Run the daemon review engine through the Flue harness against a git diff
+daemon-review-flue *args:
+    bun run workflows/daemon-review/src/flue-run.ts {{ args }}
+
 # Inspect the most recent local daemon review artifact bundle
 daemon-review-local-inspect:
     bun run workflows/daemon-review/src/local-inspect.ts
