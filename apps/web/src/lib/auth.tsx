@@ -5,6 +5,7 @@ import {
   fetchLoginAttempt,
   fetchLatestMagicLink,
   fetchMe,
+  loginWithTotp,
   redeemLoginAttempt,
   type AuthMeResponse,
   type AuthOnboardingState,
@@ -36,6 +37,20 @@ export interface AuthSessionContextValue {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+const DEV_AUTO_LOGIN_EMAIL = import.meta.env.DEV
+  ? (import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL?.trim().toLowerCase() ?? "")
+  : "";
+const DEV_AUTO_LOGIN_CODE = import.meta.env.DEV
+  ? (import.meta.env.VITE_DEV_AUTO_LOGIN_CODE?.trim() ?? "000000")
+  : "";
+
+function shouldUseDevAutoLogin(): boolean {
+  if (!import.meta.env.DEV) return false;
+  if (!DEV_AUTO_LOGIN_EMAIL) return false;
+  if (typeof window === "undefined") return false;
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
 function normalizeOnboardingState(value: unknown): AuthOnboardingState | "unknown" {
   if (value === "pending_passkey" || value === "pending_recovery_factor" || value === "active") {
     return value;
@@ -57,6 +72,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthSessionStatus>("loading");
   const [me, setMe] = useState<AuthMeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -111,6 +127,32 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       clearInterval(interval);
     };
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (!shouldUseDevAutoLogin()) return;
+    if (status !== "signed_out") return;
+    if (autoLoginAttempted) return;
+
+    let cancelled = false;
+    setAutoLoginAttempted(true);
+
+    const autoLogin = async () => {
+      try {
+        await loginWithTotp(DEV_AUTO_LOGIN_EMAIL, DEV_AUTO_LOGIN_CODE);
+        if (cancelled) return;
+        await refreshSession();
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Unable to auto-login local dev session");
+      }
+    };
+
+    void autoLogin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoLoginAttempted, refreshSession, status]);
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({

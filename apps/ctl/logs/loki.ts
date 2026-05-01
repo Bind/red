@@ -1,5 +1,5 @@
 const DEFAULT_LIMIT = 500;
-const MAX_LIMIT = 10000;
+const MAX_LIMIT = 5000;
 
 export interface LogQueryInput {
   service?: string;
@@ -250,7 +250,7 @@ export async function queryLokiLogs(input: LogQueryInput = {}): Promise<LogQuery
   const rows = await queryLokiLogEvents(input, {
     startNs: `${BigInt(startMs) * 1000000n}`,
     endNs: `${BigInt(endMs) * 1000000n}`,
-    limit: Math.max(limit * 3, 500),
+    limit: Math.min(MAX_LIMIT, Math.max(limit * 3, 500)),
     direction: "BACKWARD",
   });
   const sortedRows = rows

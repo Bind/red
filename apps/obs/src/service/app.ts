@@ -1,6 +1,8 @@
 import { buildHealth, statusHttpCode } from "@red/health";
 import type { DaemonMemoryRecord, DaemonRunIndexEntry, DaemonRunRecord } from "@red/daemons";
 import { Hono, createHttpLogger } from "@red/server";
+import { streamSSE } from "hono/streaming";
+import { stringify as stringifySuperjson } from "superjson";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
 	acceptCollectorBatch,
@@ -10,6 +12,12 @@ import {
 
 export interface CollectorApp extends Hono {
 	flushExpired(now?: Date): Promise<number>;
+}
+
+function superjsonResponse(c: any, payload: unknown, status: number = 200): Response {
+	return c.body(stringifySuperjson(payload), status as 200 | 201 | 207 | 400 | 401 | 403 | 404 | 500 | 501, {
+		"content-type": "application/json; charset=utf-8",
+	});
 }
 
 function escapeHtml(value: string): string {
@@ -139,7 +147,82 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			since,
 			limit,
 		});
-		return c.json({ rollups: records, count: records.length });
+		return superjsonResponse(c, { rollups: records, count: records.length });
+	});
+
+	app.get("/v1/rollups/stream", (c) => {
+		if (!query) {
+			return c.json({ error: "rollup query engine not configured" }, 501);
+		}
+		const service = c.req.query("service") ?? undefined;
+		const lastEventId = c.req.header("last-event-id") ?? undefined;
+		const outcomeRaw = c.req.query("outcome");
+		const outcome =
+			outcomeRaw === "ok" || outcomeRaw === "error" || outcomeRaw === "unknown"
+				? outcomeRaw
+				: undefined;
+		return streamSSE(c, async (stream) => {
+			let closed = false;
+			const seen = new Set<string>();
+			let heartbeat: ReturnType<typeof setInterval> | null = null;
+			stream.onAbort(() => {
+				closed = true;
+			});
+
+			const initial = lastEventId
+				? deps.rollupBroadcaster?.replay({
+						afterId: lastEventId,
+						service,
+						outcome,
+						limit: 100,
+					}) ?? []
+				: (await query.listRollups({ service, outcome, limit: 100 })).map((rollup) => ({
+						id: `${rollup.rolled_up_at}:${rollup.request_id}`,
+						rollup,
+					}));
+			for (const event of [...initial].sort((a, b) => a.id.localeCompare(b.id))) {
+				seen.add(event.id);
+				await stream.writeSSE({
+					event: "rollup",
+					id: event.id,
+					data: stringifySuperjson(event.rollup),
+					retry: 1_000,
+				});
+			}
+
+			if (!deps.rollupBroadcaster) {
+				return;
+			}
+
+			const unsubscribe = deps.rollupBroadcaster.subscribe(async (event) => {
+				if (closed || seen.has(event.id)) return;
+				if (service && event.rollup.entry_service !== service) return;
+				if (outcome && event.rollup.final_outcome !== outcome) return;
+				seen.add(event.id);
+				await stream.writeSSE({
+					event: "rollup",
+					id: event.id,
+					data: stringifySuperjson(event.rollup),
+					retry: 1_000,
+				});
+			});
+			heartbeat = setInterval(() => {
+				if (closed) return;
+				void stream.writeSSE({
+					event: "ping",
+					data: new Date().toISOString(),
+				});
+			}, 15_000);
+
+			try {
+				while (!closed) {
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+				}
+			} finally {
+				if (heartbeat) clearInterval(heartbeat);
+				unsubscribe();
+			}
+		});
 	});
 
 	app.get("/v1/rollups/stats", async (c) => {
@@ -182,7 +265,7 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		}
 		const record = await query.getRollup(c.req.param("request_id"));
 		if (!record) return c.json({ error: "not found" }, 404);
-		return c.json(record);
+		return superjsonResponse(c, record);
 	});
 
 	app.get("/v1/daemons/:daemon/memory", async (c) => {

@@ -59,6 +59,13 @@ AUTH_LAB_STEALTH_TOTP_EMAILS="${AUTH_LAB_STEALTH_TOTP_EMAILS:-douglasjbinder@gma
 AUTH_LAB_STEALTH_TOTP_SEED_EMAIL="${AUTH_LAB_STEALTH_TOTP_SEED_EMAIL:-douglasjbinder@gmail.com}"
 AUTH_LAB_STEALTH_TOTP_SEED_NAME="${AUTH_LAB_STEALTH_TOTP_SEED_NAME:-Douglas Binder}"
 AUTH_LAB_STEALTH_TOTP_SEED_SECRET="${AUTH_LAB_STEALTH_TOTP_SEED_SECRET:-JBSWY3DPEHPK3PXP}"
+VITE_DEV_AUTO_LOGIN_EMAIL="${VITE_DEV_AUTO_LOGIN_EMAIL:-douglasjbinder@gmail.com}"
+VITE_DEV_AUTO_LOGIN_CODE="${VITE_DEV_AUTO_LOGIN_CODE:-000000}"
+DEV_REPO_SEED_ENABLED="${DEV_REPO_SEED_ENABLED:-true}"
+DEV_REPO_SEED_REMOTE_URL="${DEV_REPO_SEED_REMOTE_URL:-https://github.com/Bind/red.git}"
+DEV_REPO_SEED_OWNER="${DEV_REPO_SEED_OWNER:-bind}"
+DEV_REPO_SEED_NAME="${DEV_REPO_SEED_NAME:-red}"
+DEV_REPO_SEED_BRANCH="${DEV_REPO_SEED_BRANCH:-main}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/dev/compose.yml}"
 SKIP_IMAGE_BUILD="${SKIP_IMAGE_BUILD:-false}"
 GIT_COMMIT="${GIT_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
@@ -133,6 +140,8 @@ AUTH_LAB_STEALTH_TOTP_EMAILS=$AUTH_LAB_STEALTH_TOTP_EMAILS
 AUTH_LAB_STEALTH_TOTP_SEED_EMAIL=$AUTH_LAB_STEALTH_TOTP_SEED_EMAIL
 AUTH_LAB_STEALTH_TOTP_SEED_NAME="${AUTH_LAB_STEALTH_TOTP_SEED_NAME}"
 AUTH_LAB_STEALTH_TOTP_SEED_SECRET=$AUTH_LAB_STEALTH_TOTP_SEED_SECRET
+VITE_DEV_AUTO_LOGIN_EMAIL=$VITE_DEV_AUTO_LOGIN_EMAIL
+VITE_DEV_AUTO_LOGIN_CODE=$VITE_DEV_AUTO_LOGIN_CODE
 GIT_COMMIT=$GIT_COMMIT
 EOF
 
@@ -167,6 +176,43 @@ fi
 
 echo "Starting dev stack..."
 docker compose --env-file .env -f "$COMPOSE_FILE" up -d s3 init obs grs db-auth auth ctl bff web
+
+wait_for_health() {
+  local url="$1"
+  local label="$2"
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    echo "Waiting for ${label}..."
+    sleep 1
+  done
+}
+
+seed_dev_repo() {
+  if [[ "$DEV_REPO_SEED_ENABLED" != "true" ]]; then
+    return
+  fi
+
+  local repo_id="${DEV_REPO_SEED_OWNER}/${DEV_REPO_SEED_NAME}"
+  local temp_ref="refs/dev-bootstrap/${DEV_REPO_SEED_OWNER}-${DEV_REPO_SEED_NAME}-${DEV_REPO_SEED_BRANCH}"
+  local remote_url="http://${GIT_SERVER_ADMIN_USERNAME:-admin}:${GIT_SERVER_ADMIN_PASSWORD:-admin}@127.0.0.1:${GIT_SERVER_PUBLIC_PORT:-9080}/${DEV_REPO_SEED_OWNER}/${DEV_REPO_SEED_NAME}.git"
+
+  curl -fsS -X POST "http://127.0.0.1:3000/api/repos" \
+    -H "content-type: application/json" \
+    --data "{\"owner\":\"${DEV_REPO_SEED_OWNER}\",\"name\":\"${DEV_REPO_SEED_NAME}\",\"default_branch\":\"${DEV_REPO_SEED_BRANCH}\",\"visibility\":\"private\"}" \
+    >/dev/null 2>&1 || true
+
+  echo "Seeding ${repo_id} from ${DEV_REPO_SEED_REMOTE_URL}#${DEV_REPO_SEED_BRANCH}..."
+  git fetch --quiet --force "$DEV_REPO_SEED_REMOTE_URL" "refs/heads/${DEV_REPO_SEED_BRANCH}:${temp_ref}"
+  git push --quiet --force "$remote_url" "${temp_ref}:refs/heads/${DEV_REPO_SEED_BRANCH}"
+  local seeded_sha
+  seeded_sha="$(git rev-parse "${temp_ref}")"
+  git update-ref -d "${temp_ref}" >/dev/null 2>&1 || true
+  echo "Seeded ${repo_id}@${DEV_REPO_SEED_BRANCH} -> ${seeded_sha}"
+}
+
+wait_for_health "http://127.0.0.1:${AUTH_PORT:-4020}/health" "auth"
+wait_for_health "http://127.0.0.1:${GIT_SERVER_PUBLIC_PORT:-9080}/health" "grs"
+wait_for_health "http://127.0.0.1:3000/health" "ctl"
+seed_dev_repo
 
 echo ""
 echo "=== Setup complete ==="

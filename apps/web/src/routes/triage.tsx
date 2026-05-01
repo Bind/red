@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import {
   Area,
   AreaChart,
@@ -48,12 +49,13 @@ import {
   type LogSummary,
   type TriageRunSummary,
   type WideRollup,
+  subscribeToRollupStream,
   subscribeToLogStream,
 } from "@/lib/api";
 
-const REQUEST_POLL_INTERVAL_MS = 5000;
+const REQUEST_POLL_INTERVAL_MS = 2000;
 const PAGE_SIZE = 100;
-const DEFAULT_LOG_LIMIT = 10_000;
+const DEFAULT_LOG_LIMIT = 5_000;
 
 type OutcomeFilter = "all" | "ok" | "error";
 type ServiceFilter = "all" | string;
@@ -172,6 +174,12 @@ function deriveSummaryFromEntries(entries: LogEntry[]): LogSummary {
   };
 }
 
+function mergeRollups(current: WideRollup[], incoming: WideRollup): WideRollup[] {
+  const next = [incoming, ...current.filter((item) => item.request_id !== incoming.request_id)];
+  next.sort((a, b) => b.rolled_up_at.localeCompare(a.rolled_up_at));
+  return next;
+}
+
 function statusClassLabel(status: number | null): string {
   if (status === null) return "no-status";
   return `${Math.floor(status / 100)}xx`;
@@ -194,6 +202,7 @@ function summarizePane(entries: LogEntry[]) {
 function RequestsTab({
   rollups,
   runs,
+  loading,
   expanded,
   setExpanded,
   limit,
@@ -201,6 +210,7 @@ function RequestsTab({
 }: {
   rollups: WideRollup[] | null;
   runs: TriageRunSummary[] | null;
+  loading: boolean;
   expanded: string | null;
   setExpanded: (value: string | null) => void;
   limit: number;
@@ -211,6 +221,11 @@ function RequestsTab({
     for (const run of runs ?? []) map.set(run.rollup.request_id, run);
     return map;
   }, [runs]);
+  const [animatedRollupBody] = useAutoAnimate<HTMLTableSectionElement>({
+    duration: 180,
+    easing: "ease-out",
+  });
+  const visibleRollups = rollups ?? [];
 
   return (
     <div className="space-y-6">
@@ -218,17 +233,18 @@ function RequestsTab({
         <CardHeader className="flex items-center justify-between">
           <CardTitle>Wide events</CardTitle>
           <span className="text-sm text-muted-foreground">
-            {rollups?.length ?? "…"} shown · polling every {REQUEST_POLL_INTERVAL_MS / 1000}s
+            {rollups?.length ?? "…"} shown · live stream
+            {loading ? " · refreshing…" : ""}
           </span>
         </CardHeader>
         <CardContent>
-          {rollups === null ? (
+          {rollups === null && loading ? (
             <div className="flex flex-col gap-2">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
-          ) : rollups.length === 0 ? (
+          ) : visibleRollups.length === 0 ? (
             <p className="text-sm text-muted-foreground">no rollups match these filters yet.</p>
           ) : (
             <Table>
@@ -242,13 +258,14 @@ function RequestsTab({
                   <TableHead>triage</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {rollups.map((r) => {
+              <TableBody ref={animatedRollupBody}>
+                {visibleRollups.map((r) => {
                   const triage = triageByRequestId.get(r.request_id);
                   const isOpen = expanded === r.request_id;
                   return (
                     <Fragment key={r.request_id}>
                       <TableRow
+                        data-request-id={r.request_id}
                         className="cursor-pointer hover:bg-muted/40"
                         onClick={() => setExpanded(isOpen ? null : r.request_id)}
                       >
@@ -872,6 +889,7 @@ export function TriagePage() {
   const [activeTab, setActiveTab] = useState<LogTab>("requests");
   const [rollups, setRollups] = useState<WideRollup[] | null>(null);
   const [runs, setRuns] = useState<TriageRunSummary[] | null>(null);
+  const [requestsLoading, setRequestsLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [service, setService] = useState<ServiceFilter>("all");
   const [outcome, setOutcome] = useState<OutcomeFilter>("all");
@@ -893,6 +911,7 @@ export function TriagePage() {
   const [focusedService, setFocusedService] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
+    setRequestsLoading(true);
     try {
       const [{ rollups: r }, { runs: t }] = await Promise.all([
         fetchRollups({
@@ -907,6 +926,8 @@ export function TriagePage() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRequestsLoading(false);
     }
   }, [service, outcome, limit]);
 
@@ -934,9 +955,37 @@ export function TriagePage() {
 
   useEffect(() => {
     loadRequests();
-    const handle = setInterval(loadRequests, REQUEST_POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
   }, [loadRequests]);
+
+  useEffect(() => {
+    if (activeTab !== "requests") return;
+    const unsubscribe = subscribeToRollupStream(
+      {
+        service: service === "all" ? undefined : service,
+        outcome: outcome === "all" ? undefined : outcome,
+      },
+      (rollup) => {
+        setRequestsLoading(false);
+        setRollups((current) => mergeRollups(current ?? [], rollup));
+        setError(null);
+      },
+      (message) => {
+        setError(message);
+      },
+    );
+    return unsubscribe;
+  }, [activeTab, service, outcome]);
+
+  useEffect(() => {
+    if (activeTab !== "requests") return;
+    const refreshRuns = async () => {
+      const { runs: nextRuns } = await fetchTriageRuns().catch(() => ({ runs: [] as TriageRunSummary[] }));
+      setRuns(nextRuns);
+    };
+    void refreshRuns();
+    const handle = setInterval(refreshRuns, REQUEST_POLL_INTERVAL_MS);
+    return () => clearInterval(handle);
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== "logs") return;
@@ -1061,6 +1110,7 @@ export function TriagePage() {
           <RequestsTab
             rollups={rollups}
             runs={runs}
+            loading={requestsLoading}
             expanded={expanded}
             setExpanded={setExpanded}
             limit={limit}

@@ -244,7 +244,7 @@ services:
     environment:
       RED_PORT: 3000
       RED_DB_PATH: ${RED_DB_PATH:-/data/red-dev.db}
-      RED_REPOS: ${RED_REPOS:-red/red}
+      RED_REPOS: ${RED_REPOS:-bind/red}
       GIT_STORAGE_PUBLIC_URL: ${GIT_STORAGE_PUBLIC_URL:-http://grs:8080}
       GIT_STORAGE_DEFAULT_OWNER: ${GIT_STORAGE_DEFAULT_OWNER:-red}
       GIT_STORAGE_CONTROL_PLANE_URL: ${GIT_STORAGE_CONTROL_PLANE_URL:-http://grs:8080}
@@ -312,7 +312,7 @@ services:
       OBS_BASE_URL: http://obs:4090
       TRIAGE_BASE_URL: http://triage:7000
       BFF_DISABLE_AUTH: ${BFF_DISABLE_AUTH:-true}
-      BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-red/red}
+      BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-bind/red}
       BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-red-bff-hosted-repo}
       BFF_HOSTED_REPO_DEFAULT_BRANCH: ${BFF_HOSTED_REPO_DEFAULT_BRANCH:-main}
       BFF_HOSTED_REPO_README_PATH: ${BFF_HOSTED_REPO_README_PATH:-README.md}
@@ -354,6 +354,8 @@ services:
     working_dir: /app/apps/web
     environment:
       VITE_API_PROXY_TARGET: http://bff:3001
+      VITE_DEV_AUTO_LOGIN_EMAIL: ${VITE_DEV_AUTO_LOGIN_EMAIL:-douglasjbinder@gmail.com}
+      VITE_DEV_AUTO_LOGIN_CODE: ${VITE_DEV_AUTO_LOGIN_CODE:-000000}
     ports:
       - "5173:5173"
     command: ["bun", "run", "dev", "--host", "0.0.0.0", "--port", "5173"]
@@ -365,10 +367,11 @@ services:
   triage:
     container_name: triage
     image: oven/bun:1-alpine
+    init: true
+    stop_grace_period: 2s
     restart: unless-stopped
     depends_on:
       - loki
-      - triage-smithers
     working_dir: /app/apps/triage
     environment:
       TRIAGE_PORT: ${TRIAGE_PORT:-7000}
@@ -392,9 +395,9 @@ services:
     ports:
       - "${TRIAGE_PORT:-7000}:7000"
     command: >
-      sh -lc "apk add --no-cache git ca-certificates &&
+      sh -lc "apk add --no-cache ca-certificates &&
       cd /app/apps/triage &&
-      bun run --watch src/index.ts"
+      exec bun run --watch src/index.ts"
     volumes:
       - ../..:/app
       - red-node-modules:/app/node_modules
@@ -410,11 +413,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    profiles: ["triage"]
-
   triage-smithers:
     container_name: triage-smithers
     image: oven/bun:1-alpine
+    init: true
+    stop_grace_period: 2s
     restart: unless-stopped
     working_dir: /app/apps/triage
     environment:
@@ -439,7 +442,7 @@ services:
       sh -lc "apk add --no-cache git ca-certificates npm &&
       npm install -g @openai/codex@0.117.0 &&
       cd /app/apps/triage &&
-      bun run src/smithers-server.ts"
+      exec bun run src/smithers-server.ts"
     volumes:
       - ../..:/app
       - red-node-modules:/app/node_modules

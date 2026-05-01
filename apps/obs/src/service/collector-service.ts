@@ -8,6 +8,7 @@ import type {
 	WideRollupRecord,
 } from "./collector-contract";
 import type { DaemonObservabilityQuery } from "./daemon-query";
+import type { RollupBroadcaster } from "./rollup-broadcaster";
 import type { TriageDispatcher } from "./triage-dispatcher";
 
 export interface AcceptedCollectorBatch {
@@ -71,6 +72,7 @@ export interface CollectorDependencies {
 	activeRequests: ActiveRequestAggregator;
 	triageDispatcher?: TriageDispatcher;
 	daemonQuery?: DaemonObservabilityQuery;
+	rollupBroadcaster?: RollupBroadcaster;
 }
 
 interface EventValidationResult {
@@ -431,6 +433,7 @@ export async function acceptCollectorBatch(
 		if (rollups.length > 0) {
 			await deps.rollupStore.appendRollups(rollups);
 			await dispatchRollupsForTriage(deps, rollups);
+			await deps.rollupBroadcaster?.publish(rollups);
 		}
 		return {
 			status: errors.length > 0 ? 207 : 202,
@@ -464,6 +467,7 @@ export async function flushExpiredCollectorRequests(
 	}
 	await deps.rollupStore.appendRollups(rollups);
 	await dispatchRollupsForTriage(deps, rollups);
+	await deps.rollupBroadcaster?.publish(rollups);
 	return rollups.length;
 }
 

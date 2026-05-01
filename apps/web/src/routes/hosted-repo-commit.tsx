@@ -97,7 +97,8 @@ function scrollToDiffFile(filename: string) {
 }
 
 export function HostedRepoCommitPage() {
-  const { sha = "" } = useParams();
+  const { owner = "", repo = "", sha = "" } = useParams();
+  const repoId = owner && repo ? `${owner}/${repo}` : "";
   const [commit, setCommit] = useState<HostedRepoCommit | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +107,14 @@ export function HostedRepoCommitPage() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([fetchHostedRepoSnapshot(), fetchHostedRepoCommitDiff(sha)])
+    if (!repoId) {
+      setError("Missing repo id");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    Promise.all([fetchHostedRepoSnapshot(repoId), fetchHostedRepoCommitDiff(sha, repoId)])
       .then(([snapshot, patch]) => {
         if (cancelled) return;
         setCommit(snapshot.commits.find((entry) => entry.sha === sha) ?? null);
@@ -122,7 +130,7 @@ export function HostedRepoCommitPage() {
     return () => {
       cancelled = true;
     };
-  }, [sha]);
+  }, [repoId, sha]);
 
   const patches = useMemo(() => (diff ? splitPatchFiles(diff) : []), [diff]);
   const { files, gitStatus } = useMemo(
@@ -160,8 +168,8 @@ export function HostedRepoCommitPage() {
           <Badge variant="outline" className="font-mono">
             {sha.slice(0, 12)}
           </Badge>
-          <Link className="text-sm text-muted-foreground underline-offset-4 hover:underline" to="/">
-            Back to hosted repo
+          <Link className="text-sm text-muted-foreground underline-offset-4 hover:underline" to={`/${repoId}`}>
+            Back to repo
           </Link>
         </div>
         <div className="space-y-2">

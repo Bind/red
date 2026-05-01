@@ -29,6 +29,21 @@ export interface BffConfig {
   hostedRepoReader?: HostedRepoReader;
 }
 
+function resolveHostedRepoConfig(
+  configured: HostedRepoConfig | undefined,
+  repoId: string | null | undefined,
+): HostedRepoConfig | null {
+  const requested = repoId?.trim();
+  if (requested) {
+    return {
+      repoId: requested,
+      apiBaseUrl: configured?.apiBaseUrl ?? "http://localhost:3000",
+      readmePath: configured?.readmePath ?? "README.md",
+    };
+  }
+  return configured ?? null;
+}
+
 type ServiceProbeStatus = "ok" | "error" | "unconfigured";
 
 interface ServiceProbeResult {
@@ -294,9 +309,6 @@ export function createApp(config: BffConfig) {
   const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
-  const hostedRepoReader =
-    config.hostedRepoReader
-    ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
   app.use(
     "*",
@@ -438,17 +450,46 @@ export function createApp(config: BffConfig) {
       proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
     )
     .get("/app/hosted-repo", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      const hostedRepoReader =
+        config.hostedRepoReader
+        ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
       if (!hostedRepoReader) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
       return c.json(await hostedRepoReader.readSnapshot());
     })
+    .get("/app/hosted-repo/file", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) {
+        return c.json({ error: "Hosted repo app is not configured" }, 404);
+      }
+      const path = c.req.query("path");
+      if (!path) {
+        return c.json({ error: "Missing path query parameter" }, 400);
+      }
+      const ref = c.req.query("ref");
+      const envelope = getEnvelope(c as any);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
+      const params = new URLSearchParams({ path });
+      if (ref) params.set("ref", ref);
+      const response = await fetchImpl(
+        new URL(`/api/repos/${owner}/${name}/file?${params}`, config.apiBaseUrl),
+        { headers: { "x-request-id": envelope.requestId } },
+      );
+      if (!response.ok) {
+        return c.text(await response.text().catch(() => "Unable to load file"), response.status as any);
+      }
+      const body = await response.json() as { path: string; ref: string; content: string | null };
+      return c.json(body);
+    })
     .get("/app/hosted-repo/commits/:sha/diff", async (c) => {
-      if (!config.hostedRepo) {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
       const envelope = getEnvelope(c as any);
-      const { owner, name } = splitHostedRepoId(config.hostedRepo.repoId);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
       const response = await fetchImpl(
         new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
@@ -627,6 +668,18 @@ export function createApp(config: BffConfig) {
         if (value) query.set(key, value);
       }
       return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups", query));
+    })
+    .get("/rollups/stream", async (c) => {
+      if (!config.obsBaseUrl)
+        return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "outcome"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyStream(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups/stream", query));
     })
     .get("/rollups/:request_id", async (c) => {
       if (!config.obsBaseUrl)

@@ -11,6 +11,7 @@ import {
 	HttpTriageDispatcher,
 	type TriageDispatcher,
 } from "../service/triage-dispatcher";
+import { RollupBroadcaster } from "../service/rollup-broadcaster";
 import { DuckDbRollupQuery } from "../store/duckdb-query";
 import { MinioRawEventStore, MinioRollupStore } from "../store/minio-store";
 import { FileRawEventStore } from "../store/raw-event-store";
@@ -216,6 +217,7 @@ export function createCollectorDeps(
 			? createTriageDispatcher(config.triage)
 			: undefined,
 		daemonQuery: shouldEnableDaemonQuery() ? createDaemonObservabilityQuery() : undefined,
+		rollupBroadcaster: new RollupBroadcaster(),
 	};
 }
 

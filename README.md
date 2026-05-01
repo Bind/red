@@ -31,6 +31,13 @@ Local dev keeps the core surfaces separate:
 
 Use `5173` as the main UI in dev. `3000` is not a web host; it is the `ctl` service. The web app talks to `bff`, and `bff` fans out to `ctl`, `obs`, `auth`, and other backends.
 
+The default local bootstrap also does two opinionated dev-only setup steps:
+
+- auto-signs the browser into the seeded stealth TOTP account for `douglasjbinder@gmail.com` when you open the UI on `localhost` / `127.0.0.1`
+- force-seeds the local `grs` repo `red/red` from `https://github.com/Bind/red` on the latest `main`
+
+Those defaults are controlled through `infra/dev/run.sh` env knobs such as `VITE_DEV_AUTO_LOGIN_EMAIL`, `DEV_REPO_SEED_ENABLED`, `DEV_REPO_SEED_REMOTE_URL`, and `DEV_REPO_SEED_BRANCH`.
+
 The intended production model is the same separation, stitched together at the edge by Envoy rather than collapsing web, bff, and ctl into one process.
 
 Service-specific commands:

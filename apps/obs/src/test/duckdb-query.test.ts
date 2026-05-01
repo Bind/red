@@ -87,6 +87,9 @@ describe("DuckDbRollupQuery", () => {
 		const rows = await query.listRollups({ limit: 10 });
 		expect(rows).toHaveLength(4);
 		expect(rows.every((r) => typeof r.request_id === "string")).toBe(true);
+		expect(typeof rows[0]?.first_ts).toBe("string");
+		expect(typeof rows[0]?.last_ts).toBe("string");
+		expect(typeof rows[0]?.rolled_up_at).toBe("string");
 	});
 
 	test("listRollups filters by entry_service", async () => {

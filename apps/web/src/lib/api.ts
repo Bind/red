@@ -1,4 +1,5 @@
 import { hc } from "hono/client";
+import superjson from "superjson";
 import type { AppType } from "../../../bff/src/app";
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -170,12 +171,26 @@ export interface CreateRepoInput {
 
 const client = hc<AppType>("/") as any;
 
+function decodeResponseBody<T>(text: string): T {
+  const trimmed = text.trim();
+  if (!trimmed) return null as T;
+  const raw = JSON.parse(trimmed) as unknown;
+  if (
+    raw
+    && typeof raw === "object"
+    && "json" in (raw as Record<string, unknown>)
+  ) {
+    return superjson.deserialize(raw as any) as T;
+  }
+  return raw as T;
+}
+
 async function rpcJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new ApiError(body || `API error: ${response.status}`, response.status);
   }
-  return response.json() as Promise<T>;
+  return decodeResponseBody<T>(await response.text());
 }
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -184,9 +199,7 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
     const body = await response.text().catch(() => "");
     throw new ApiError(body || `API error: ${response.status}`, response.status);
   }
-  const text = await response.text();
-  const trimmed = text.trim();
-  return (trimmed ? JSON.parse(trimmed) : null) as T;
+  return decodeResponseBody<T>(await response.text());
 }
 
 function normalizeRepoSummary(repo: unknown): RepoSummary | null {
@@ -466,18 +479,34 @@ export async function fetchRepos(): Promise<RepoSummary[]> {
   }
 }
 
-export async function fetchHostedRepoSnapshot(): Promise<HostedRepoSnapshot> {
-  const payload = await requestJson<HostedRepoSnapshot>("/rpc/app/hosted-repo");
+export async function fetchHostedRepoSnapshot(repoId?: string): Promise<HostedRepoSnapshot> {
+  const suffix = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const payload = await requestJson<HostedRepoSnapshot>(`/rpc/app/hosted-repo${suffix}`);
   return {
     ...payload,
     repo: normalizeRepoSummary(payload.repo) ?? payload.repo,
   };
 }
 
-export async function fetchHostedRepoCommitDiff(sha: string): Promise<string> {
-  const res = await fetch(`/rpc/app/hosted-repo/commits/${encodeURIComponent(sha)}/diff`);
+export async function fetchHostedRepoCommitDiff(sha: string, repoId?: string): Promise<string> {
+  const suffix = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const res = await fetch(`/rpc/app/hosted-repo/commits/${encodeURIComponent(sha)}/diff${suffix}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.text();
+}
+
+export async function fetchHostedRepoFile(
+  path: string,
+  ref?: string,
+  repoId?: string,
+): Promise<string | null> {
+  const params = new URLSearchParams({ path });
+  if (ref) params.set("ref", ref);
+  if (repoId) params.set("repo", repoId);
+  const res = await fetch(`/rpc/app/hosted-repo/file?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const body = await res.json() as { content: string | null };
+  return body.content;
 }
 
 export async function createRepo(input: CreateRepoInput): Promise<RepoSummary> {
@@ -641,9 +670,7 @@ export async function fetchRollups(query: RollupListQuery = {}): Promise<{
 }
 
 export async function fetchRollupDetail(requestId: string): Promise<WideRollup> {
-  const res = await fetch(`/rpc/rollups/${encodeURIComponent(requestId)}`);
-  if (!res.ok) throw new ApiError(`rollup ${res.status}`, res.status);
-  return res.json();
+  return requestJson<WideRollup>(`/rpc/rollups/${encodeURIComponent(requestId)}`);
 }
 
 export interface TriageRunSummary {
@@ -670,6 +697,32 @@ export interface TriageRunSummary {
 
 export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
   return requestJson<{ runs: TriageRunSummary[] }>(`/rpc/triage/runs`);
+}
+
+export function subscribeToRollupStream(
+  query: RollupListQuery,
+  onRollup: (rollup: WideRollup) => void,
+  onError?: (message: string) => void,
+): () => void {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.outcome) params.set("outcome", query.outcome);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const es = new EventSource(`/rpc/rollups/stream${suffix}`);
+
+  es.addEventListener("rollup", (event) => {
+    try {
+      onRollup(superjson.parse<WideRollup>(event.data));
+    } catch {
+      onError?.("rollup stream decode failed");
+    }
+  });
+
+  es.onerror = () => {
+    onError?.("rollup stream disconnected");
+  };
+
+  return () => es.close();
 }
 
 export type ServiceProbeStatus = "ok" | "error" | "unconfigured";
