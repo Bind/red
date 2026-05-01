@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import {
   Area,
@@ -100,6 +100,29 @@ function outcomeBadge(rollup: WideRollup) {
   return <Badge variant={variant as any}>{label}</Badge>;
 }
 
+function relatedServices(rollup: WideRollup): string[] {
+  return rollup.services.filter((service) => service !== rollup.entry_service);
+}
+
+function serviceSummary(rollup: WideRollup) {
+  const extras = relatedServices(rollup);
+  if (extras.length === 0) {
+    return {
+      primary: rollup.entry_service,
+      secondary: null,
+    };
+  }
+  return {
+    primary: `${rollup.entry_service} +${extras.length}`,
+    secondary: extras.join(", "),
+  };
+}
+
+function isHealthNoise(rollup: WideRollup) {
+  const path = rollup.request?.request?.path;
+  return path === "/health";
+}
+
 function triageStatusBadge(status: TriageRunSummary["status"]) {
   const tone =
     status === "proposal_ready"
@@ -180,6 +203,14 @@ function mergeRollups(current: WideRollup[], incoming: WideRollup): WideRollup[]
   return next;
 }
 
+function mergeRollupList(current: WideRollup[], incoming: WideRollup[]): WideRollup[] {
+  let next = current;
+  for (const rollup of incoming) {
+    next = mergeRollups(next, rollup);
+  }
+  return next;
+}
+
 function statusClassLabel(status: number | null): string {
   if (status === null) return "no-status";
   return `${Math.floor(status / 100)}xx`;
@@ -203,29 +234,51 @@ function RequestsTab({
   rollups,
   runs,
   loading,
-  expanded,
-  setExpanded,
+  selectedRequestId,
+  setSelectedRequestId,
   limit,
   setLimit,
+  hideHealthNoise,
 }: {
   rollups: WideRollup[] | null;
   runs: TriageRunSummary[] | null;
   loading: boolean;
-  expanded: string | null;
-  setExpanded: (value: string | null) => void;
+  selectedRequestId: string | null;
+  setSelectedRequestId: (value: string | null) => void;
   limit: number;
   setLimit: (value: number) => void;
+  hideHealthNoise: boolean;
 }) {
   const triageByRequestId = useMemo(() => {
     const map = new Map<string, TriageRunSummary>();
     for (const run of runs ?? []) map.set(run.rollup.request_id, run);
     return map;
   }, [runs]);
-  const [animatedRollupBody] = useAutoAnimate<HTMLTableSectionElement>({
-    duration: 180,
+  const [animatedRollupFeed] = useAutoAnimate<HTMLDivElement>({
+    duration: 220,
     easing: "ease-out",
   });
-  const visibleRollups = rollups ?? [];
+  const visibleRollups = useMemo(
+    () => (rollups ?? []).filter((rollup) => !hideHealthNoise || !isHealthNoise(rollup)),
+    [hideHealthNoise, rollups],
+  );
+  const selectedRollup = useMemo(
+    () => visibleRollups.find((rollup) => rollup.request_id === selectedRequestId) ?? null,
+    [selectedRequestId, visibleRollups],
+  );
+  const selectedTriage = selectedRollup
+    ? triageByRequestId.get(selectedRollup.request_id) ?? null
+    : null;
+
+  useEffect(() => {
+    if (visibleRollups.length === 0) {
+      if (selectedRequestId !== null) setSelectedRequestId(null);
+      return;
+    }
+    if (selectedRequestId === null || !visibleRollups.some((rollup) => rollup.request_id === selectedRequestId)) {
+      setSelectedRequestId(visibleRollups[0].request_id);
+    }
+  }, [selectedRequestId, setSelectedRequestId, visibleRollups]);
 
   return (
     <div className="space-y-6">
@@ -233,7 +286,7 @@ function RequestsTab({
         <CardHeader className="flex items-center justify-between">
           <CardTitle>Wide events</CardTitle>
           <span className="text-sm text-muted-foreground">
-            {rollups?.length ?? "…"} shown · live stream
+            {visibleRollups.length || (rollups === null ? "…" : 0)} shown · live stream
             {loading ? " · refreshing…" : ""}
           </span>
         </CardHeader>
@@ -241,87 +294,132 @@ function RequestsTab({
           {rollups === null && loading ? (
             <div className="flex flex-col gap-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
+                <Skeleton key={i} className="h-24 w-full" />
               ))}
             </div>
           ) : visibleRollups.length === 0 ? (
             <p className="text-sm text-muted-foreground">no rollups match these filters yet.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>time</TableHead>
-                  <TableHead>service</TableHead>
-                  <TableHead>route</TableHead>
-                  <TableHead>outcome</TableHead>
-                  <TableHead className="text-right">duration</TableHead>
-                  <TableHead>triage</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody ref={animatedRollupBody}>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+              <div className="relative flex flex-col gap-3" ref={animatedRollupFeed}>
                 {visibleRollups.map((r) => {
                   const triage = triageByRequestId.get(r.request_id);
-                  const isOpen = expanded === r.request_id;
+                  const selected = selectedRequestId === r.request_id;
+                  const summary = serviceSummary(r);
                   return (
-                    <Fragment key={r.request_id}>
-                      <TableRow
-                        data-request-id={r.request_id}
-                        className="cursor-pointer hover:bg-muted/40"
-                        onClick={() => setExpanded(isOpen ? null : r.request_id)}
+                    <div
+                      key={r.request_id}
+                      data-request-id={r.request_id}
+                      className="relative"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRequestId(r.request_id)}
+                        className={`block w-full rounded-xl border p-4 text-left transition-colors ${
+                          selected
+                            ? "border-primary/60 bg-primary/6 shadow-[0_0_0_1px_var(--color-primary)]"
+                            : "border-border/60 bg-background hover:border-primary/30 hover:bg-muted/20"
+                        }`}
                       >
-                        <TableCell title={r.rolled_up_at}>{formatAgo(r.rolled_up_at)}</TableCell>
-                        <TableCell className="font-mono">{r.entry_service}</TableCell>
-                        <TableCell className="font-mono text-xs">{r.route_names[0] ?? "—"}</TableCell>
-                        <TableCell>{outcomeBadge(r)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{r.total_duration_ms}ms</TableCell>
-                        <TableCell>{triage ? triageStatusBadge(triage.status) : "—"}</TableCell>
-                      </TableRow>
-                      {isOpen && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="bg-muted/20 p-4">
-                            <div className="flex flex-col gap-3">
-                              <div className="flex flex-wrap gap-2 text-xs">
-                                <Badge variant="outline">request_id: {r.request_id}</Badge>
-                                <Badge variant="outline">events: {r.event_count}</Badge>
-                                <Badge variant="outline">errors: {r.error_count}</Badge>
-                                {r.services.map((s) => (
-                                  <Badge key={s} variant="secondary">
-                                    {s}
-                                  </Badge>
-                                ))}
-                              </div>
-                              {r.primary_error && (
-                                <pre className="overflow-x-auto rounded border bg-background p-2 text-xs">
-                                  {JSON.stringify(r.primary_error, null, 2)}
-                                </pre>
-                              )}
-                              <details>
-                                <summary className="cursor-pointer text-sm text-muted-foreground">
-                                  events ({r.events.length})
-                                </summary>
-                                <pre className="mt-2 overflow-x-auto rounded border bg-background p-2 text-xs">
-                                  {JSON.stringify(r.events, null, 2)}
-                                </pre>
-                              </details>
-                              {triage && (
-                                <details>
-                                  <summary className="cursor-pointer text-sm text-muted-foreground">
-                                    triage run: {triage.id}
-                                  </summary>
-                                  <pre className="mt-2 overflow-x-auto rounded border bg-background p-2 text-xs">
-                                    {JSON.stringify(triage, null, 2)}
-                                  </pre>
-                                </details>
-                              )}
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-xs text-muted-foreground" title={r.rolled_up_at}>
+                                {formatAgo(r.rolled_up_at)}
+                              </span>
+                              {selected ? <Badge variant="secondary">pinned</Badge> : null}
+                              {outcomeBadge(r)}
+                              {triage ? triageStatusBadge(triage.status) : null}
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
+                            <div className="space-y-1">
+                              <div className="font-mono text-sm">{summary.primary}</div>
+                              {summary.secondary ? (
+                                <div className="text-xs text-muted-foreground">{summary.secondary}</div>
+                              ) : null}
+                            </div>
+                            <div className="font-mono text-sm">{r.route_names[0] ?? "—"}</div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="font-mono text-sm tabular-nums">{r.total_duration_ms}ms</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {r.event_count} events · {r.error_count} errors
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+              <Card className="xl:sticky xl:top-6 xl:h-fit">
+                <CardHeader>
+                  <CardTitle>Request detail</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {selectedRollup ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <Badge variant="secondary">pinned</Badge>
+                        <Badge variant="outline">request_id: {selectedRollup.request_id}</Badge>
+                        <Badge variant="outline">events: {selectedRollup.event_count}</Badge>
+                        <Badge variant="outline">errors: {selectedRollup.error_count}</Badge>
+                        {selectedRollup.services.map((service) => (
+                          <Badge key={service} variant="secondary">
+                            {service}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">route</div>
+                          <div className="mt-1 font-mono text-sm">{selectedRollup.route_names[0] ?? "—"}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">rolled up</div>
+                          <div className="mt-1 font-mono text-sm">{formatClock(selectedRollup.rolled_up_at)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">duration</div>
+                          <div className="mt-1 font-mono text-sm">{selectedRollup.total_duration_ms}ms</div>
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">outcome</div>
+                          <div className="mt-1">{outcomeBadge(selectedRollup)}</div>
+                        </div>
+                      </div>
+                      {selectedRollup.primary_error ? (
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium">Primary error</div>
+                          <pre className="overflow-x-auto rounded-lg border bg-background p-3 text-xs">
+                            {JSON.stringify(selectedRollup.primary_error, null, 2)}
+                          </pre>
+                        </div>
+                      ) : null}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Event body</div>
+                        <pre className="max-h-[55vh] overflow-auto rounded-lg border bg-background p-3 text-xs">
+                          {JSON.stringify(selectedRollup.events, null, 2)}
+                        </pre>
+                      </div>
+                      {selectedTriage ? (
+                        <details>
+                          <summary className="cursor-pointer text-sm text-muted-foreground">
+                            triage run: {selectedTriage.id}
+                          </summary>
+                          <pre className="mt-2 max-h-[40vh] overflow-auto rounded-lg border bg-background p-3 text-xs">
+                            {JSON.stringify(selectedTriage, null, 2)}
+                          </pre>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      pick a live request from the feed to pin it and inspect its full event body.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           )}
           {rollups && rollups.length >= limit && (
             <div className="mt-4 flex justify-center">
@@ -890,9 +988,10 @@ export function TriagePage() {
   const [rollups, setRollups] = useState<WideRollup[] | null>(null);
   const [runs, setRuns] = useState<TriageRunSummary[] | null>(null);
   const [requestsLoading, setRequestsLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [service, setService] = useState<ServiceFilter>("all");
   const [outcome, setOutcome] = useState<OutcomeFilter>("all");
+  const [hideHealthNoise, setHideHealthNoise] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
 
@@ -921,7 +1020,7 @@ export function TriagePage() {
         }),
         fetchTriageRuns().catch(() => ({ runs: [] as TriageRunSummary[] })),
       ]);
-      setRollups(r);
+      setRollups((current) => (current === null ? r : mergeRollupList(current, r)));
       setRuns(t);
       setError(null);
     } catch (err) {
@@ -1060,6 +1159,12 @@ export function TriagePage() {
           </div>
           {activeTab === "requests" && (
             <div className="flex gap-2">
+              <Button
+                variant={hideHealthNoise ? "secondary" : "outline"}
+                onClick={() => setHideHealthNoise((current) => !current)}
+              >
+                {hideHealthNoise ? "hide health noise" : "show health noise"}
+              </Button>
               <Select value={service} onValueChange={(v) => setService(v as ServiceFilter)}>
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="service" />
@@ -1111,10 +1216,11 @@ export function TriagePage() {
             rollups={rollups}
             runs={runs}
             loading={requestsLoading}
-            expanded={expanded}
-            setExpanded={setExpanded}
+            selectedRequestId={selectedRequestId}
+            setSelectedRequestId={setSelectedRequestId}
             limit={limit}
             setLimit={setLimit}
+            hideHealthNoise={hideHealthNoise}
           />
         </TabsContent>
         <TabsContent value="logs">

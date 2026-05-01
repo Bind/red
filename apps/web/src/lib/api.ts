@@ -495,6 +495,14 @@ export async function fetchHostedRepoCommitDiff(sha: string, repoId?: string): P
   return res.text();
 }
 
+export async function fetchHostedRepoTree(ref?: string, repoId?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (ref) params.set("ref", ref);
+  if (repoId) params.set("repo", repoId);
+  const res = await requestJson<{ files: string[] }>(`/rpc/app/hosted-repo/tree?${params}`);
+  return res.files;
+}
+
 export async function fetchHostedRepoFile(
   path: string,
   ref?: string,
@@ -645,6 +653,14 @@ export interface WideRollup {
   event_count: number;
   error_count: number;
   primary_error: Record<string, unknown> | null;
+  request: {
+    request?: {
+      method?: string | null;
+      path?: string | null;
+      host?: string | null;
+      scheme?: string | null;
+    } | null;
+  };
   events: WideEvent[];
   rolled_up_at: string;
 }
@@ -874,6 +890,79 @@ export function subscribeToLogStream(
   };
 
   return () => es.close();
+}
+
+export interface DaemonSpec {
+  name: string;
+  description: string;
+  file: string;
+  scopeRoot: string;
+}
+
+export interface DaemonTrackEntry {
+  subject: string;
+  fingerprint: string;
+  fact: unknown;
+  depends_on: string[];
+  checked_at: string;
+  source_run_id: string;
+}
+
+export interface DaemonCheckedFile {
+  path: string;
+  fingerprint: string;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface DaemonMemory {
+  daemon: string;
+  scopeRoot: string;
+  repoId: string;
+  commit: string | null;
+  updatedAt: string;
+  tracked: Record<string, DaemonTrackEntry>;
+  lastRun: {
+    summary: string;
+    nextRunHint?: string;
+    findings: Array<{
+      invariant: string;
+      target?: string;
+      status: "ok" | "healed" | "violation_persists" | "skipped";
+      note?: string;
+    }>;
+    checkedFiles: DaemonCheckedFile[];
+    fileInventory: DaemonCheckedFile[];
+  } | null;
+}
+
+export interface DaemonRunIndexEntry {
+  runId: string;
+  status: "completed" | "failed";
+  startedAt: string;
+  finishedAt: string;
+  summary?: string;
+  reason?: string;
+}
+
+export async function fetchDaemons(): Promise<DaemonSpec[]> {
+  const res = await requestJson<{ daemons: DaemonSpec[] }>("/rpc/daemons");
+  return res.daemons;
+}
+
+export async function fetchDaemonMemory(name: string, repoId?: string): Promise<DaemonMemory | null> {
+  try {
+    const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+    return await requestJson<DaemonMemory>(`/rpc/daemons/${encodeURIComponent(name)}/memory${query}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDaemonRuns(name: string, repoId?: string): Promise<DaemonRunIndexEntry[]> {
+  const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const res = await requestJson<{ runs: DaemonRunIndexEntry[] }>(`/rpc/daemons/${encodeURIComponent(name)}/runs${query}`);
+  return res.runs;
 }
 
 export type DaemonPlaygroundProfile = {

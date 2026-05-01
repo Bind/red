@@ -21,9 +21,16 @@ interface GitServerComparePayload extends DiffStats {
 export class GitServerHttpRepositoryProvider implements RepositoryProvider {
   constructor(private readonly options: GitServerHttpRepositoryProviderOptions) {}
 
-  async compareDiff(owner: string, repo: string, base: string, head: string): Promise<DiffStats> {
+  async compareDiff(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    requestId?: string,
+  ): Promise<DiffStats> {
     const result = await this.readJson<GitServerComparePayload>(
-      this.repoUrl(owner, repo, `/compare?${new URLSearchParams({ base, head }).toString()}`)
+      this.repoUrl(owner, repo, `/compare?${new URLSearchParams({ base, head }).toString()}`),
+      requestId,
     );
     return {
       files_changed: result.files_changed,
@@ -33,36 +40,54 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     };
   }
 
-  async getDiff(owner: string, repo: string, base: string, head: string): Promise<string> {
+  async getDiff(owner: string, repo: string, base: string, head: string, requestId?: string): Promise<string> {
     const result = await this.readJson<GitServerComparePayload>(
-      this.repoUrl(owner, repo, `/compare?${new URLSearchParams({ base, head, patch: "1" }).toString()}`)
+      this.repoUrl(owner, repo, `/compare?${new URLSearchParams({ base, head, patch: "1" }).toString()}`),
+      requestId,
     );
     return result.patch ?? "";
   }
 
-  async getCommitDiff(owner: string, repo: string, sha: string): Promise<string> {
+  async getCommitDiff(owner: string, repo: string, sha: string, requestId?: string): Promise<string> {
     const result = await this.readJson<{ patch?: string }>(
-      this.repoUrl(owner, repo, `/commits/${encodeURIComponent(sha)}/diff`)
+      this.repoUrl(owner, repo, `/commits/${encodeURIComponent(sha)}/diff`),
+      requestId,
     );
     return result.patch ?? "";
   }
 
-  async getFileContent(owner: string, repo: string, filepath: string, ref: string): Promise<string | null> {
+  async getFileContent(
+    owner: string,
+    repo: string,
+    filepath: string,
+    ref: string,
+    requestId?: string,
+  ): Promise<string | null> {
     const payload = await this.readJson<{ content: string | null }>(
-      this.repoUrl(owner, repo, `/file?${new URLSearchParams({ path: filepath, ref }).toString()}`)
+      this.repoUrl(owner, repo, `/file?${new URLSearchParams({ path: filepath, ref }).toString()}`),
+      requestId,
     );
     return payload.content;
   }
 
-  async listCommits(owner: string, repo: string, ref?: string, limit?: number): Promise<CommitInfo[]> {
+  async listCommits(
+    owner: string,
+    repo: string,
+    ref?: string,
+    limit?: number,
+    requestId?: string,
+  ): Promise<CommitInfo[]> {
     const params = new URLSearchParams();
     if (ref) params.set("ref", ref);
     if (limit != null) params.set("limit", String(limit));
-    return this.readJson<CommitInfo[]>(this.repoUrl(owner, repo, `/commits?${params.toString()}`));
+    return this.readJson<CommitInfo[]>(
+      this.repoUrl(owner, repo, `/commits?${params.toString()}`),
+      requestId,
+    );
   }
 
-  async getRepo(owner: string, repo: string): Promise<RepoInfo> {
-    const payload = await this.readJson<GitServerRepoPayload>(this.repoUrl(owner, repo));
+  async getRepo(owner: string, repo: string, requestId?: string): Promise<RepoInfo> {
+    const payload = await this.readJson<GitServerRepoPayload>(this.repoUrl(owner, repo), requestId);
     return {
       id: typeof payload.id === "number" ? payload.id : 0,
       name: payload.name,
@@ -71,19 +96,32 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     };
   }
 
-  async listBranches(owner: string, repo: string): Promise<BranchInfo[]> {
-    return this.readJson<BranchInfo[]>(this.repoUrl(owner, repo, "/branches"));
+  async listBranches(owner: string, repo: string, requestId?: string): Promise<BranchInfo[]> {
+    return this.readJson<BranchInfo[]>(this.repoUrl(owner, repo, "/branches"), requestId);
+  }
+
+  async listTree(owner: string, repo: string, ref?: string, requestId?: string): Promise<string[]> {
+    const params = new URLSearchParams();
+    if (ref) params.set("ref", ref);
+    const payload = await this.readJson<{ files: string[] }>(
+      this.repoUrl(owner, repo, `/tree?${params.toString()}`),
+      requestId,
+    );
+    return payload.files;
   }
 
   private repoUrl(owner: string, repo: string, suffix = "") {
     return new URL(`/api/repos/${owner}/${repo}${suffix}`, this.options.baseUrl).toString();
   }
 
-  private async readJson<T>(url: string): Promise<T> {
+  private async readJson<T>(url: string, requestId?: string): Promise<T> {
     const headers = new Headers();
     if (this.options.username || this.options.password) {
       const encoded = Buffer.from(`${this.options.username ?? ""}:${this.options.password ?? ""}`).toString("base64");
       headers.set("Authorization", `Basic ${encoded}`);
+    }
+    if (requestId) {
+      headers.set("x-request-id", requestId);
     }
 
     const response = await fetch(url, { headers });

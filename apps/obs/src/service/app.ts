@@ -1,5 +1,7 @@
 import { buildHealth, statusHttpCode } from "@red/health";
-import type { DaemonMemoryRecord, DaemonRunIndexEntry, DaemonRunRecord } from "@red/daemons";
+import { loadDaemons, type DaemonMemoryRecord, type DaemonRunIndexEntry, type DaemonRunRecord } from "@red/daemons";
+import { stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { Hono, createHttpLogger } from "@red/server";
 import { streamSSE } from "hono/streaming";
 import { stringify as stringifySuperjson } from "superjson";
@@ -12,6 +14,20 @@ import {
 
 export interface CollectorApp extends Hono {
 	flushExpired(now?: Date): Promise<number>;
+}
+
+async function findGitRoot(startDir: string): Promise<string> {
+	let current = resolve(startDir);
+	while (true) {
+		try {
+			await stat(join(current, ".git"));
+			return current;
+		} catch {
+			const parent = dirname(current);
+			if (parent === current) return resolve(startDir);
+			current = parent;
+		}
+	}
 }
 
 function superjsonResponse(c: any, payload: unknown, status: number = 200): Response {
@@ -268,12 +284,20 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		return superjsonResponse(c, record);
 	});
 
+	app.get("/v1/daemons", async (c) => {
+		const root = process.env.REPO_ROOT ?? await findGitRoot(process.cwd());
+		const result = await loadDaemons(root).catch(() => null);
+		if (!result) return c.json({ daemons: [] });
+		return c.json({ daemons: result.specs });
+	});
+
 	app.get("/v1/daemons/:daemon/memory", async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
 		const daemon = c.req.param("daemon");
-		const memory = await deps.daemonQuery.getMemory(daemon).catch(() => null);
+		const repo = c.req.query("repo") ?? undefined;
+		const memory = await deps.daemonQuery.getMemory(daemon, repo).catch(() => null);
 		if (!memory) return c.json({ error: "not found" }, 404);
 		return c.json(memory);
 	});
@@ -283,7 +307,8 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
 		const daemon = c.req.param("daemon");
-		const runs = await deps.daemonQuery.listRuns(daemon).catch(() => null);
+		const repo = c.req.query("repo") ?? undefined;
+		const runs = await deps.daemonQuery.listRuns(daemon, repo).catch(() => null);
 		if (!runs) return c.json({ error: "not found" }, 404);
 		return c.json({ runs, count: runs.length });
 	});
@@ -293,8 +318,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
 		const daemon = c.req.param("daemon");
+		const repo = c.req.query("repo") ?? undefined;
 		const run = await deps.daemonQuery
-			.getRun(daemon, c.req.param("run_id"))
+			.getRun(daemon, c.req.param("run_id"), repo)
 			.catch(() => null);
 		if (!run) return c.json({ error: "not found" }, 404);
 		return c.json(run);

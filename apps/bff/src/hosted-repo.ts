@@ -47,7 +47,7 @@ export interface HostedRepoSnapshot {
 }
 
 export interface HostedRepoReader {
-  readSnapshot(): Promise<HostedRepoSnapshot>;
+  readSnapshot(options?: { requestId?: string }): Promise<HostedRepoSnapshot>;
 }
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -88,8 +88,15 @@ export function splitHostedRepoId(repoId: string) {
   return { owner, name };
 }
 
-async function readJson<T>(fetchImpl: FetchImpl, url: string): Promise<T> {
-  const response = await fetchImpl(url);
+function requestHeaders(requestId?: string): HeadersInit | undefined {
+  if (!requestId) return undefined;
+  return { "x-request-id": requestId };
+}
+
+async function readJson<T>(fetchImpl: FetchImpl, url: string, requestId?: string): Promise<T> {
+  const response = await fetchImpl(url, {
+    headers: requestHeaders(requestId),
+  });
   if (!response.ok) {
     throw new Error(await response.text().catch(() => `Request failed: ${response.status}`));
   }
@@ -100,9 +107,13 @@ async function readJsonWithTimeout<T>(
   fetchImpl: FetchImpl,
   url: string,
   timeoutMs: number,
+  requestId?: string,
 ): Promise<T> {
   const signal = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, { signal });
+  const response = await fetchImpl(url, {
+    signal,
+    headers: requestHeaders(requestId),
+  });
   if (!response.ok) {
     throw new Error(await response.text().catch(() => `Request failed: ${response.status}`));
   }
@@ -127,17 +138,29 @@ export function createHostedRepoReader(
   ).toString();
 
   return {
-    async readSnapshot() {
+    async readSnapshot(options = {}) {
+      const requestId = options.requestId;
       try {
-        const repo = await readJson<RepoRecord>(fetchImpl, repoUrl);
+        const repo = await readJson<RepoRecord>(fetchImpl, repoUrl, requestId);
 
         const [branchesResult, commitsResult, readmeResult] = await Promise.allSettled([
-          readJsonWithTimeout<BranchRecord[]>(fetchImpl, branchesUrl, HOSTED_REPO_OPTIONAL_TIMEOUT_MS),
-          readJsonWithTimeout<CommitRecord[]>(fetchImpl, commitsUrl, HOSTED_REPO_OPTIONAL_TIMEOUT_MS),
+          readJsonWithTimeout<BranchRecord[]>(
+            fetchImpl,
+            branchesUrl,
+            HOSTED_REPO_OPTIONAL_TIMEOUT_MS,
+            requestId,
+          ),
+          readJsonWithTimeout<CommitRecord[]>(
+            fetchImpl,
+            commitsUrl,
+            HOSTED_REPO_OPTIONAL_TIMEOUT_MS,
+            requestId,
+          ),
           readJsonWithTimeout<{ path: string; content: string | null }>(
             fetchImpl,
             readmeUrl,
             HOSTED_REPO_OPTIONAL_TIMEOUT_MS,
+            requestId,
           ),
         ]);
 

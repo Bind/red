@@ -478,6 +478,7 @@ export function createApp(config: AppConfig) {
     const repo = c.req.param("repo");
     const path = c.req.query("path");
     const ref = c.req.query("ref") ?? repos.getByFullName(`${owner}/${repo}`)?.default_branch ?? "main";
+    const requestId = getEnvelope(c).requestId;
 
     if (!path) {
       return c.json({ error: "Missing required query param: path" }, 400);
@@ -488,13 +489,26 @@ export function createApp(config: AppConfig) {
       return c.json({ error: "Not found" }, 404);
     }
 
-    const content = await repositoryProvider.getFileContent(owner, repo, path, ref);
+    const content = await repositoryProvider.getFileContent(owner, repo, path, ref, requestId);
     return c.json({ path, ref, content });
+  });
+
+  app.get("/api/repos/:owner/:repo/tree", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const ref = c.req.query("ref");
+    const requestId = getEnvelope(c).requestId;
+    const record = repos.getByFullName(`${owner}/${repo}`);
+    if (!record) return c.json({ error: "Not found" }, 404);
+    if (!(repositoryProvider as any).listTree) return c.json({ error: "Repo provider does not support tree listing" }, 501);
+    const files = await (repositoryProvider as any).listTree(owner, repo, ref, requestId);
+    return c.json({ files });
   });
 
   app.get("/api/repos/:owner/:repo/branches", async (c) => {
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");
+    const requestId = getEnvelope(c).requestId;
     const record = repos.getByFullName(`${owner}/${repo}`);
     if (!record) {
       return c.json({ error: "Not found" }, 404);
@@ -503,7 +517,7 @@ export function createApp(config: AppConfig) {
       return c.json({ error: "Repo provider does not support branch listing" }, 501);
     }
 
-    const branches = await repositoryProvider.listBranches(owner, repo);
+    const branches = await repositoryProvider.listBranches(owner, repo, requestId);
     return c.json(
       branches.map((branch) => ({
         name: branch.name,
@@ -516,6 +530,7 @@ export function createApp(config: AppConfig) {
   app.get("/api/repos/:owner/:repo/commits", async (c) => {
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");
+    const requestId = getEnvelope(c).requestId;
     const record = repos.getByFullName(`${owner}/${repo}`);
     if (!record) {
       return c.json({ error: "Not found" }, 404);
@@ -526,13 +541,14 @@ export function createApp(config: AppConfig) {
 
     const ref = c.req.query("ref") ?? record.default_branch;
     const limit = parseInt(c.req.query("limit") ?? "20", 10);
-    const commits = await repositoryProvider.listCommits(owner, repo, ref, limit);
+    const commits = await repositoryProvider.listCommits(owner, repo, ref, limit, requestId);
     return c.json(commits);
   });
 
   app.get("/api/repos/:owner/:repo/commits/:sha/diff", async (c) => {
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");
+    const requestId = getEnvelope(c).requestId;
     const record = repos.getByFullName(`${owner}/${repo}`);
     if (!record) {
       return c.json({ error: "Not found" }, 404);
@@ -541,7 +557,7 @@ export function createApp(config: AppConfig) {
       return c.json({ error: "Repo provider does not support commit diffs" }, 501);
     }
 
-    const diff = await repositoryProvider.getCommitDiff(owner, repo, c.req.param("sha"));
+    const diff = await repositoryProvider.getCommitDiff(owner, repo, c.req.param("sha"), requestId);
     return c.text(diff);
   });
 

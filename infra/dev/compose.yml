@@ -90,6 +90,14 @@ services:
       TRIAGE_ENDPOINT_URL: ${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}
       TRIAGE_MIN_STATUS_CODE: ${TRIAGE_MIN_STATUS_CODE:-500}
       TRIAGE_DEDUP_TTL_MS: ${TRIAGE_DEDUP_TTL_MS:-900000}
+      AI_DAEMONS_MEMORY_BACKEND: ${AI_DAEMONS_MEMORY_BACKEND:-r2}
+      AI_DAEMONS_MEMORY_REPO: ${AI_DAEMONS_MEMORY_REPO}
+      AI_DAEMONS_R2_BUCKET: ${AI_DAEMONS_R2_BUCKET}
+      AI_DAEMONS_R2_ENDPOINT: ${AI_DAEMONS_R2_ENDPOINT}
+      AI_DAEMONS_R2_REGION: ${AI_DAEMONS_R2_REGION:-auto}
+      AI_DAEMONS_R2_ACCESS_KEY_ID: ${AI_DAEMONS_R2_ACCESS_KEY_ID}
+      AI_DAEMONS_R2_SECRET_ACCESS_KEY: ${AI_DAEMONS_R2_SECRET_ACCESS_KEY}
+      AI_DAEMONS_MEMORY_PREFIX: ${AI_DAEMONS_MEMORY_PREFIX:-daemon-memory/v1}
       LOKI_URL: ${LOKI_URL:-http://loki:3100}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
     ports:
@@ -439,7 +447,7 @@ services:
     ports:
       - "${SMITHERS_SERVER_PORT:-7331}:7331"
     command: >
-      sh -lc "apk add --no-cache git ca-certificates npm &&
+      sh -lc "apk add --no-cache ca-certificates npm &&
       npm install -g @openai/codex@0.117.0 &&
       cd /app/apps/triage &&
       exec bun run src/smithers-server.ts"

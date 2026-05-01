@@ -28,6 +28,14 @@ export function obsMiddleware(
     let caughtError: unknown = null;
     try {
       await next();
+      const matchedRoute = normalizeRouteName((c.req as { routePath?: string }).routePath ?? "");
+      if (matchedRoute && !currentRouteName(envelope)) {
+        envelope.set({
+          route: {
+            name: matchedRoute,
+          },
+        });
+      }
       response = c.res;
       c.header(requestIdHeader, envelope.requestId);
     } catch (error) {
@@ -42,6 +50,19 @@ export function obsMiddleware(
       }
     }
   };
+}
+
+function currentRouteName(envelope: EventEnvelope): string | null {
+  const route = envelope.event.data.route;
+  if (!route || typeof route !== "object" || Array.isArray(route)) return null;
+  const name = (route as Record<string, unknown>).name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+function normalizeRouteName(path: string): string | null {
+  const trimmed = path.trim();
+  if (!trimmed || trimmed === "*") return null;
+  return trimmed.replace(/^\/+/, "") || "/";
 }
 
 export function getEnvelope(

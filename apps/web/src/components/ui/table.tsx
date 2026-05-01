@@ -3,20 +3,25 @@ import * as React from "react"
 
 import { cn } from '@/lib/utils'
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
-  return (
-    <div
-      data-slot="table-container"
-      className="relative w-full overflow-x-auto"
-    >
-      <table
-        data-slot="table"
-        className={cn("w-full caption-bottom text-sm", className)}
-        {...props}
-      />
-    </div>
-  )
-}
+const Table = React.forwardRef<HTMLTableElement, React.ComponentProps<"table">>(
+  ({ className, ...props }, ref) => {
+    return (
+      <div
+        data-slot="table-container"
+        className="relative w-full overflow-x-auto"
+      >
+        <table
+          ref={ref}
+          data-slot="table"
+          className={cn("w-full caption-bottom text-sm", className)}
+          {...props}
+        />
+      </div>
+    )
+  }
+)
+
+Table.displayName = "Table"
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
@@ -28,15 +33,21 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   )
 }
 
-function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+const TableBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.ComponentProps<"tbody">
+>(({ className, ...props }, ref) => {
   return (
     <tbody
+      ref={ref}
       data-slot="table-body"
       className={cn("[&_tr:last-child]:border-0", className)}
       {...props}
     />
   )
-}
+})
+
+TableBody.displayName = "TableBody"
 
 function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   return (

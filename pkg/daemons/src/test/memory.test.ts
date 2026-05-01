@@ -13,8 +13,11 @@ import {
 } from "../memory";
 
 let dir: string;
+let previousMemoryBackend: string | undefined;
 
 beforeEach(async () => {
+  previousMemoryBackend = process.env.AI_DAEMONS_MEMORY_BACKEND;
+  process.env.AI_DAEMONS_MEMORY_BACKEND = "local";
   dir = await mkdtemp(join(tmpdir(), "daemons-memory-"));
   await git(["init", "-b", "main"], dir);
   await git(["config", "user.email", "daemon@example.com"], dir);
@@ -22,6 +25,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  if (previousMemoryBackend === undefined) delete process.env.AI_DAEMONS_MEMORY_BACKEND;
+  else process.env.AI_DAEMONS_MEMORY_BACKEND = previousMemoryBackend;
   await rm(dir, { recursive: true, force: true });
 });
 

@@ -112,8 +112,9 @@ export async function loadMemorySnapshot(
   daemonName: string,
   scopeRoot: string,
   explicitDir?: string,
+  explicitRepoId?: string,
 ): Promise<DaemonMemorySnapshot | null> {
-  const ctx = await resolveMemoryContext(scopeRoot, explicitDir);
+  const ctx = await resolveMemoryContext(scopeRoot, explicitDir, explicitRepoId);
   const baseRecord = await loadNearestRecord(daemonName, scopeRoot, ctx);
   if (!baseRecord) return null;
 
@@ -177,8 +178,9 @@ export async function loadLatestMemoryRecord(
   daemonName: string,
   scopeRoot: string,
   explicitDir?: string,
+  explicitRepoId?: string,
 ): Promise<DaemonMemoryRecord | null> {
-  const ctx = await resolveMemoryContext(scopeRoot, explicitDir);
+  const ctx = await resolveMemoryContext(scopeRoot, explicitDir, explicitRepoId);
   const latest = await ctx.backend.loadLatest(daemonName);
   return normalizeMemoryRecord(latest, daemonName, scopeRoot, ctx.repoRoot, ctx.repoId);
 }
@@ -607,11 +609,12 @@ function collectStaleTrackedSubjects(
 async function resolveMemoryContext(
   scopeRoot: string,
   explicitDir?: string,
+  explicitRepoId?: string,
 ): Promise<ResolvedMemoryContext> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = await inferRepoId(repoRoot);
-  const currentCommit = await getCurrentCommit(repoRoot);
+  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
+  const currentCommit = await getCurrentCommit(repoRoot).catch(() => null);
   const backend = createMemoryBackend(memoryDir, repoId);
   return {
     memoryDir,
@@ -627,7 +630,10 @@ async function loadNearestRecord(
   scopeRoot: string,
   ctx: ResolvedMemoryContext,
 ): Promise<DaemonMemoryRecord | null> {
-  if (ctx.currentCommit) {
+  // R2-backed service reads should never depend on local git history. Use the
+  // latest persisted snapshot directly and leave ancestor walking to local
+  // daemon-review workflows that explicitly operate on a checkout.
+  if (ctx.backend.kind !== "r2" && ctx.currentCommit) {
     const index = await ctx.backend.loadIndex(daemonName);
     if (index && index.recentCommits.length > 0) {
       const available = new Set(index.recentCommits.map((entry) => entry.commit));
@@ -803,14 +809,12 @@ function isMissingObjectError(error: unknown): boolean {
   );
 }
 
-async function inferRepoId(repoRoot: string): Promise<string> {
+export async function inferRepoId(repoRoot: string): Promise<string> {
   const explicit = process.env.AI_DAEMONS_MEMORY_REPO ?? process.env.REPO;
   if (explicit) return explicit;
-  const remote = await runGit(repoRoot, ["remote", "get-url", "origin"]);
-  if (remote.ok) {
-    const parsed = parseRepoIdFromRemote(remote.stdout.trim());
-    if (parsed) return parsed;
-  }
+  const remote = await readOriginRemote(repoRoot);
+  const parsed = remote ? parseRepoIdFromRemote(remote) : null;
+  if (parsed) return parsed;
   return basename(repoRoot);
 }
 
@@ -821,9 +825,23 @@ function parseRepoIdFromRemote(remote: string): string | null {
   return sshMatch?.[1] ?? null;
 }
 
-async function getCurrentCommit(repoRoot: string): Promise<string | null> {
-  const res = await runGit(repoRoot, ["rev-parse", "HEAD"]);
-  return res.ok ? res.stdout.trim() : null;
+export async function getCurrentCommit(repoRoot: string): Promise<string | null> {
+  const gitDir = await resolveGitDir(repoRoot);
+  if (gitDir) {
+    const head = await readTrimmed(join(gitDir, "HEAD"));
+    if (head) {
+      if (!head.startsWith("ref:")) {
+        return head;
+      }
+      const refName = head.slice(5).trim();
+      const loose = await readTrimmed(join(gitDir, refName));
+      if (loose) return loose;
+      const packed = await readPackedRef(gitDir, refName);
+      if (packed) return packed;
+    }
+  }
+  const explicit = process.env.GIT_COMMIT?.trim();
+  return explicit || null;
 }
 
 async function listAncestorCommits(
@@ -839,6 +857,59 @@ async function listAncestorCommits(
     .filter(Boolean);
 }
 
+async function resolveGitDir(repoRoot: string): Promise<string | null> {
+  const dotGit = join(repoRoot, ".git");
+  try {
+    const gitStat = await stat(dotGit);
+    if (gitStat.isDirectory()) return dotGit;
+    if (!gitStat.isFile()) return null;
+  } catch {
+    return null;
+  }
+
+  const raw = await readTrimmed(dotGit);
+  if (!raw?.startsWith("gitdir:")) return null;
+  const target = raw.slice("gitdir:".length).trim();
+  return resolve(repoRoot, target);
+}
+
+async function readOriginRemote(repoRoot: string): Promise<string | null> {
+  const gitDir = await resolveGitDir(repoRoot);
+  if (!gitDir) return null;
+  const config = await readFile(join(gitDir, "config"), "utf8").catch(() => null);
+  if (!config) return null;
+
+  let inOrigin = false;
+  for (const line of config.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      inOrigin = trimmed === '[remote "origin"]';
+      continue;
+    }
+    if (!inOrigin) continue;
+    const match = trimmed.match(/^url\s*=\s*(.+)$/);
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
+async function readPackedRef(gitDir: string, refName: string): Promise<string | null> {
+  const packed = await readFile(join(gitDir, "packed-refs"), "utf8").catch(() => null);
+  if (!packed) return null;
+  for (const line of packed.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("^")) continue;
+    const [sha, ref] = trimmed.split(" ");
+    if (ref === refName) return sha?.trim() ?? null;
+  }
+  return null;
+}
+
+async function readTrimmed(path: string): Promise<string | null> {
+  const raw = await readFile(path, "utf8").catch(() => null);
+  return raw ? raw.trim() : null;
+}
+
 async function runGit(
   cwd: string,
   args: string[],
@@ -848,19 +919,26 @@ async function runGit(
   delete env.GIT_WORK_TREE;
   delete env.GIT_INDEX_FILE;
   delete env.GIT_COMMON_DIR;
-  const proc = Bun.spawn({
-    cmd: ["git", "-C", cwd, ...args],
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (exitCode === 0) return { ok: true, stdout };
-  return { ok: false, stderr };
+  try {
+    const proc = Bun.spawn({
+      cmd: ["git", "-C", cwd, ...args],
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (exitCode === 0) return { ok: true, stdout };
+    return { ok: false, stderr };
+  } catch (error) {
+    return {
+      ok: false,
+      stderr: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function fingerprintFile(

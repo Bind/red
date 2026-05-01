@@ -451,13 +451,29 @@ export function createApp(config: BffConfig) {
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      const envelope = getEnvelope(c as any);
       const hostedRepoReader =
         config.hostedRepoReader
         ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
       if (!hostedRepoReader) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
-      return c.json(await hostedRepoReader.readSnapshot());
+      return c.json(await hostedRepoReader.readSnapshot({ requestId: envelope.requestId }));
+    })
+    .get("/app/hosted-repo/tree", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
+      const ref = c.req.query("ref");
+      const envelope = getEnvelope(c as any);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
+      const params = new URLSearchParams();
+      if (ref) params.set("ref", ref);
+      const response = await fetchImpl(
+        new URL(`/api/repos/${owner}/${name}/tree?${params}`, config.apiBaseUrl),
+        { headers: { "x-request-id": envelope.requestId } },
+      );
+      if (!response.ok) return c.text(await response.text().catch(() => "Unable to list tree"), response.status as any);
+      return c.json(await response.json());
     })
     .get("/app/hosted-repo/file", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -657,6 +673,32 @@ export function createApp(config: BffConfig) {
   };
 
   rpc
+    .get("/daemons", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/daemons"));
+    })
+    .get("/daemons/:name/memory", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const name = encodeURIComponent(c.req.param("name"));
+      const query = new URLSearchParams();
+      const repo = c.req.query("repo");
+      if (repo) query.set("repo", repo);
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/memory`, query));
+    })
+    .get("/daemons/:name/runs", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const name = encodeURIComponent(c.req.param("name"));
+      const query = new URLSearchParams();
+      const repo = c.req.query("repo");
+      if (repo) query.set("repo", repo);
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/runs`, query));
+    })
     .get("/rollups", async (c) => {
       if (!config.obsBaseUrl)
         return c.json({ error: "obs backend not configured" }, 503);
