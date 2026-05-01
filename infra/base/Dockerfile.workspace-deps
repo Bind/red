@@ -23,10 +23,4 @@ COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/server/package.json ./pkg/server/
 
-COPY experiments/ai-daemons-lab/package.json ./experiments/ai-daemons-lab/
-COPY experiments/bash-runtime-lab/package.json ./experiments/bash-runtime-lab/
-COPY experiments/ci-runner-lab/package.json ./experiments/ci-runner-lab/
-COPY experiments/durable-workflow-lab/package.json ./experiments/durable-workflow-lab/
-COPY experiments/smithers-lab/package.json ./experiments/smithers-lab/
-
 RUN bun install --frozen-lockfile
