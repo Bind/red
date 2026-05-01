@@ -83,6 +83,8 @@ The local compose stack uses short container names:
 - `db-auth`: auth service Postgres database.
 - `s3`: MinIO-based object store used as the local S3 endpoint.
 - `loki`: log store used for cross-service log queries and SSE-backed live log views.
+- `triage`: triage service for agent workflow review and orchestration.
+- `triage-smithers`: Smithers server for triage agent integration (launched via `--profile triage`).
 - `init`: system-wide initialization container. Put shared stack bootstrap logic here, such as bucket creation or other one-time infra setup.
 
 ## Project structure
