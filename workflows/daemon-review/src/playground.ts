@@ -5,6 +5,7 @@ import {
   type RouterProvider,
   type RoutingEvaluation,
 } from "./routing";
+import { playgroundLogger } from "./logger";
 import type { DaemonRoutingMemory } from "./routing-memory";
 import { ROUTING_TRAINING_SET } from "./training-set";
 
@@ -60,10 +61,10 @@ function scenarioMemoryToMap(
 
 function logPlaygroundDebug(message: string, fields?: Record<string, unknown>): void {
   if (!fields || Object.keys(fields).length === 0) {
-    console.log(`[daemon-playground] ${message}`);
+    playgroundLogger.info("{message}", { message });
     return;
   }
-  console.log(`[daemon-playground] ${message} ${JSON.stringify(fields)}`);
+  playgroundLogger.info("{message}", { message, ...fields });
 }
 
 export async function runDaemonPlayground(

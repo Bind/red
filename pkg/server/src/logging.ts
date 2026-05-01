@@ -115,6 +115,11 @@ export function configureServerLogging(options: ServerLoggingOptions = {}): Prom
       sinks: configuredSinks,
     },
     {
+      category: ["logtape", "meta"],
+      lowestLevel: "error",
+      sinks: configuredSinks,
+    },
+    {
       category: "logtape",
       lowestLevel: "error",
       sinks: configuredSinks,

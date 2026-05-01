@@ -38,6 +38,14 @@ playground-daemons:
     echo "Daemon playground:"
     echo "  http://127.0.0.1:5173/playground/daemons"
 
+# Run the daemon review engine locally against a git diff
+daemon-review-local *args:
+    bun run workflows/daemon-review/src/local-entry.ts {{ args }}
+
+# Inspect the most recent local daemon review artifact bundle
+daemon-review-local-inspect:
+    bun run workflows/daemon-review/src/local-inspect.ts
+
 # Explicitly rebuild local images before starting the stack
 up-build:
     ./infra/dev/run.sh

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { DaemonSpec } from "../../../pkg/daemons/src/index";
 import { S3Client, write } from "bun";
 import type { DaemonRoutingMemory } from "./routing-memory";
+import { reviewLogger } from "./logger";
 import { buildDaemonProfile, buildFileSummary } from "./signals";
 
 export type RoutedDaemon = {
@@ -218,10 +219,10 @@ function routerTopK(): number {
 
 function logRoutingDebug(message: string, fields?: Record<string, unknown>): void {
   if (!fields || Object.keys(fields).length === 0) {
-    console.log(`[daemon-review] ${message}`);
+    reviewLogger.info("{message}", { message });
     return;
   }
-  console.log(`[daemon-review] ${message} ${JSON.stringify(fields)}`);
+  reviewLogger.info("{message}", { message, ...fields });
 }
 
 function uniqueSorted(values: string[]): string[] {
