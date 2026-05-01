@@ -15,21 +15,31 @@ default:
 
 # One-time local bootstrap: env, runner image, and dev services
 setup:
-    bun install --frozen-lockfile
     ./infra/dev/run.sh
 
 # Start the local stack with hot-reload mounts and reuse existing images by default
 up:
-    bun install --frozen-lockfile
     SKIP_IMAGE_BUILD=true ./infra/dev/run.sh
 
 # Back-compat alias for the fast dev path
 up-fast:
     just up
 
+# Start the local stack, wait for ctl and web, and print the daemon playground URL
+playground-daemons:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just down >/dev/null 2>&1 || true
+    docker rm -f loki s3 init obs grs db-auth auth ctl bff web >/dev/null 2>&1 || true
+    just up
+    until curl -fsS http://127.0.0.1:3000/health >/dev/null; do sleep 1; done
+    until curl -fsS http://127.0.0.1:5173 >/dev/null; do sleep 1; done
+    echo
+    echo "Daemon playground:"
+    echo "  http://127.0.0.1:5173/playground/daemons"
+
 # Explicitly rebuild local images before starting the stack
 up-build:
-    bun install --frozen-lockfile
     ./infra/dev/run.sh
 
 # Stop all local services

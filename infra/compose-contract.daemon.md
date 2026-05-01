@@ -1,6 +1,13 @@
 ---
 name: compose-contract
 description: Audit infra compose, ingress, and script contracts for accidental drift.
+review:
+  max_turns: 18
+  routing_categories:
+    - name: compose-topology
+      description: Compose files, ingress config, service names, ports, networks, volumes, env files, and runtime stack topology.
+    - name: gateway-routing
+      description: Caddy and gateway routing, preview ingress, and scripts that directly operate the compose topology.
 ---
 
 Simple job: make sure the stack wiring files agree about what talks to what.

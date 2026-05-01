@@ -59,8 +59,15 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}/pr-head
           DAEMON_REVIEW_MAX_PARALLEL: "3"
           DAEMON_REVIEW_PROPOSAL_MODE: "true"
+          DAEMON_REVIEW_ROUTER_MODE: "memory_embedding_librarian"
+          DAEMON_REVIEW_ROUTER_PROVIDER: openrouter
+          DAEMON_REVIEW_ROUTER_MODEL: openai/text-embedding-3-small
+          DAEMON_REVIEW_LIBRARIAN_MODEL: deepseek/deepseek-v4-flash
+          DAEMON_REVIEW_ROUTER_SCORE_THRESHOLD: "0.45"
+          DAEMON_REVIEW_ROUTER_MAX_GAP: "0.08"
+          DAEMON_REVIEW_ROUTER_TOP_K: "3"
           AI_DAEMONS_PROVIDER: openrouter
-          AI_DAEMONS_MODEL: deepseek/deepseek-v4-pro
+          AI_DAEMONS_MODEL: deepseek/deepseek-v4-flash
           AI_DAEMONS_MEMORY_BACKEND: r2
           AI_DAEMONS_MEMORY_REPO: ${{ github.repository }}
         run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts

@@ -1,7 +1,7 @@
 ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache docker-cli git python3 make g++
+RUN apk add --no-cache docker-cli python3 make g++
 
 FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps
 

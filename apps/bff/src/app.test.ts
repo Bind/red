@@ -120,6 +120,7 @@ describe("BFF app", () => {
 
   test("proxies JSON and text routes through RPC", async () => {
     let hostedRepoCommitDiffRequestId: string | null = null;
+    const hostedRepoSnapshotRequestIds: string[] = [];
 
     const app = createApp({
       port: 3001,
@@ -141,6 +142,28 @@ describe("BFF app", () => {
         }
         if (url.pathname === "/api/velocity") {
           return Response.json({ summarized: 3, pending_review: 1 });
+        }
+        if (url.pathname === "/api/repos/red/red") {
+          hostedRepoSnapshotRequestIds.push(request.headers.get("x-request-id") ?? "");
+          return Response.json({
+            owner: "red",
+            name: "red",
+            full_name: "red/red",
+            default_branch: "main",
+            visibility: "private",
+          });
+        }
+        if (url.pathname === "/api/repos/red/red/branches") {
+          hostedRepoSnapshotRequestIds.push(request.headers.get("x-request-id") ?? "");
+          return Response.json([]);
+        }
+        if (url.pathname === "/api/repos/red/red/commits") {
+          hostedRepoSnapshotRequestIds.push(request.headers.get("x-request-id") ?? "");
+          return Response.json([]);
+        }
+        if (url.pathname === "/api/repos/red/red/file") {
+          hostedRepoSnapshotRequestIds.push(request.headers.get("x-request-id") ?? "");
+          return Response.json({ path: "README.md", content: "# red" });
         }
         if (url.pathname === "/api/changes/42/diff") {
           return new Response("diff --git a/README.md b/README.md\n", {
@@ -165,6 +188,19 @@ describe("BFF app", () => {
     const velocity = await app.request("http://bff.test/rpc/velocity");
     expect(velocity.status).toBe(200);
     expect(await velocity.json()).toEqual({ summarized: 3, pending_review: 1 });
+
+    const hostedRepo = await app.request("http://bff.test/rpc/app/hosted-repo", {
+      headers: {
+        "x-request-id": "hosted-repo-snapshot-1",
+      },
+    });
+    expect(hostedRepo.status).toBe(200);
+    expect(hostedRepoSnapshotRequestIds).toEqual([
+      "hosted-repo-snapshot-1",
+      "hosted-repo-snapshot-1",
+      "hosted-repo-snapshot-1",
+      "hosted-repo-snapshot-1",
+    ]);
 
     const diff = await app.request("http://bff.test/rpc/changes/42/diff");
     expect(diff.status).toBe(200);

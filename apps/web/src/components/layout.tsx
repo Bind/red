@@ -3,7 +3,7 @@ import { Link, Outlet } from "react-router";
 import { Badge } from "@/components/ui/badge";
 
 import { fetchPendingJobs } from "@/lib/api";
-import { getAuthLifecycleState, useAuthSession } from "@/lib/auth";
+import { useAuthSession } from "@/lib/auth";
 
 const HeaderContentContext = createContext<(node: ReactNode | null) => void>(() => {});
 
@@ -30,47 +30,31 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <Link to="/" className="group">
-                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                  red
-                </h1>
-              </Link>
-              <nav className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <Link to="/" className="transition-colors hover:text-foreground">
-                  repo
-                </Link>
-                <Link to="/triage" className="transition-colors hover:text-foreground">
-                  triage
-                </Link>
-                <Link to="/status" className="transition-colors hover:text-foreground">
-                  status
-                </Link>
-              </nav>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant="outline">
-                  {getAuthLifecycleState(status, me).replace(/_/g, " ")}
-                </Badge>
-                {me?.user.email && (
-                  <Badge variant="secondary" className="font-mono">
-                    {me.user.email}
-                  </Badge>
-                )}
-                {error && <span className="text-muted-foreground">{error}</span>}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      <header className="bg-depth sticky top-0 z-10 border-b border-border">
+        <div className="mx-auto max-w-5xl px-4">
+          <div className="flex h-10 items-center gap-4">
+            <Link to="/" className="text-sm font-semibold tracking-tight text-foreground">
+              red
+            </Link>
+            <nav className="flex items-center gap-3 text-xs text-muted-foreground">
+              <Link to="/bind/red" className="transition-colors hover:text-foreground">repo</Link>
+              <Link to="/triage" className="transition-colors hover:text-foreground">triage</Link>
+              <Link to="/status" className="transition-colors hover:text-foreground">status</Link>
+              <Link to="/playground/daemons" className="transition-colors hover:text-foreground">playground</Link>
+            </nav>
+            <div className="ml-auto flex items-center gap-2">
               {pendingJobs !== null && pendingJobs > 0 && (
-                <Badge variant="secondary" className="mt-1">
+                <Badge variant="secondary" className="text-xs">
                   {pendingJobs} job{pendingJobs !== 1 ? "s" : ""} pending
                 </Badge>
               )}
+              {me?.user.email && (
+                <span className="font-mono text-xs text-muted-foreground">{me.user.email}</span>
+              )}
+              {error && <span className="text-xs text-muted-foreground">{error}</span>}
             </div>
           </div>
-          {headerContent}
+          {headerContent && <div className="pb-2">{headerContent}</div>}
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">

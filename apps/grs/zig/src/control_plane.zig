@@ -130,6 +130,67 @@ pub const ControlPlane = struct {
         );
     }
 
+    pub fn listTreeJson(self: *ControlPlane, ref_name: []const u8) ![]u8 {
+        const tip = try self.resolveCommitish(ref_name) orelse return error.NotFound;
+        defer self.allocator.free(tip);
+
+        const commit = try self.loadCommit(tip) orelse return error.NotFound;
+        defer self.allocator.free(commit.data);
+
+        const info = try object.parseCommit(self.allocator, commit.data);
+        defer self.allocator.free(info.parents);
+
+        const tree_hash = try hexToDigest(info.tree_hash);
+
+        var paths: std.ArrayList([]u8) = .empty;
+        defer {
+            for (paths.items) |p| self.allocator.free(p);
+            paths.deinit(self.allocator);
+        }
+
+        try self.walkTreePaths(tree_hash, "", &paths);
+
+        var buf: std.ArrayList(u8) = .empty;
+        errdefer buf.deinit(self.allocator);
+        try buf.appendSlice(self.allocator, "{\"files\":[");
+        for (paths.items, 0..) |path, i| {
+            if (i > 0) try buf.append(self.allocator, ',');
+            try buf.append(self.allocator, '"');
+            for (path) |c| {
+                if (c == '"' or c == '\\') try buf.append(self.allocator, '\\');
+                try buf.append(self.allocator, c);
+            }
+            try buf.append(self.allocator, '"');
+        }
+        try buf.appendSlice(self.allocator, "]}");
+        return buf.toOwnedSlice(self.allocator);
+    }
+
+    fn walkTreePaths(self: *ControlPlane, tree_hash: sha1.Digest, prefix: []const u8, paths: *std.ArrayList([]u8)) !void {
+        const hex = sha1.digestToHex(&tree_hash);
+        const tree_obj = try self.loadObject(hex[0..]) orelse return;
+        defer self.allocator.free(tree_obj.data);
+        if (tree_obj.obj_type != .tree) return;
+
+        const entries = try object.parseTree(self.allocator, tree_obj.data);
+        defer self.allocator.free(entries);
+
+        for (entries) |entry| {
+            const full_path = if (prefix.len > 0)
+                try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ prefix, entry.name })
+            else
+                try self.allocator.dupe(u8, entry.name);
+
+            const is_tree = std.mem.eql(u8, entry.mode, "40000") or std.mem.eql(u8, entry.mode, "040000");
+            if (is_tree) {
+                defer self.allocator.free(full_path);
+                try self.walkTreePaths(entry.hash, full_path, paths);
+            } else {
+                try paths.append(self.allocator, full_path);
+            }
+        }
+    }
+
     pub fn commitDiffJson(self: *ControlPlane, commit_ref: []const u8) ![]u8 {
         const commit_tip = try self.resolveCommitish(commit_ref) orelse return error.NotFound;
         defer self.allocator.free(commit_tip);

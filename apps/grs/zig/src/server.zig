@@ -368,6 +368,12 @@ fn handleControlPlaneRequest(
             const include_patch = patch != null and std.mem.eql(u8, patch.?, "1");
             break :blk cp.compareJson(base_value, head_value, include_patch);
         },
+        .tree => blk: {
+            const ref = queryParam(alloc, raw_path, "ref") catch null;
+            defer if (ref) |value| alloc.free(value);
+            const ref_value = ref orelse "main";
+            break :blk cp.listTreeJson(ref_value);
+        },
         .commit_diff => cp.commitDiffJson(route.commit_sha orelse return sendJsonError(alloc, io, conn, obs, "Missing commit sha", keep_alive)),
     } catch |err| {
         const message = errorMessage(err);
@@ -504,6 +510,8 @@ fn parseControlPlaneRoute(pathname: []const u8) ?ControlPlaneRoute {
             resource = .commits;
         } else if (std.mem.eql(u8, suffix, "file")) {
             resource = .file;
+        } else if (std.mem.eql(u8, suffix, "tree")) {
+            resource = .tree;
         } else if (std.mem.eql(u8, suffix, "compare")) {
             resource = .compare;
         } else if (std.mem.startsWith(u8, suffix, "commits/") and std.mem.endsWith(u8, suffix, "/diff")) {
@@ -523,7 +531,7 @@ fn parseControlPlaneRoute(pathname: []const u8) ?ControlPlaneRoute {
     };
 }
 
-const ControlPlaneResource = enum { repo, branches, commits, file, compare, commit_diff };
+const ControlPlaneResource = enum { repo, branches, commits, file, tree, compare, commit_diff };
 
 const ControlPlaneRoute = struct {
     owner: []const u8,
@@ -720,6 +728,7 @@ fn controlPlaneResourceName(resource: ControlPlaneResource) []const u8 {
         .branches => "branches",
         .commits => "commits",
         .file => "file",
+        .tree => "tree",
         .compare => "compare",
         .commit_diff => "commit_diff",
     };

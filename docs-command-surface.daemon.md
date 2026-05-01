@@ -1,6 +1,13 @@
 ---
 name: docs-command-surface
 description: Audit the root README against the actual command and runtime surface.
+review:
+  max_turns: 12
+  routing_categories:
+    - name: command-surface
+      description: Root README, justfile, scripts/red, and CLI entrypoints that define operator and developer commands.
+    - name: repo-shape-docs
+      description: Top-level documentation claims about app surfaces, repo layout, and which commands users should run first.
 ---
 
 Simple job: make sure the root README is right about commands and app surfaces.

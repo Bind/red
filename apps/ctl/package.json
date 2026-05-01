@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@red/health": "workspace:*",
     "@red/obs": "workspace:*",
     "@red/server": "workspace:*",

@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { TriageOrchestrator } from "./orchestrator";
 import { InMemoryRunStore } from "./runs/store";
+import { configureServerLogging, getServerLogger } from "@red/server";
 import {
 	StubTriageWorkflowRunner,
 	type TriageWorkflowRunner,
@@ -52,21 +53,24 @@ function createRunner(config: TriageConfig): TriageWorkflowRunner {
 	return new SmithersTriageRunner({ client, workflowPath });
 }
 
+await configureServerLogging({ app: "red", lowestLevel: "info" });
 const config = loadConfig();
 const store = new InMemoryRunStore();
 const runner = createRunner(config);
+const logger = getServerLogger(["triage"]);
 const orchestrator = new TriageOrchestrator({
 	store,
 	runner,
 	onRunUpdate: (run) => {
-		console.log(`triage run ${run.id} → ${run.status}`);
+		logger.info("triage run update", { run_id: run.id, status: run.status });
 	},
 });
 
 const app = createApp({ store, orchestrator });
 
-console.log(
-	`triage service listening on http://0.0.0.0:${config.port} (workflow=${config.workflowMode})`,
-);
+logger.info("triage service listening on {url}", {
+	url: `http://0.0.0.0:${config.port}`,
+	workflow: config.workflowMode,
+});
 
 Bun.serve({ port: config.port, fetch: app.fetch });

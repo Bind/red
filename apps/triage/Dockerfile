@@ -1,10 +1,10 @@
 # Image is used for BOTH the triage HTTP service (default CMD) and the
-# long-running smithers server (compose overrides CMD). git + ca-certs are
-# installed because the propose workflow can push branches to grs.
+# long-running smithers server (compose overrides CMD). Only Codex and the
+# standard CA bundle are needed at runtime.
 ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
 FROM oven/bun:1-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache git ca-certificates npm
+RUN apk add --no-cache ca-certificates npm
 RUN npm install -g @openai/codex@0.117.0
 
 FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps

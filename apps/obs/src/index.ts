@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
+import { configureServerLogging, getServerLogger } from "@red/server";
 import { createApp } from "./service/app";
 import { replayCollectorFromRaw } from "./service/collector-service";
 import { createCollectorDeps, loadConfig } from "./util/config";
 
+await configureServerLogging({ app: "red", lowestLevel: "info" });
 const config = loadConfig();
 const deps = createCollectorDeps(config);
+const logger = getServerLogger(["obs"]);
 
 if (config.replayWindowMs > 0) {
 	await replayCollectorFromRaw(
@@ -20,16 +23,16 @@ setInterval(() => {
 	void app.flushExpired();
 }, config.sweepIntervalMs);
 
-console.log(
-	`wide-events collector listening on http://${config.hostname}:${config.port}`,
-);
-console.log(`storage backend: ${config.storageBackend}`);
-console.log(
-	`raw events: ${config.storageBackend === "minio" ? config.rawS3?.bucket : config.rawEventsDir}`,
-);
-console.log(
-	`rollups: ${config.storageBackend === "minio" ? config.rollupS3?.bucket : config.rollupDir}`,
-);
+logger.info("wide-events collector listening on {url}", {
+	url: `http://${config.hostname}:${config.port}`,
+});
+logger.info("wide-events storage configured", {
+	storage_backend: config.storageBackend,
+	raw_events:
+		config.storageBackend === "minio" ? config.rawS3?.bucket ?? null : config.rawEventsDir,
+	rollups:
+		config.storageBackend === "minio" ? config.rollupS3?.bucket ?? null : config.rollupDir,
+});
 
 Bun.serve({
 	hostname: config.hostname,

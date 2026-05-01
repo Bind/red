@@ -11,6 +11,7 @@ import {
 	HttpTriageDispatcher,
 	type TriageDispatcher,
 } from "../service/triage-dispatcher";
+import { RollupBroadcaster } from "../service/rollup-broadcaster";
 import { DuckDbRollupQuery } from "../store/duckdb-query";
 import { MinioRawEventStore, MinioRollupStore } from "../store/minio-store";
 import { FileRawEventStore } from "../store/raw-event-store";
@@ -216,15 +217,16 @@ export function createCollectorDeps(
 			? createTriageDispatcher(config.triage)
 			: undefined,
 		daemonQuery: shouldEnableDaemonQuery() ? createDaemonObservabilityQuery() : undefined,
+		rollupBroadcaster: new RollupBroadcaster(),
 	};
 }
 
 function shouldEnableDaemonQuery(env: NodeJS.ProcessEnv = process.env): boolean {
-	return Boolean(
-		env.AI_DAEMONS_MEMORY_BACKEND ||
-			env.AI_DAEMONS_MEMORY_DIR ||
-			env.AI_DAEMONS_R2_BUCKET,
-	);
+	// Local mode (default backend) needs no config — always enable unless explicitly disabled.
+	// Remote backends (r2) require explicit config.
+	const backend = env.AI_DAEMONS_MEMORY_BACKEND ?? "local";
+	if (backend === "local") return true;
+	return Boolean(env.AI_DAEMONS_MEMORY_DIR || env.AI_DAEMONS_R2_BUCKET);
 }
 
 function createRollupQuery(config: WideEventsConfig): RollupQuery {

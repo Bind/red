@@ -1,4 +1,4 @@
-import { Hono } from "@red/server";
+import { Hono, createHttpLogger } from "@red/server";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
@@ -27,6 +27,21 @@ export interface BffConfig {
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
   hostedRepoReader?: HostedRepoReader;
+}
+
+function resolveHostedRepoConfig(
+  configured: HostedRepoConfig | undefined,
+  repoId: string | null | undefined,
+): HostedRepoConfig | null {
+  const requested = repoId?.trim();
+  if (requested) {
+    return {
+      repoId: requested,
+      apiBaseUrl: configured?.apiBaseUrl ?? "http://localhost:3000",
+      readmePath: configured?.readmePath ?? "README.md",
+    };
+  }
+  return configured ?? null;
 }
 
 type ServiceProbeStatus = "ok" | "error" | "unconfigured";
@@ -294,14 +309,12 @@ export function createApp(config: BffConfig) {
   const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
-  const hostedRepoReader =
-    config.hostedRepoReader
-    ?? (config.hostedRepo ? createHostedRepoReader(config.hostedRepo, fetchImpl) : null);
 
   app.use(
     "*",
     obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
   );
+  app.use("*", createHttpLogger({ service: "bff", app: "red" }));
 
   app.get("/health", async (c) => {
     const envelope = getEnvelope(c as any);
@@ -437,17 +450,62 @@ export function createApp(config: BffConfig) {
       proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
     )
     .get("/app/hosted-repo", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      const envelope = getEnvelope(c as any);
+      const hostedRepoReader =
+        config.hostedRepoReader
+        ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
       if (!hostedRepoReader) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
-      return c.json(await hostedRepoReader.readSnapshot());
+      return c.json(await hostedRepoReader.readSnapshot({ requestId: envelope.requestId }));
+    })
+    .get("/app/hosted-repo/tree", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
+      const ref = c.req.query("ref");
+      const envelope = getEnvelope(c as any);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
+      const params = new URLSearchParams();
+      if (ref) params.set("ref", ref);
+      const response = await fetchImpl(
+        new URL(`/api/repos/${owner}/${name}/tree?${params}`, config.apiBaseUrl),
+        { headers: { "x-request-id": envelope.requestId } },
+      );
+      if (!response.ok) return c.text(await response.text().catch(() => "Unable to list tree"), response.status as any);
+      return c.json(await response.json());
+    })
+    .get("/app/hosted-repo/file", async (c) => {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) {
+        return c.json({ error: "Hosted repo app is not configured" }, 404);
+      }
+      const path = c.req.query("path");
+      if (!path) {
+        return c.json({ error: "Missing path query parameter" }, 400);
+      }
+      const ref = c.req.query("ref");
+      const envelope = getEnvelope(c as any);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
+      const params = new URLSearchParams({ path });
+      if (ref) params.set("ref", ref);
+      const response = await fetchImpl(
+        new URL(`/api/repos/${owner}/${name}/file?${params}`, config.apiBaseUrl),
+        { headers: { "x-request-id": envelope.requestId } },
+      );
+      if (!response.ok) {
+        return c.text(await response.text().catch(() => "Unable to load file"), response.status as any);
+      }
+      const body = await response.json() as { path: string; ref: string; content: string | null };
+      return c.json(body);
     })
     .get("/app/hosted-repo/commits/:sha/diff", async (c) => {
-      if (!config.hostedRepo) {
+      const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
+      if (!hostedRepoConfig) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
       const envelope = getEnvelope(c as any);
-      const { owner, name } = splitHostedRepoId(config.hostedRepo.repoId);
+      const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
       const response = await fetchImpl(
         new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
@@ -615,6 +673,32 @@ export function createApp(config: BffConfig) {
   };
 
   rpc
+    .get("/daemons", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/daemons"));
+    })
+    .get("/daemons/:name/memory", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const name = encodeURIComponent(c.req.param("name"));
+      const query = new URLSearchParams();
+      const repo = c.req.query("repo");
+      if (repo) query.set("repo", repo);
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/memory`, query));
+    })
+    .get("/daemons/:name/runs", async (c) => {
+      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const name = encodeURIComponent(c.req.param("name"));
+      const query = new URLSearchParams();
+      const repo = c.req.query("repo");
+      if (repo) query.set("repo", repo);
+      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/runs`, query));
+    })
     .get("/rollups", async (c) => {
       if (!config.obsBaseUrl)
         return c.json({ error: "obs backend not configured" }, 503);
@@ -627,6 +711,18 @@ export function createApp(config: BffConfig) {
       }
       return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups", query));
     })
+    .get("/rollups/stream", async (c) => {
+      if (!config.obsBaseUrl)
+        return c.json({ error: "obs backend not configured" }, 503);
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "outcome"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyStream(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups/stream", query));
+    })
     .get("/rollups/:request_id", async (c) => {
       if (!config.obsBaseUrl)
         return c.json({ error: "obs backend not configured" }, 503);
@@ -635,12 +731,37 @@ export function createApp(config: BffConfig) {
       const id = encodeURIComponent(c.req.param("request_id"));
       return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/rollups/${id}`));
     })
+    .get("/logs", async (c) => {
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs", query));
+    })
+    .get("/logs/stream", async (c) => {
+      const gate = await requireSession(c);
+      if (gate) return gate;
+      const query = new URLSearchParams();
+      for (const key of ["service", "level", "logger", "search", "status_class", "history_window"] as const) {
+        const value = c.req.query(key);
+        if (value) query.set(key, value);
+      }
+      return proxyStream(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs/stream", query));
+    })
     .get("/triage/runs", async (c) => {
       if (!config.triageBaseUrl)
         return c.json({ error: "triage backend not configured" }, 503);
       const gate = await requireSession(c);
       if (gate) return gate;
-      return proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
+      try {
+        return await proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
+      } catch (error) {
+        console.warn("[bff] triage runs unavailable, returning empty list", error);
+        return c.json({ runs: [] });
+      }
     });
 
   app.route("/rpc", rpc);

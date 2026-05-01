@@ -1,6 +1,13 @@
 ---
 name: infra-audit
 description: Audit infra/ for drift against its documented standards and operator contracts.
+review:
+  max_turns: 18
+  routing_categories:
+    - name: infra-operator-workflow
+      description: Deploy, bootstrap, teardown, release, and justfile-driven operator workflows for infra.
+    - name: infra-docs-and-standards
+      description: Infra-facing docs, script hygiene, env handling, and alignment between operator instructions and actual infra behavior.
 ---
 
 Simple job: make sure infra scripts, docs, and operator steps still match reality.

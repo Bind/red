@@ -124,7 +124,7 @@ export class DuckDbRollupQuery implements RollupStore {
 		const limit = Math.min(Math.max(options.limit ?? 100, 1), 1000);
 
 		const sql = `
-      SELECT *
+      SELECT ${rollupPayloadSql()} AS payload
       FROM read_ndjson_auto('${escape(this.rollupPath())}')
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
       ORDER BY rolled_up_at DESC
@@ -135,14 +135,14 @@ export class DuckDbRollupQuery implements RollupStore {
 			prepared.bindVarchar(i + 1, String(params[i]));
 		}
 		const reader = await prepared.runAndReadAll();
-		const rows = (await reader.getRowObjectsJS()) as unknown[];
-		return rows.map((row) => coerceBigInts(row)) as WideRollupRecord[];
+		const rows = (await reader.getRowObjectsJS()) as Array<{ payload: string }>;
+		return rows.map((row) => parseRollupPayload(row.payload));
 	}
 
 	async getRollup(requestId: string): Promise<WideRollupRecord | null> {
 		const conn = await this.getConn();
 		const prepared = await conn.prepare(
-			`SELECT *
+			`SELECT ${rollupPayloadSql()} AS payload
          FROM read_ndjson_auto('${escape(this.rollupPath())}')
          WHERE request_id = ?
          ORDER BY rolled_up_at DESC
@@ -150,9 +150,9 @@ export class DuckDbRollupQuery implements RollupStore {
 		);
 		prepared.bindVarchar(1, requestId);
 		const reader = await prepared.runAndReadAll();
-		const rows = (await reader.getRowObjectsJS()) as unknown[];
+		const rows = (await reader.getRowObjectsJS()) as Array<{ payload: string }>;
 		const first = rows[0];
-		return first ? (coerceBigInts(first) as WideRollupRecord) : null;
+		return first ? parseRollupPayload(first.payload) : null;
 	}
 
 	async aggregateRollups(options: AggregateOptions): Promise<AggregateRow[]> {
@@ -215,6 +215,35 @@ function coerceBigInts(value: unknown): unknown {
 		return out;
 	}
 	return value;
+}
+
+function parseRollupPayload(payload: string): WideRollupRecord {
+	return coerceBigInts(JSON.parse(payload)) as WideRollupRecord;
+}
+
+function rollupPayloadSql(): string {
+	return `to_json(struct_pack(
+      request_id := request_id,
+      first_ts := first_ts,
+      last_ts := last_ts,
+      total_duration_ms := total_duration_ms,
+      entry_service := entry_service,
+      services := services,
+      route_names := route_names,
+      has_terminal_event := has_terminal_event,
+      request_state := request_state,
+      final_outcome := final_outcome,
+      final_status_code := final_status_code,
+      event_count := event_count,
+      error_count := error_count,
+      primary_error := primary_error,
+      request := request,
+      service_map := service_map,
+      events := events,
+      rollup_reason := rollup_reason,
+      rolled_up_at := rolled_up_at,
+      rollup_version := rollup_version
+    ))`;
 }
 
 function aggregateKeyExpression(key: AggregateKey): string {

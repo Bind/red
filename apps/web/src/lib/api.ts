@@ -1,4 +1,5 @@
 import { hc } from "hono/client";
+import superjson from "superjson";
 import type { AppType } from "../../../bff/src/app";
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -170,12 +171,26 @@ export interface CreateRepoInput {
 
 const client = hc<AppType>("/") as any;
 
+function decodeResponseBody<T>(text: string): T {
+  const trimmed = text.trim();
+  if (!trimmed) return null as T;
+  const raw = JSON.parse(trimmed) as unknown;
+  if (
+    raw
+    && typeof raw === "object"
+    && "json" in (raw as Record<string, unknown>)
+  ) {
+    return superjson.deserialize(raw as any) as T;
+  }
+  return raw as T;
+}
+
 async function rpcJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new ApiError(body || `API error: ${response.status}`, response.status);
   }
-  return response.json() as Promise<T>;
+  return decodeResponseBody<T>(await response.text());
 }
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -184,9 +199,7 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
     const body = await response.text().catch(() => "");
     throw new ApiError(body || `API error: ${response.status}`, response.status);
   }
-  const text = await response.text();
-  const trimmed = text.trim();
-  return (trimmed ? JSON.parse(trimmed) : null) as T;
+  return decodeResponseBody<T>(await response.text());
 }
 
 function normalizeRepoSummary(repo: unknown): RepoSummary | null {
@@ -466,18 +479,42 @@ export async function fetchRepos(): Promise<RepoSummary[]> {
   }
 }
 
-export async function fetchHostedRepoSnapshot(): Promise<HostedRepoSnapshot> {
-  const payload = await requestJson<HostedRepoSnapshot>("/rpc/app/hosted-repo");
+export async function fetchHostedRepoSnapshot(repoId?: string): Promise<HostedRepoSnapshot> {
+  const suffix = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const payload = await requestJson<HostedRepoSnapshot>(`/rpc/app/hosted-repo${suffix}`);
   return {
     ...payload,
     repo: normalizeRepoSummary(payload.repo) ?? payload.repo,
   };
 }
 
-export async function fetchHostedRepoCommitDiff(sha: string): Promise<string> {
-  const res = await fetch(`/rpc/app/hosted-repo/commits/${encodeURIComponent(sha)}/diff`);
+export async function fetchHostedRepoCommitDiff(sha: string, repoId?: string): Promise<string> {
+  const suffix = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const res = await fetch(`/rpc/app/hosted-repo/commits/${encodeURIComponent(sha)}/diff${suffix}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.text();
+}
+
+export async function fetchHostedRepoTree(ref?: string, repoId?: string): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (ref) params.set("ref", ref);
+  if (repoId) params.set("repo", repoId);
+  const res = await requestJson<{ files: string[] }>(`/rpc/app/hosted-repo/tree?${params}`);
+  return res.files;
+}
+
+export async function fetchHostedRepoFile(
+  path: string,
+  ref?: string,
+  repoId?: string,
+): Promise<string | null> {
+  const params = new URLSearchParams({ path });
+  if (ref) params.set("ref", ref);
+  if (repoId) params.set("repo", repoId);
+  const res = await fetch(`/rpc/app/hosted-repo/file?${params}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const body = await res.json() as { content: string | null };
+  return body.content;
 }
 
 export async function createRepo(input: CreateRepoInput): Promise<RepoSummary> {
@@ -616,6 +653,14 @@ export interface WideRollup {
   event_count: number;
   error_count: number;
   primary_error: Record<string, unknown> | null;
+  request: {
+    request?: {
+      method?: string | null;
+      path?: string | null;
+      host?: string | null;
+      scheme?: string | null;
+    } | null;
+  };
   events: WideEvent[];
   rolled_up_at: string;
 }
@@ -637,15 +682,11 @@ export async function fetchRollups(query: RollupListQuery = {}): Promise<{
   if (query.since) params.set("since", query.since);
   if (query.limit) params.set("limit", String(query.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  const res = await fetch(`/rpc/rollups${suffix}`);
-  if (!res.ok) throw new ApiError(`rollups ${res.status}`, res.status);
-  return res.json();
+  return requestJson<{ rollups: WideRollup[]; count: number }>(`/rpc/rollups${suffix}`);
 }
 
 export async function fetchRollupDetail(requestId: string): Promise<WideRollup> {
-  const res = await fetch(`/rpc/rollups/${encodeURIComponent(requestId)}`);
-  if (!res.ok) throw new ApiError(`rollup ${res.status}`, res.status);
-  return res.json();
+  return requestJson<WideRollup>(`/rpc/rollups/${encodeURIComponent(requestId)}`);
 }
 
 export interface TriageRunSummary {
@@ -671,9 +712,33 @@ export interface TriageRunSummary {
 }
 
 export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
-  const res = await fetch(`/rpc/triage/runs`);
-  if (!res.ok) throw new ApiError(`triage runs ${res.status}`, res.status);
-  return res.json();
+  return requestJson<{ runs: TriageRunSummary[] }>(`/rpc/triage/runs`);
+}
+
+export function subscribeToRollupStream(
+  query: RollupListQuery,
+  onRollup: (rollup: WideRollup) => void,
+  onError?: (message: string) => void,
+): () => void {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.outcome) params.set("outcome", query.outcome);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const es = new EventSource(`/rpc/rollups/stream${suffix}`);
+
+  es.addEventListener("rollup", (event) => {
+    try {
+      onRollup(superjson.parse<WideRollup>(event.data));
+    } catch {
+      onError?.("rollup stream decode failed");
+    }
+  });
+
+  es.onerror = () => {
+    onError?.("rollup stream disconnected");
+  };
+
+  return () => es.close();
 }
 
 export type ServiceProbeStatus = "ok" | "error" | "unconfigured";
@@ -695,6 +760,77 @@ export interface ServiceStatusReport {
   services: ServiceStatusProbe[];
 }
 
+export interface LogEntry {
+  timestamp: string;
+  service: string;
+  level: string;
+  logger: string;
+  message: string;
+  requestId: string | null;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  responseTimeMs: number | null;
+  properties: Record<string, unknown>;
+  line: Record<string, unknown> | null;
+}
+
+export interface LogCount {
+  value: string;
+  count: number;
+}
+
+export interface LogTimelineBucket {
+  minute: string;
+  total: number;
+  errors: number;
+  status5xx: number;
+}
+
+export interface LogSummary {
+  total: number;
+  serviceCounts: LogCount[];
+  levelCounts: LogCount[];
+  statusCounts: LogCount[];
+  statusClassCounts: LogCount[];
+  timeline: LogTimelineBucket[];
+}
+
+export interface LogQueryResult {
+  query: {
+    service: string | null;
+    level: string | null;
+    logger: "all" | "http";
+    search: string | null;
+    window: string;
+    limit: number;
+    statusCode: number | null;
+    statusClass: "2xx" | "3xx" | "4xx" | "5xx" | null;
+  };
+  entries: LogEntry[];
+  summary: LogSummary;
+}
+
+export interface LogQueryInput {
+  service?: string;
+  level?: string;
+  logger?: "all" | "http";
+  search?: string;
+  window?: string;
+  limit?: number;
+  statusCode?: number;
+  statusClass?: "2xx" | "3xx" | "4xx" | "5xx";
+}
+
+export interface LogStreamInput {
+  service?: string;
+  level?: string;
+  logger?: "all" | "http";
+  search?: string;
+  statusClass?: "2xx" | "3xx" | "4xx" | "5xx";
+  historyWindow?: string;
+}
+
 export async function fetchStatusReport(): Promise<ServiceStatusReport> {
   const res = await fetch("/rpc/status");
   const body = (await res.json().catch(() => null)) as ServiceStatusReport | null;
@@ -705,4 +841,190 @@ export async function fetchStatusReport(): Promise<ServiceStatusReport> {
     throw new ApiError("status response missing body", res.status);
   }
   return body;
+}
+
+export async function fetchLogs(query: LogQueryInput = {}): Promise<LogQueryResult> {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.level) params.set("level", query.level);
+  if (query.logger) params.set("logger", query.logger);
+  if (query.search) params.set("search", query.search);
+  if (query.window) params.set("window", query.window);
+  if (query.limit) params.set("limit", String(query.limit));
+  if (query.statusCode !== undefined) params.set("status_code", String(query.statusCode));
+  if (query.statusClass) params.set("status_class", query.statusClass);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<LogQueryResult>(`/rpc/logs${suffix}`);
+}
+
+export function subscribeToLogStream(
+  query: LogStreamInput,
+  onEntry: (entry: LogEntry) => void,
+  onError?: (message: string) => void,
+): () => void {
+  const params = new URLSearchParams();
+  if (query.service) params.set("service", query.service);
+  if (query.level) params.set("level", query.level);
+  if (query.logger) params.set("logger", query.logger);
+  if (query.search) params.set("search", query.search);
+  if (query.statusClass) params.set("status_class", query.statusClass);
+  if (query.historyWindow) params.set("history_window", query.historyWindow);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const es = new EventSource(`/rpc/logs/stream${suffix}`);
+
+  es.addEventListener("log", (event) => {
+    onEntry(JSON.parse(event.data) as LogEntry);
+  });
+
+  es.addEventListener("stream-error", (event) => {
+    try {
+      const payload = JSON.parse(event.data) as { error?: string };
+      onError?.(payload.error ?? "log stream failed");
+    } catch {
+      onError?.("log stream failed");
+    }
+  });
+
+  es.onerror = () => {
+    onError?.("log stream disconnected");
+  };
+
+  return () => es.close();
+}
+
+export interface DaemonSpec {
+  name: string;
+  description: string;
+  file: string;
+  scopeRoot: string;
+}
+
+export interface DaemonTrackEntry {
+  subject: string;
+  fingerprint: string;
+  fact: unknown;
+  depends_on: string[];
+  checked_at: string;
+  source_run_id: string;
+}
+
+export interface DaemonCheckedFile {
+  path: string;
+  fingerprint: string;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface DaemonMemory {
+  daemon: string;
+  scopeRoot: string;
+  repoId: string;
+  commit: string | null;
+  updatedAt: string;
+  tracked: Record<string, DaemonTrackEntry>;
+  lastRun: {
+    summary: string;
+    nextRunHint?: string;
+    findings: Array<{
+      invariant: string;
+      target?: string;
+      status: "ok" | "healed" | "violation_persists" | "skipped";
+      note?: string;
+    }>;
+    checkedFiles: DaemonCheckedFile[];
+    fileInventory: DaemonCheckedFile[];
+  } | null;
+}
+
+export interface DaemonRunIndexEntry {
+  runId: string;
+  status: "completed" | "failed";
+  startedAt: string;
+  finishedAt: string;
+  summary?: string;
+  reason?: string;
+}
+
+export async function fetchDaemons(): Promise<DaemonSpec[]> {
+  const res = await requestJson<{ daemons: DaemonSpec[] }>("/rpc/daemons");
+  return res.daemons;
+}
+
+export async function fetchDaemonMemory(name: string, repoId?: string): Promise<DaemonMemory | null> {
+  try {
+    const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+    return await requestJson<DaemonMemory>(`/rpc/daemons/${encodeURIComponent(name)}/memory${query}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDaemonRuns(name: string, repoId?: string): Promise<DaemonRunIndexEntry[]> {
+  const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
+  const res = await requestJson<{ runs: DaemonRunIndexEntry[] }>(`/rpc/daemons/${encodeURIComponent(name)}/runs${query}`);
+  return res.runs;
+}
+
+export type DaemonPlaygroundProfile = {
+  id: string;
+  name: string;
+  mode:
+    | "memory_only"
+    | "embedding_only"
+    | "memory_embedding"
+    | "memory_embedding_librarian";
+  routerProvider?: "local" | "openrouter";
+  routerModel?: string;
+  librarianModel?: string;
+};
+
+export type DaemonPlaygroundFileScore = {
+  daemonName: string;
+  semanticScore: number;
+  scoreBoost: number;
+  finalScore: number;
+  dependencyExact: boolean;
+  checkedExact: boolean;
+  pathNeighborScore: number;
+  selected: boolean;
+};
+
+export type DaemonPlaygroundFileDebug = {
+  file: string;
+  fileSummary: string;
+  selectedDaemons: string[];
+  scores: DaemonPlaygroundFileScore[];
+  mode: string;
+  librarianRationale?: string;
+  librarianConfidence?: number;
+};
+
+export type DaemonPlaygroundScenarioResult = {
+  scenario: string;
+  files: string[];
+  expectedByFile: Record<string, string[]>;
+  evaluation: {
+    routedDaemons: Array<{ name: string; relevantFiles: string[] }>;
+    fileDebug: DaemonPlaygroundFileDebug[];
+  };
+};
+
+export type DaemonPlaygroundRunResult = {
+  generatedAt: string;
+  profiles: Array<{
+    profile: DaemonPlaygroundProfile;
+    scenarios: DaemonPlaygroundScenarioResult[];
+  }>;
+};
+
+export async function fetchDaemonPlayground(
+  profiles?: DaemonPlaygroundProfile[],
+): Promise<DaemonPlaygroundRunResult> {
+  return requestJson("/api/daemon-review/playground", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ profiles }),
+  });
 }

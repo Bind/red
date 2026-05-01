@@ -13,12 +13,17 @@ import type { CompletePayload } from "../schema";
 import { memorySink } from "../wide-events";
 
 let dir: string;
+let previousMemoryBackend: string | undefined;
 
 beforeEach(async () => {
+  previousMemoryBackend = process.env.AI_DAEMONS_MEMORY_BACKEND;
+  process.env.AI_DAEMONS_MEMORY_BACKEND = "local";
   dir = await mkdtemp(join(tmpdir(), "daemons-runner-"));
 });
 
 afterEach(async () => {
+  if (previousMemoryBackend === undefined) delete process.env.AI_DAEMONS_MEMORY_BACKEND;
+  else process.env.AI_DAEMONS_MEMORY_BACKEND = previousMemoryBackend;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -284,5 +289,38 @@ describe("runner", () => {
     expect(record?.status).toBe("failed");
     expect(record?.failure?.reason).toBe("wallclock_exceeded");
     expect(record?.events.some((event) => event.kind === "daemon.run.failed")).toBe(true);
+  });
+
+  test("persists and reloads run history when git is unavailable", async () => {
+    await writeDaemon("history-no-git", "d");
+    const memoryDir = join(dir, ".cache");
+    const previousPath = process.env.PATH;
+    const previousRepo = process.env.AI_DAEMONS_MEMORY_REPO;
+    process.env.PATH = "/definitely-missing-git";
+    process.env.AI_DAEMONS_MEMORY_REPO = "Bind/red";
+
+    try {
+      const result = await runDaemon("history-no-git", {
+        root: dir,
+        memoryDir,
+        provider: mockProvider({
+          turns: 1,
+          outcome: { kind: "complete", payload: { summary: "done", findings: [] } },
+        }),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected success");
+
+      const runs = await listDaemonRuns("history-no-git", dir, memoryDir, "Bind/red");
+      expect(runs).toHaveLength(1);
+      const record = await loadDaemonRun("history-no-git", dir, result.runId, memoryDir, "Bind/red");
+      expect(record).not.toBeNull();
+      expect(record?.repoId).toBe("Bind/red");
+      expect(record?.commit).toBe(process.env.GIT_COMMIT ?? null);
+    } finally {
+      process.env.PATH = previousPath;
+      if (previousRepo === undefined) delete process.env.AI_DAEMONS_MEMORY_REPO;
+      else process.env.AI_DAEMONS_MEMORY_REPO = previousRepo;
+    }
   });
 });

@@ -32,6 +32,27 @@ describe("loadDaemons", () => {
     expect(specs).toHaveLength(1);
     expect(specs[0]?.name).toBe("foo");
     expect(specs[0]?.scopeRoot).toBe(dir);
+    expect(specs[0]?.review.maxTurns).toBe(18);
+    expect(specs[0]?.review.routingCategories).toEqual([]);
+  });
+
+  test("loads review metadata from frontmatter", async () => {
+    await writeDaemon("foo.daemon.md", {
+      name: "foo",
+      description: "does foo",
+      review: {
+        max_turns: 7,
+        routing_categories: [
+          { name: "infra-ops", description: "infra operator files" },
+        ],
+      },
+    });
+    const { specs, errors } = await loadDaemons(dir);
+    expect(errors).toEqual([]);
+    expect(specs[0]?.review.maxTurns).toBe(7);
+    expect(specs[0]?.review.routingCategories).toEqual([
+      { name: "infra-ops", description: "infra operator files" },
+    ]);
   });
 
   test("scope root is the directory of the file", async () => {

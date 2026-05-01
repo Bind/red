@@ -4,9 +4,9 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import type { CompletePayload } from "./schema";
-import { findRepoRoot, resolveMemoryDir } from "./memory";
+import { findRepoRoot, resolveMemoryDir, inferRepoId, getCurrentCommit } from "./memory";
 import type { WideEvent } from "./wide-events";
 
 const RUN_HISTORY_VERSION = 2;
@@ -108,10 +108,11 @@ export async function loadDaemonRun(
   scopeRoot: string,
   runId: string,
   explicitDir?: string,
+  explicitRepoId?: string,
 ): Promise<DaemonRunRecord | null> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = await inferRepoId(repoRoot);
+  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
   const backend = createRunHistoryBackend(memoryDir, repoId);
   return backend.loadRun(daemonName, runId);
 }
@@ -120,10 +121,11 @@ export async function listDaemonRuns(
   daemonName: string,
   scopeRoot: string,
   explicitDir?: string,
+  explicitRepoId?: string,
 ): Promise<DaemonRunIndexEntry[]> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = await inferRepoId(repoRoot);
+  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
   const backend = createRunHistoryBackend(memoryDir, repoId);
   const index = await backend.loadIndex(daemonName);
   return index?.recentRuns ?? [];
@@ -290,51 +292,4 @@ function isMissingObjectError(error: unknown): boolean {
     parsed.Code === "NoSuchKey" ||
     parsed.$metadata?.httpStatusCode === 404
   );
-}
-
-function parseRepoIdFromRemote(remote: string): string | null {
-  if (!remote) return null;
-  const cleaned = remote.replace(/\.git$/, "");
-  const sshMatch = cleaned.match(/[:/]([^/:]+\/[^/]+)$/);
-  return sshMatch?.[1] ?? null;
-}
-
-async function inferRepoId(repoRoot: string): Promise<string> {
-  const explicit = process.env.AI_DAEMONS_MEMORY_REPO ?? process.env.REPO;
-  if (explicit) return explicit;
-  const remote = await runGit(repoRoot, ["remote", "get-url", "origin"]);
-  if (remote.ok) {
-    const parsed = parseRepoIdFromRemote(remote.stdout.trim());
-    if (parsed) return parsed;
-  }
-  return basename(repoRoot);
-}
-
-async function getCurrentCommit(repoRoot: string): Promise<string | null> {
-  const result = await runGit(repoRoot, ["rev-parse", "HEAD"]);
-  return result.ok ? result.stdout.trim() : null;
-}
-
-async function runGit(
-  cwd: string,
-  args: string[],
-): Promise<{ ok: true; stdout: string } | { ok: false; stderr: string }> {
-  const env = { ...process.env } as Record<string, string | undefined>;
-  delete env.GIT_DIR;
-  delete env.GIT_WORK_TREE;
-  delete env.GIT_INDEX_FILE;
-  delete env.GIT_COMMON_DIR;
-  const proc = Bun.spawn({
-    cmd: ["git", "-C", cwd, ...args],
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (exitCode === 0) return { ok: true, stdout };
-  return { ok: false, stderr };
 }

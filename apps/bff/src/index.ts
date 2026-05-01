@@ -1,3 +1,4 @@
+import { configureServerLogging, getServerLogger } from "@red/server";
 import { createApp, type BffConfig } from "./app";
 
 function loadConfig(): BffConfig {
@@ -23,16 +24,20 @@ function loadConfig(): BffConfig {
   };
 }
 
+await configureServerLogging({ app: "red", lowestLevel: "info" });
 const config = loadConfig();
 const app = createApp(config);
+const logger = getServerLogger(["bff"]);
 
-console.log(`BFF listening on http://0.0.0.0:${config.port}`);
-console.log(`API upstream: ${config.apiBaseUrl}`);
-console.log(`Auth upstream: ${config.authBaseUrl}`);
-console.log(`GRS upstream: ${config.grsBaseUrl}`);
-console.log(`MCP upstream: ${config.mcpBaseUrl}`);
+logger.info("bff listening on {url}", { url: `http://0.0.0.0:${config.port}` });
+logger.info("bff upstreams configured", {
+  api_upstream: config.apiBaseUrl,
+  auth_upstream: config.authBaseUrl,
+  grs_upstream: config.grsBaseUrl,
+  mcp_upstream: config.mcpBaseUrl,
+});
 if (config.hostedRepo) {
-  console.log(`Hosted repo app: ${config.hostedRepo.repoId}`);
+  logger.info("hosted repo app configured", { repo_id: config.hostedRepo.repoId });
 }
 
 Bun.serve({
