@@ -438,8 +438,21 @@ export function buildReviewBody(
 }
 
 export function blockingOutcomes(outcomes: DaemonOutcome[]): DaemonOutcome[] {
-  return outcomes.filter(
-    (outcome) =>
-      !outcome.ok || outcome.findings.some((finding) => finding.status === "violation_persists"),
-  );
+  return outcomes.filter((outcome) => {
+    if (!outcome.ok) return true;
+
+    const hasPersistentViolation = outcome.findings.some(
+      (finding) => finding.status === "violation_persists",
+    );
+    if (!hasPersistentViolation) return false;
+
+    if (!outcome.initialMemory) return true;
+
+    const hasScopeChange =
+      outcome.initialMemory.changedScopeFiles.length > 0 ||
+      outcome.initialMemory.newFiles.length > 0 ||
+      outcome.initialMemory.missingFiles.length > 0;
+
+    return hasScopeChange;
+  });
 }
