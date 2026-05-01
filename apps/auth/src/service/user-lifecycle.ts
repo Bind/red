@@ -28,6 +28,12 @@ export interface UserLifecycleService {
 
 export interface UserLifecycleServiceConfig {
   allowAnyTotpCode?: boolean;
+  /**
+   * Dev-only: when true, every challenge in this service auto-succeeds
+   * (TOTP code accepted as-is, recovery factor accepted as-is). Sourced
+   * from `RED_DISABLE_AUTH`.
+   */
+  disableAuth?: boolean;
 }
 
 function normalizeEmail(email: string): string {
@@ -192,6 +198,7 @@ export function createUserLifecycleService(
         }
       } else {
         verified =
+          config.disableAuth === true ||
           config.allowAnyTotpCode === true ||
           (await createOTP(totpSecret, { digits: 6, period: 30 }).verify(input.code));
       }
@@ -246,6 +253,7 @@ export function createUserLifecycleService(
         data: user.recoveryTotpSecretEncrypted,
       });
       const verified =
+        config.disableAuth === true ||
         config.allowAnyTotpCode === true ||
         (await createOTP(totpSecret, { digits: 6, period: 30 }).verify(input.code));
       if (!verified) {

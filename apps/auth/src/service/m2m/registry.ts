@@ -49,8 +49,17 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+export interface MachineClientRegistryOptions {
+  /**
+   * Dev-only: when true, `authenticate()` accepts any client secret for a
+   * known client. Sourced from `RED_DISABLE_AUTH`.
+   */
+  disableAuth?: boolean;
+}
+
 export function createMachineClientRegistry(
   initialSeeds: MachineClientSeed[] = [],
+  options: MachineClientRegistryOptions = {},
 ): MachineClientRegistry {
   const records = new Map<string, MachineClientRecord>();
 
@@ -87,7 +96,7 @@ export function createMachineClientRegistry(
       if (record.status !== "active") {
         throw new AuthError("invalid_client", "Client is not active", 401);
       }
-      if (!verifyClientSecret(clientSecret, record.secretHash)) {
+      if (!options.disableAuth && !verifyClientSecret(clientSecret, record.secretHash)) {
         throw new AuthError("invalid_client", "Invalid client secret", 401);
       }
       return record;

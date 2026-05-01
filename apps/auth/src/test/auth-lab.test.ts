@@ -297,14 +297,37 @@ describe("auth lab", () => {
     expect(body.error).toBe("access_denied");
   });
 
-  test("admin token introspects any client's token without basic auth", async () => {
-    const server = await createAuthServer({ ...dualClientConfig, adminToken: "shhh-admin" });
+  test("RED_DISABLE_AUTH issues client_credentials tokens with any client_secret", async () => {
+    const server = await createAuthServer({ ...baseConfig, disableAuth: true });
+    const response = await server.fetch(
+      new Request("http://127.0.0.1:4020/oauth/token", {
+        method: "POST",
+        headers: {
+          authorization: basicAuthHeader("claw-runner-dev", "definitely-not-the-secret"),
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          scope: "prs:create",
+          audience: "red-api",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { token_type?: string; access_token?: string };
+    expect(body.token_type).toBe("Bearer");
+    expect(typeof body.access_token).toBe("string");
+  });
+
+  test("RED_DISABLE_AUTH lets any client introspect any other client's token", async () => {
+    const server = await createAuthServer({ ...dualClientConfig, disableAuth: true });
     const token = await mintToken(server, "claw-runner-alt", "alt-secret", "red-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/introspect", {
         method: "POST",
         headers: {
-          authorization: "Bearer shhh-admin",
+          authorization: basicAuthHeader("claw-runner-dev", "dev-secret"),
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({ token: token.access_token }),
@@ -317,28 +340,22 @@ describe("auth lab", () => {
     expect(body.client_id).toBe("claw-runner-alt");
   });
 
-  test("introspecting the admin token returns active synthetic claims", async () => {
-    const server = await createAuthServer({ ...baseConfig, adminToken: "shhh-admin" });
+  test("RED_DISABLE_AUTH lets introspect succeed without any client auth", async () => {
+    const server = await createAuthServer({ ...baseConfig, disableAuth: true });
+    const token = await mintToken(server, "claw-runner-dev", "dev-secret", "red-api");
     const response = await server.fetch(
       new Request("http://127.0.0.1:4020/oauth/introspect", {
         method: "POST",
         headers: {
-          authorization: basicAuthHeader("claw-runner-dev", "dev-secret"),
           "content-type": "application/x-www-form-urlencoded",
         },
-        body: new URLSearchParams({ token: "shhh-admin" }),
+        body: new URLSearchParams({ token: token.access_token }),
       }),
     );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      active: boolean;
-      sub?: string;
-      scope?: string;
-    };
+    const body = (await response.json()) as { active: boolean };
     expect(body.active).toBe(true);
-    expect(body.sub).toBe("admin");
-    expect(body.scope).toBe("admin");
   });
 
   test("blocks client A from revoking client B tokens", async () => {
@@ -812,6 +829,40 @@ describe("auth lab", () => {
     expect(sessionBody.user.email).toBe("douglasjbinder@gmail.com");
     expect(sessionBody.user.onboardingState).toBe("active");
     expect(sessionBody.user.recoveryReady).toBe(true);
+  });
+
+  test("RED_DISABLE_AUTH lets seeded user log in via TOTP with any code", async () => {
+    const totpSecret = "JBSWY3DPEHPK3PXP";
+    const server = await createAuthServer({
+      ...baseConfig,
+      disableAuth: true,
+      stealthTotpSeedUser: {
+        id: "seeded-douglas",
+        email: "douglasjbinder@gmail.com",
+        name: "Douglas Binder",
+        totpSecret,
+      },
+    });
+
+    const loginResponse = await server.fetch(
+      new Request(`${baseConfig.issuer}/user/totp-login`, {
+        method: "POST",
+        headers: {
+          origin: baseConfig.issuer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "douglasjbinder@gmail.com",
+          code: "000000",
+        }),
+      }),
+    );
+    expect(loginResponse.status).toBe(200);
+
+    const sessionCookie = parseSetCookieHeader(loginResponse.headers.get("set-cookie") ?? "").get(
+      "better-auth.session_token",
+    )?.value;
+    expect(sessionCookie).toBeTruthy();
   });
 
   test("seeded stealth TOTP user can create a session with an https issuer", async () => {

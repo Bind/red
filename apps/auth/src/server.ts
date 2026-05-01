@@ -48,13 +48,11 @@ export interface AuthServerConfig {
     postgresUrl?: string;
   };
   /**
-   * Shared admin token. When set, requests bearing
-   * `Authorization: Bearer ${adminToken}` may introspect or revoke any token
-   * without supplying client_credentials Basic auth, and a request to
-   * introspect the admin token itself returns active. Sourced from
-   * `RED_ADMIN_TOKEN`.
+   * Disable auth on `/oauth/introspect` and `/oauth/revoke` — dev-only.
+   * When true, those endpoints skip the per-client Basic auth check and
+   * the cross-client binding check. Sourced from `RED_DISABLE_AUTH`.
    */
-  adminToken?: string;
+  disableAuth?: boolean;
 }
 
 export interface AuthServer {
@@ -67,14 +65,6 @@ export interface AuthServer {
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
   response: NonNullable<Awaited<ReturnType<BetterAuthAdapter["getSession"]>>["response"]>;
 };
-
-function parseBearerToken(headers: Headers): string | null {
-  const value = headers.get("authorization");
-  if (!value) return null;
-  const [scheme, token] = value.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token.trim() || null;
-}
 
 function parseBasicAuth(headers: Headers): { clientId: string; clientSecret: string } | null {
   const value = headers.get("authorization");
@@ -200,7 +190,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
   const webClients = new Map(
     (config.webClients ?? []).map((client) => [client.clientId, client] as const),
   );
-  const registry = createMachineClientRegistry(config.seedClients);
+  const registry = createMachineClientRegistry(config.seedClients, {
+    disableAuth: config.disableAuth,
+  });
   const authority = await createTokenAuthority({
     issuer: config.issuer,
     defaultAudience: config.audience,
@@ -223,6 +215,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     config.userAuthSecret ?? "red-auth-lab-dev-secret",
     {
       allowAnyTotpCode: config.allowAnyTotpCode,
+      disableAuth: config.disableAuth,
     },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
@@ -319,32 +312,13 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return registry.authenticate(clientId, clientSecret);
   };
 
-  const isAdminBearer = (request: Request): boolean => {
-    if (!config.adminToken) return false;
-    const bearer = parseBearerToken(request.headers);
-    return bearer !== null && bearer === config.adminToken;
-  };
-
   const handleIntrospect = async (request: Request) => {
     const fields = await readBodyFields(request);
     const token = fields.token;
     if (!token) {
       throw new AuthError("invalid_request", "Missing token", 400);
     }
-    if (config.adminToken && token === config.adminToken) {
-      const nowSec = Math.floor(Date.now() / 1000);
-      return {
-        active: true,
-        sub: "admin",
-        client_id: "admin",
-        scope: "admin",
-        token_type: "Bearer",
-        iss: config.issuer,
-        aud: config.audience,
-        iat: nowSec,
-      };
-    }
-    if (!isAdminBearer(request)) {
+    if (!config.disableAuth) {
       const requestClient = authenticateRequestClient(request, fields);
       const tokenClientId = extractTokenClientId(token);
       if (!tokenClientId) {
@@ -367,11 +341,7 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     if (!token) {
       throw new AuthError("invalid_request", "Missing token", 400);
     }
-    if (config.adminToken && token === config.adminToken) {
-      // The admin token is configured out-of-band and cannot be revoked at runtime.
-      return { revoked: true };
-    }
-    if (!isAdminBearer(request)) {
+    if (!config.disableAuth) {
       const requestClient = authenticateRequestClient(request, fields);
       const tokenClientId = extractTokenClientId(token);
       if (!tokenClientId) {

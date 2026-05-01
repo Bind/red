@@ -53,6 +53,16 @@ Compose mode is strict:
 - all required env vars must be set explicitly in `docker-compose.yml`
 - boot should fail fast on missing or malformed config
 
+## Disable auth (dev only)
+
+Set `RED_DISABLE_AUTH=true` (or `AUTH_LAB_DISABLE_AUTH=true` for service-scoped overrides) to make every challenge auto-succeed:
+
+- `POST /oauth/token` accepts any client secret for a known client
+- `POST /oauth/introspect` and `POST /oauth/revoke` skip per-client Basic auth and the cross-client binding check
+- `POST /user/two-factor/verify` and `POST /user/totp-login` accept any TOTP code
+
+This is useful for local dev and integration tests; do not set it in any deployed environment. Magic-link, login-attempt, and passkey verification still go through their normal flows (those are not classic challenges and live partly inside Better Auth).
+
 ## MVP TODOs
 
 - Remove the remaining test-only mailbox dependency from the production integration story.

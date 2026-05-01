@@ -140,9 +140,9 @@ function requiredBoolean(value: string | undefined, label: string): boolean {
   throw new Error(`${label} must be true or false`);
 }
 
-function readAdminToken(env: NodeJS.ProcessEnv): string | undefined {
-  const value = env.AUTH_LAB_ADMIN_TOKEN?.trim() || env.RED_ADMIN_TOKEN?.trim();
-  return value || undefined;
+function readDisableAuth(env: NodeJS.ProcessEnv): boolean {
+  const isTrue = (value: string | undefined) => value?.trim().toLowerCase() === "true";
+  return isTrue(env.AUTH_LAB_DISABLE_AUTH) || isTrue(env.RED_DISABLE_AUTH);
 }
 
 function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
@@ -196,7 +196,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
       },
     ],
     bootstrapClientSecret,
-    adminToken: readAdminToken(env),
+    disableAuth: readDisableAuth(env),
   };
 }
 
@@ -266,7 +266,7 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
       },
     ],
     bootstrapClientSecret,
-    adminToken: readAdminToken(env),
+    disableAuth: readDisableAuth(env),
   };
 }
 
