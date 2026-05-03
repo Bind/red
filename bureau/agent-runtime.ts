@@ -63,7 +63,7 @@ export async function runAgent<T>(
       agentName,
       agentRunId,
       ...(observer
-        ? { workflowRunId: observer.runId, workflowName: observer.workflowName }
+        ? { workflowRunId: observer.workflowRunId, workflowName: observer.workflowName }
         : {}),
       ...data,
     };

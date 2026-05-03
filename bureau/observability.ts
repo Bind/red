@@ -28,7 +28,7 @@ export type StepContext = {
 };
 
 export type WorkflowObserver = {
-  readonly runId: string;
+  readonly workflowRunId: string;
   readonly workflowName: string;
   step<T>(name: string, fn: (step: StepContext) => Promise<T>): Promise<T>;
   event(kind: string, data?: WorkflowEventData): void;
@@ -37,7 +37,7 @@ export type WorkflowObserver = {
 };
 
 export type WorkflowContext = {
-  runId: string;
+  workflowRunId: string;
   workflowName: string;
   logger: Logger;
   events: WorkflowObserver;
@@ -45,7 +45,7 @@ export type WorkflowContext = {
 
 export type WorkflowObserverOptions = {
   workflowName: string;
-  runId?: string;
+  workflowRunId?: string;
   logger?: Logger;
   sinks?: WideEventSink[];
 };
@@ -55,7 +55,7 @@ function generateRunId(workflowName: string): string {
 }
 
 export function startWorkflowObserver(options: WorkflowObserverOptions): WorkflowObserver {
-  const runId = options.runId ?? generateRunId(options.workflowName);
+  const workflowRunId = options.workflowRunId ?? generateRunId(options.workflowName);
   const buffer = memorySink();
   const sinks = options.sinks ?? [stdoutSink()];
 
@@ -69,13 +69,13 @@ export function startWorkflowObserver(options: WorkflowObserverOptions): Workflo
       createWideEvent({
         kind,
         route_name: options.workflowName,
-        data: { runId, workflowName: options.workflowName, ...data },
+        data: { workflowRunId, workflowName: options.workflowName, ...data },
       }),
     );
   };
 
   return {
-    runId,
+    workflowRunId,
     workflowName: options.workflowName,
     event: emit,
     emit: dispatch,

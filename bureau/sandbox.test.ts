@@ -9,7 +9,7 @@ const skipIfNoGit = process.env.SKIP_BUREAU_SANDBOX_TESTS === "1";
 test.skipIf(skipIfNoGit)("just-bash sandbox emits lifecycle events through observer", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-sandbox",
-    runId: "run_sandbox_lifecycle",
+    workflowRunId: "run_sandbox_lifecycle",
     sinks: [],
   });
 
@@ -26,7 +26,7 @@ test.skipIf(skipIfNoGit)("just-bash sandbox emits lifecycle events through obser
 test.skipIf(skipIfNoGit)("just-bash sandbox emits sandbox.preserved instead of cleanup when preserve=true", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-sandbox",
-    runId: "run_sandbox_preserve",
+    workflowRunId: "run_sandbox_preserve",
     sinks: [],
   });
 
@@ -42,7 +42,7 @@ test.skipIf(skipIfNoGit)("just-bash sandbox emits sandbox.preserved instead of c
 test.skipIf(skipIfNoGit)("clone failure emits sandbox.clone.failed", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-sandbox",
-    runId: "run_sandbox_clone_fail",
+    workflowRunId: "run_sandbox_clone_fail",
     sinks: [],
   });
 

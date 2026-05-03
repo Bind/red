@@ -5,7 +5,7 @@ import { startWorkflowObserver, withWorkflowRun } from "./observability";
 test("startWorkflowObserver buffers events tagged with run id and workflow name", () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_test_1",
+    workflowRunId: "run_test_1",
     sinks: [],
   });
   observer.event("custom.event", { hello: "world" });
@@ -14,7 +14,7 @@ test("startWorkflowObserver buffers events tagged with run id and workflow name"
   expect(events[0].kind).toBe("custom.event");
   expect(events[0].route_name).toBe("test-workflow");
   expect(events[0].data).toMatchObject({
-    runId: "run_test_1",
+    workflowRunId: "run_test_1",
     workflowName: "test-workflow",
     hello: "world",
   });
@@ -23,7 +23,7 @@ test("startWorkflowObserver buffers events tagged with run id and workflow name"
 test("step emits started/completed bracket on success", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_test_2",
+    workflowRunId: "run_test_2",
     sinks: [],
   });
   const result = await observer.step("sandbox.create", async (step) => {
@@ -42,7 +42,7 @@ test("step emits started/completed bracket on success", async () => {
 test("step emits failed and rethrows on error", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_test_3",
+    workflowRunId: "run_test_3",
     sinks: [],
   });
   await expect(
@@ -66,7 +66,7 @@ test("withWorkflowRun wraps run lifecycle and forwards result", async () => {
   const result = await withWorkflowRun(
     {
       workflowName: "test-workflow",
-      runId: "run_test_4",
+      workflowRunId: "run_test_4",
       sinks: [sink],
     },
     async ({ observer }) => {
@@ -89,7 +89,7 @@ test("withWorkflowRun emits run.failed and rethrows", async () => {
   };
   await expect(
     withWorkflowRun(
-      { workflowName: "test-workflow", runId: "run_test_5", sinks: [sink] },
+      { workflowName: "test-workflow", workflowRunId: "run_test_5", sinks: [sink] },
       async () => {
         throw new Error("kaboom");
       },
@@ -98,5 +98,33 @@ test("withWorkflowRun emits run.failed and rethrows", async () => {
   expect(captured).toEqual([
     "workflow.run.started",
     "workflow.run.failed",
+  ]);
+});
+
+test("workflow and agent events share the same workflowRunId join key", async () => {
+  const observer = startWorkflowObserver({
+    workflowName: "test-workflow",
+    workflowRunId: "run_test_join",
+    sinks: [],
+  });
+
+  observer.event("workflow.run.started");
+  observer.emit({
+    event_id: "evt_join",
+    kind: "agent.run.started",
+    route_name: "test-agent",
+    ts: new Date().toISOString(),
+    data: {
+      workflowRunId: observer.workflowRunId,
+      workflowName: observer.workflowName,
+      agentName: "test-agent",
+      agentRunId: "agent_1",
+    },
+  });
+
+  const events = observer.drain();
+  expect(events.map((event) => event.data.workflowRunId)).toEqual([
+    "run_test_join",
+    "run_test_join",
   ]);
 });

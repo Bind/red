@@ -238,7 +238,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
       const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(initialSnapshot));
       const fallbackSink = observer ? null : stdoutSink();
       const workflowContext = observer
-        ? { workflowRunId: observer.runId, workflowName: observer.workflowName }
+        ? { workflowRunId: observer.workflowRunId, workflowName: observer.workflowName }
         : {};
       const emitFinding = (data: Record<string, unknown>) => {
         const full = createWideEvent({
