@@ -61,7 +61,7 @@ export async function runDaemonReviewWorkflow(
     daemonName: input.daemonName ?? null,
   });
   reviewLogger.info("starting daemon-review workflow", {
-    workflowRunId: observer.runId,
+    workflowRunId: observer.workflowRunId,
     trunkRepo: input.trunkRepo.id,
     branchRepo: input.branchRepo.id,
     baseRef: input.baseRef,
@@ -162,7 +162,7 @@ export async function runDaemonReviewWorkflow(
       status: "completed",
     });
     reviewLogger.info("daemon-review workflow completed", {
-      workflowRunId: observer.runId,
+      workflowRunId: observer.workflowRunId,
       routedDaemons: execution.routedDaemons.map((entry) => entry.name),
       blockingFailures: execution.blockingFailures.map((entry) => entry.name),
       editCount: execution.proposalArtifacts?.edits.length ?? 0,
@@ -171,7 +171,7 @@ export async function runDaemonReviewWorkflow(
     const wideEvents = observer.drain();
 
     return {
-      workflowRunId: observer.runId,
+      workflowRunId: observer.workflowRunId,
       trunkRepoId: input.trunkRepo.id,
       branchRepoId: input.branchRepo.id,
       baseRef: input.baseRef,
@@ -193,7 +193,7 @@ export async function runDaemonReviewWorkflow(
       error: error instanceof Error ? error.message : String(error),
     });
     reviewLogger.error("daemon-review workflow failed", {
-      workflowRunId: observer.runId,
+      workflowRunId: observer.workflowRunId,
       error,
     });
     await sb.cleanup();

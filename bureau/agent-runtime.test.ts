@@ -5,7 +5,7 @@ import { runAgent, type ProviderRunner } from "./agent-runtime";
 test("runAgent emits start/turn/tool/completed and aggregates tokens", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_workflow_1",
+    workflowRunId: "run_workflow_1",
     sinks: [],
   });
   const providerCall: ProviderRunner<{ ok: true }> = async (hooks) => {
@@ -39,7 +39,7 @@ test("runAgent emits start/turn/tool/completed and aggregates tokens", async () 
 test("each agent event carries workflowRunId, agentRunId, and agentName", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_workflow_2",
+    workflowRunId: "run_workflow_2",
     sinks: [],
   });
   const providerCall: ProviderRunner<{ ok: true }> = async () => ({ ok: true });
@@ -110,7 +110,7 @@ test("classifyResult routes to agent.run.failed with caller-supplied data", asyn
 test("provider exception emits agent.run.failed and rethrows", async () => {
   const observer = startWorkflowObserver({
     workflowName: "test-workflow",
-    runId: "run_workflow_3",
+    workflowRunId: "run_workflow_3",
     sinks: [],
   });
   const providerCall: ProviderRunner<unknown> = async () => {
