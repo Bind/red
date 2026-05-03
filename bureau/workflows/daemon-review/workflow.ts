@@ -50,7 +50,6 @@ export async function runDaemonReviewWorkflow(
 ): Promise<DaemonReviewWorkflowResult> {
   const observer = startWorkflowObserver({ workflowName: "daemon-review" });
   const startedAt = Date.now();
-  const preserved = input.preserveSandbox === true;
 
   observer.event("workflow.run.started", {
     startedAt: new Date(startedAt).toISOString(),
@@ -71,55 +70,29 @@ export async function runDaemonReviewWorkflow(
     daemonName: input.daemonName ?? null,
   });
 
-  const sb = await sandbox.justBash().create({ preserve: preserved });
-  observer.event("sandbox.created", {
-    sandboxRoot: sb.exposedRoot,
-    provider: sb.name,
-    preserved,
+  const sb = await sandbox.justBash().create({
+    preserve: input.preserveSandbox === true,
+    observer,
   });
 
   try {
-    const trunkCodebase = await observer.step("clone.trunk", async (step) => {
-      step.event("sandbox.clone.started", {
-        role: "trunk",
-        repo: input.trunkRepo.id,
-        ref: input.baseRef,
-      });
-      const result = await sb.clone({
+    const trunkCodebase = await observer.step("clone.trunk", () =>
+      sb.clone({
         repo: input.trunkRepo,
         ref: input.baseRef,
         dest: "trusted",
-      });
-      step.event("sandbox.clone.completed", {
         role: "trunk",
-        repo: input.trunkRepo.id,
-        ref: input.baseRef,
-        root: result.root,
-        dest: result.dest,
-      });
-      return result;
-    });
+      }),
+    );
 
-    const branchCodebase = await observer.step("clone.branch", async (step) => {
-      step.event("sandbox.clone.started", {
-        role: "branch",
-        repo: input.branchRepo.id,
-        ref: input.headRef,
-      });
-      const result = await sb.clone({
+    const branchCodebase = await observer.step("clone.branch", () =>
+      sb.clone({
         repo: input.branchRepo,
         ref: input.headRef,
         dest: "review",
-      });
-      step.event("sandbox.clone.completed", {
         role: "branch",
-        repo: input.branchRepo.id,
-        ref: input.headRef,
-        root: result.root,
-        dest: result.dest,
-      });
-      return result;
-    });
+      }),
+    );
 
     const routingLibrarian = librarian({
       model: input.librarianModel,
@@ -227,10 +200,6 @@ export async function runDaemonReviewWorkflow(
     throw error;
   } finally {
     await sb.cleanup();
-    observer.event("sandbox.cleaned_up", {
-      sandboxRoot: sb.exposedRoot,
-      preserved,
-    });
   }
 }
 
