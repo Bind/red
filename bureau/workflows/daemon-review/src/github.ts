@@ -156,6 +156,10 @@ function githubFixupRemote(owner: string, repo: string, githubToken: string) {
   };
 }
 
+export function stackedFixupBaseRef(context: GithubPrContext): string {
+  return context.prHeadRef;
+}
+
 async function publishGithubProposals(
   context: GithubPrContext,
   execution: DaemonReviewResult,
@@ -187,7 +191,7 @@ async function publishGithubProposals(
       remote: githubFixupRemote(context.owner, context.repo, context.githubToken),
       prNumber: context.prNumber,
       prHeadSha: context.prHeadSha,
-      prHeadRef: context.prBaseRef,
+      prHeadRef: stackedFixupBaseRef(context),
       classifications,
       prPublisher: (input) =>
         ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
