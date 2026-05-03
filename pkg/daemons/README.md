@@ -101,7 +101,7 @@ This keeps routing focused on:
 instead of forcing every daemon to rediscover large new PRs from scratch.
 
 For the workflow-specific implementation plan, see
-[workflows/daemon-review/README.md](../../workflows/daemon-review/README.md).
+[bureau/workflows/daemon-review/README.md](../../bureau/workflows/daemon-review/README.md).
 
 ## The `complete` tool
 

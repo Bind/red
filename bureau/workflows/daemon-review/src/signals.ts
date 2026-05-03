@@ -1,4 +1,4 @@
-import type { DaemonSpec } from "../../../pkg/daemons/src/index";
+import type { DaemonSpec } from "../../../../pkg/daemons/src/index";
 
 const MAX_SUMMARY_ITEMS = 12;
 const MAX_SUMMARY_EXCERPT_CHARS = 320;

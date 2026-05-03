@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadDaemons } from "../../../pkg/daemons/src/index";
+import { loadDaemons } from "../../../../pkg/daemons/src/index";
 import { ROUTING_TRAINING_SET } from "./training-set";
 
 describe("ROUTING_TRAINING_SET", () => {
   test("references real repo files and valid daemon names", async () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
+    const repoRoot = resolve(import.meta.dir, "../../../../");
     const { specs, errors } = await loadDaemons(repoRoot);
     expect(errors).toEqual([]);
     const daemonNames = new Set(specs.map((spec) => spec.name));

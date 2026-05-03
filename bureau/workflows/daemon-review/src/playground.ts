@@ -1,10 +1,12 @@
-import { loadDaemons } from "../../../pkg/daemons/src/index";
+import { loadDaemons } from "../../../../pkg/daemons/src/index";
+import librarian from "../../../agents/librarian/agent";
 import {
   evaluateRouting,
   type RouterMode,
   type RouterProvider,
   type RoutingEvaluation,
 } from "./routing";
+import { playgroundLogger } from "./logger";
 import type { DaemonRoutingMemory } from "./routing-memory";
 import { ROUTING_TRAINING_SET } from "./training-set";
 
@@ -60,10 +62,10 @@ function scenarioMemoryToMap(
 
 function logPlaygroundDebug(message: string, fields?: Record<string, unknown>): void {
   if (!fields || Object.keys(fields).length === 0) {
-    console.log(`[daemon-playground] ${message}`);
+    playgroundLogger.info("{message}", { message });
     return;
   }
-  console.log(`[daemon-playground] ${message} ${JSON.stringify(fields)}`);
+  playgroundLogger.info("{message}", { message, ...fields });
 }
 
 export async function runDaemonPlayground(
@@ -90,6 +92,12 @@ export async function runDaemonPlayground(
     for (let scenarioIndex = 0; scenarioIndex < ROUTING_TRAINING_SET.length; scenarioIndex += 1) {
       const scenario = ROUTING_TRAINING_SET[scenarioIndex]!;
       const scenarioStartedAt = performance.now();
+      const routingLibrarian = profile.mode === "memory_embedding_librarian"
+        ? librarian({
+            model: profile.librarianModel,
+            cwd: process.cwd(),
+          })
+        : undefined;
       logPlaygroundDebug("scenario_start", {
         profile: profile.name,
         scenario: scenario.name,
@@ -100,7 +108,7 @@ export async function runDaemonPlayground(
         memoryByDaemon: scenarioMemoryToMap(scenario.memoryByDaemon),
         routerProviderOverride: profile.routerProvider,
         routerModelOverride: profile.routerModel,
-        librarianModelOverride: profile.librarianModel,
+        librarianOverride: routingLibrarian,
       });
       scenarios.push({
         scenario: scenario.name,

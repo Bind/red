@@ -1,5 +1,5 @@
 import { join, posix } from "node:path";
-import type { DaemonMemorySnapshot } from "../../../pkg/daemons/src/index";
+import type { DaemonMemorySnapshot } from "../../../../pkg/daemons/src/index";
 
 export type DaemonRoutingMemory = {
   checkedFiles: string[];

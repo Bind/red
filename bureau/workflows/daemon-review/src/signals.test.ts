@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadDaemons } from "../../../pkg/daemons/src/index";
+import { loadDaemons } from "../../../../pkg/daemons/src/index";
 import { buildDaemonProfile, buildFileSummary } from "./signals";
 
 describe("buildFileSummary", () => {
   test("extracts real shell and preview deployment signals from repo files", async () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
+    const repoRoot = resolve(import.meta.dir, "../../../../");
     const previewDeploy = await readFile(resolve(repoRoot, "infra/preview/deploy.sh"), "utf8");
     const scriptRed = await readFile(resolve(repoRoot, "scripts/red"), "utf8");
 
@@ -31,7 +31,7 @@ describe("buildFileSummary", () => {
 
 describe("buildDaemonProfile", () => {
   test("uses actual daemon markdown and tracked signals to build semantic profiles", async () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
+    const repoRoot = resolve(import.meta.dir, "../../../../");
     const { specs, errors } = await loadDaemons(repoRoot);
     expect(errors).toEqual([]);
 

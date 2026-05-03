@@ -193,7 +193,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
       emit({
         kind: "daemon.tool.called",
         route_name: spec.name,
-        data: { runId, turn, toolName },
+        data: { runId, turn, toolName, checkedPath: readPath },
       });
     },
     onTurnEnd(turn, info) {

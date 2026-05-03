@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { DaemonSpec } from "../../../pkg/daemons/src/index";
+import type { DaemonSpec } from "../../../../pkg/daemons/src/index";
 import { S3Client, write } from "bun";
 import type { DaemonRoutingMemory } from "./routing-memory";
+import { reviewLogger } from "./logger";
 import { buildDaemonProfile, buildFileSummary } from "./signals";
 
 export type RoutedDaemon = {
@@ -17,12 +18,12 @@ type SemanticScorer = (
   fileSummary: string,
   daemonProfiles: Array<{ daemonName: string; profile: string }>,
 ) => Promise<SemanticScores>;
-type LibrarianDecision = {
+export type LibrarianDecision = {
   selectedDaemons: string[];
   rationale?: string;
   confidence?: number;
 };
-type LibrarianCandidate = {
+export type LibrarianCandidate = {
   daemonName: string;
   profile: string;
   trackedSubjects: string[];
@@ -34,7 +35,7 @@ type LibrarianCandidate = {
   checkedExact: boolean;
   pathNeighborScore: number;
 };
-type Librarian = (input: {
+export type Librarian = (input: {
   file: string;
   fileSummary: string;
   candidates: LibrarianCandidate[];
@@ -61,7 +62,6 @@ type RouteDaemonsOptions = {
   modeOverride?: RouterMode;
   routerProviderOverride?: RouterProvider;
   routerModelOverride?: string;
-  librarianModelOverride?: string;
 };
 
 type StructuredRoutingSignal = {
@@ -171,6 +171,13 @@ export function reviewParallelism(totalDaemons: number): number {
   return Math.min(totalDaemons, parsed);
 }
 
+function routingFileParallelism(totalFiles: number): number {
+  const raw = process.env.DAEMON_REVIEW_ROUTING_MAX_PARALLEL;
+  const parsed = raw ? Number.parseInt(raw, 10) : 3;
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.min(totalFiles, parsed);
+}
+
 export function routerModel(): string {
   return process.env.DAEMON_REVIEW_ROUTER_MODEL ?? DEFAULT_ROUTER_MODEL;
 }
@@ -218,10 +225,10 @@ function routerTopK(): number {
 
 function logRoutingDebug(message: string, fields?: Record<string, unknown>): void {
   if (!fields || Object.keys(fields).length === 0) {
-    console.log(`[daemon-review] ${message}`);
+    reviewLogger.info("{message}", { message });
     return;
   }
-  console.log(`[daemon-review] ${message} ${JSON.stringify(fields)}`);
+  reviewLogger.info("{message}", { message, ...fields });
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -579,144 +586,6 @@ async function getSemanticScorer(provider: RouterProvider, modelId: string): Pro
   return created;
 }
 
-function createOpenRouterLibrarian(modelId: string): Librarian {
-  return async (input: {
-  file: string;
-  fileSummary: string;
-  candidates: LibrarianCandidate[];
-  }): Promise<LibrarianDecision> => {
-  const startedAt = performance.now();
-  const fallback = () => {
-    const selectedDaemons = selectDaemonNamesForFile(
-      input.candidates.map((candidate) => ({
-        daemonName: candidate.daemonName,
-        semanticScore: candidate.semanticScore,
-        scoreBoost: candidate.scoreBoost,
-        finalScore: candidate.finalScore,
-        dependencyExact: candidate.dependencyExact,
-        checkedExact: candidate.checkedExact,
-        pathNeighborScore: candidate.pathNeighborScore,
-        selected: false,
-      })),
-    );
-    logRoutingDebug("librarian_fallback", {
-      model: modelId,
-      file: input.file,
-      candidates: input.candidates.length,
-      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
-      selectedDaemons,
-    });
-    return {
-      selectedDaemons,
-      rationale: "fallback librarian used score-ranked candidates",
-      confidence: selectedDaemons.length > 0 ? 0.5 : 0.2,
-    } satisfies LibrarianDecision;
-  };
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || input.candidates.length === 0) {
-    return fallback();
-  }
-
-  const { system, user } = buildLibrarianPrompt(input);
-
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
-    if (!response.ok) {
-      return fallback();
-    }
-    const payload = await response.json() as {
-      choices?: Array<{ message?: { content?: string | null } }>;
-    };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) {
-      return fallback();
-    }
-    const parsed = JSON.parse(content) as {
-      selected_daemons?: unknown;
-      rationale?: unknown;
-      confidence?: unknown;
-    };
-    const allowed = new Set(input.candidates.map((candidate) => candidate.daemonName));
-    const selectedDaemons = Array.isArray(parsed.selected_daemons)
-      ? parsed.selected_daemons
-          .filter((value): value is string => typeof value === "string" && allowed.has(value))
-          .sort((a, b) => a.localeCompare(b))
-      : [];
-    const decision = {
-      selectedDaemons,
-      rationale: typeof parsed.rationale === "string" ? parsed.rationale : "openrouter librarian response",
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined,
-    };
-    logRoutingDebug("librarian_decision", {
-      model: modelId,
-      file: input.file,
-      candidates: input.candidates.length,
-      selectedDaemons,
-      confidence: decision.confidence ?? null,
-      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
-    });
-    return decision;
-  } catch {
-    return fallback();
-  }
-  };
-}
-
-function buildLibrarianPrompt(input: {
-  file: string;
-  fileSummary: string;
-  candidates: LibrarianCandidate[];
-}): { system: string; user: string } {
-  const system = [
-    "You are a reusable routing librarian for daemon-based review systems.",
-    "Your job is only to decide which candidate daemons should review one file.",
-    "Use the provided daemon metadata, routing scores, and memory signals.",
-    "Prefer narrower candidate ownership when a broad candidate is only weakly supported.",
-    "It is valid to select zero, one, or many daemons.",
-    "Do not audit the file. Do not suggest code changes. Do not invent candidate daemons.",
-    "Return strict JSON with keys: selected_daemons, rationale, confidence.",
-    "selected_daemons must be a subset of the provided candidate daemon names.",
-  ].join(" ");
-
-  const userPayload = {
-    file: input.file,
-    file_summary: input.fileSummary,
-    candidates: input.candidates.map((candidate) => ({
-      daemon_name: candidate.daemonName,
-      semantic_score: Number(candidate.semanticScore.toFixed(3)),
-      score_boost: Number(candidate.scoreBoost.toFixed(3)),
-      final_score: Number(candidate.finalScore.toFixed(3)),
-      dependency_exact: candidate.dependencyExact,
-      checked_exact: candidate.checkedExact,
-      path_neighbor_score: Number(candidate.pathNeighborScore.toFixed(3)),
-      tracked_subjects: candidate.trackedSubjects,
-      tracked_dependency_paths: candidate.trackedDependencyPaths,
-      daemon_profile: candidate.profile,
-    })),
-  };
-
-  return {
-    system,
-    user: `${JSON.stringify(userPayload, null, 2)}\n\nReturn only JSON.`,
-  };
-}
-
 function scoreDaemonsForFile(
   semanticScores: SemanticScores,
   daemonProfiles: Array<{ daemonName: string; profile: string }>,
@@ -741,7 +610,7 @@ function scoreDaemonsForFile(
     .sort((a, b) => b.finalScore - a.finalScore);
 }
 
-function selectDaemonNamesForFile(scores: FileDaemonScore[]): string[] {
+export function selectDaemonNamesForFile(scores: FileDaemonScore[]): string[] {
   const threshold = routerScoreThreshold();
   const maxGap = routerScoreGap();
   const topK = routerTopK();
@@ -754,6 +623,16 @@ function selectDaemonNamesForFile(scores: FileDaemonScore[]): string[] {
     .filter((score) => score.finalScore >= threshold && topScore - score.finalScore <= maxGap)
     .slice(0, topK)
     .map((score) => score.daemonName);
+}
+
+function shouldInvokeLibrarian(
+  mode: RouterMode,
+  deterministicSelection: string[],
+  candidates: LibrarianCandidate[],
+): boolean {
+  if (mode !== "memory_embedding_librarian") return false;
+  if (candidates.length === 0) return false;
+  return deterministicSelection.length !== 1;
 }
 
 function buildCandidatesForMode(
@@ -828,15 +707,12 @@ export async function evaluateRouting(
     options.routerProviderOverride ?? routerProvider(),
     options.routerModelOverride ?? routerModel(),
   );
-  const librarian = options.librarianOverride ?? createOpenRouterLibrarian(
-    options.librarianModelOverride ?? librarianModel(),
-  );
   const fileTextResolver = options.fileTextResolver ?? defaultFileTextResolver;
   const byDaemon = new Map<string, string[]>();
-  const fileDebug: FileRoutingDebug[] = [];
+  const fileDebug = new Array<FileRoutingDebug>(changedFiles.length);
 
   const totalFiles = changedFiles.length;
-  for (let fileIndex = 0; fileIndex < changedFiles.length; fileIndex += 1) {
+  async function routeSingleFile(fileIndex: number): Promise<void> {
     const file = changedFiles[fileIndex]!;
     const fileStartedAt = performance.now();
     logRoutingDebug("file_start", {
@@ -854,11 +730,16 @@ export async function evaluateRouting(
     );
     const modeScores = scoresForMode(scoredDaemons, mode);
     const candidates = buildCandidatesForMode(modeScores, daemonProfiles, options.memoryByDaemon, mode);
-    let selectedDaemons: string[];
+    const deterministicSelection = selectDaemonNamesForFile(modeScores);
+    const useLibrarian = shouldInvokeLibrarian(mode, deterministicSelection, candidates);
+    let selectedDaemons = deterministicSelection;
     let librarianRationale: string | undefined;
     let librarianConfidence: number | undefined;
-    if (mode === "memory_embedding_librarian") {
-      const decision = await librarian({
+    if (useLibrarian) {
+      if (!options.librarianOverride) {
+        throw new Error("librarianOverride is required for memory_embedding_librarian routing");
+      }
+      const decision = await options.librarianOverride({
         file,
         fileSummary,
         candidates,
@@ -866,11 +747,9 @@ export async function evaluateRouting(
       selectedDaemons = [...new Set(decision.selectedDaemons)].sort((a, b) => a.localeCompare(b));
       librarianRationale = decision.rationale;
       librarianConfidence = decision.confidence;
-    } else {
-      selectedDaemons = selectDaemonNamesForFile(modeScores);
     }
     const selectedSet = new Set(selectedDaemons);
-    fileDebug.push({
+    fileDebug[fileIndex] = {
       file,
       fileSummary,
       selectedDaemons,
@@ -881,7 +760,7 @@ export async function evaluateRouting(
         ...score,
         selected: selectedSet.has(score.daemonName),
       })),
-    });
+    };
     for (const daemonName of selectedDaemons) {
       const current = byDaemon.get(daemonName) ?? [];
       current.push(file);
@@ -893,9 +772,22 @@ export async function evaluateRouting(
       progress: `${fileIndex + 1}/${totalFiles}`,
       selectedDaemons,
       candidateCount: candidates.length,
+      librarianUsed: useLibrarian,
       durationMs: Math.round((performance.now() - fileStartedAt) * 100) / 100,
     });
   }
+
+  const parallelism = routingFileParallelism(changedFiles.length);
+  let nextIndex = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const fileIndex = nextIndex;
+      if (fileIndex >= changedFiles.length) return;
+      nextIndex += 1;
+      await routeSingleFile(fileIndex);
+    }
+  }
+  await Promise.all(Array.from({ length: parallelism }, () => worker()));
 
   const routedDaemons = routableSpecs
     .map((spec) => ({
@@ -912,7 +804,7 @@ export async function evaluateRouting(
     durationMs: Math.round((performance.now() - evaluationStartedAt) * 100) / 100,
   });
 
-  return { routedDaemons, fileDebug };
+  return { routedDaemons, fileDebug: fileDebug.filter(Boolean) };
 }
 
 export async function routeDaemons(

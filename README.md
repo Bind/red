@@ -104,7 +104,10 @@ The local compose stack uses short container names:
 |-- experiments/
 |-- infra/
 |-- pkg/
-|   `-- obs/
+|   |-- daemons/
+|   |-- health/
+|   |-- obs/
+|   `-- server/
 |-- scripts/
 |-- justfile
 `-- package.json
@@ -130,7 +133,10 @@ Main product and runtime surfaces live here.
 
 Shared importable code lives here.
 
+- `pkg/daemons/`: shared daemon framework utilities used by AI daemon services.
+- `pkg/health/`: shared health-check types and utilities.
 - `pkg/obs/`: shared observability package used by multiple apps.
+- `pkg/server/`: shared HTTP server framework utilities.
 
 ### `infra/`
 
