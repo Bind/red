@@ -140,6 +140,7 @@ export async function runDaemonReviewWorkflow(
         changedFiles: input.changedFiles,
         routedDaemons: routing.routedDaemons,
         daemonReviewer,
+        observer,
       });
       step.event("execution.summary", {
         routedDaemons: result.routedDaemons,
@@ -166,10 +167,7 @@ export async function runDaemonReviewWorkflow(
       editCount: execution.proposalArtifacts?.edits.length ?? 0,
     });
 
-    const wideEvents = [
-      ...observer.drain(),
-      ...execution.outcomes.flatMap((outcome) => outcome.wideEvents),
-    ];
+    const wideEvents = observer.drain();
 
     return {
       workflowRunId: observer.runId,

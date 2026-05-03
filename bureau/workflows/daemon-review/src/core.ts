@@ -1,5 +1,6 @@
 import { relative, resolve } from "node:path";
 import { loadDaemons, loadMemorySnapshot, type DaemonSpec } from "../../../../pkg/daemons/src/index";
+import type { WorkflowObserver } from "../../../observability";
 import { daemonExecutor } from "../../../agents/daemon-executor/agent";
 import { buildDaemonRoutingMemory } from "./routing-memory";
 import {
@@ -159,9 +160,10 @@ export async function runSelectedDaemons(
     changedFiles: string[];
     routedDaemons: RoutedDaemon[];
     daemonReviewer: DaemonExecutorInstance;
+    observer?: WorkflowObserver;
   },
 ): Promise<ReviewExecutionResult> {
-  const { changedFiles, routedDaemons, daemonReviewer } = context;
+  const { changedFiles, routedDaemons, daemonReviewer, observer } = context;
   const daemonNames = routedDaemons.map((entry) => entry.name);
 
   if (daemonNames.length === 0) {
@@ -190,6 +192,7 @@ export async function runSelectedDaemons(
     prepared.trustedRoot,
     prepared.reviewRoot,
     daemonReviewer,
+    observer,
   );
   const edits = outcomes
     .filter((outcome) => outcome.ok && outcome.diff.trim().length > 0)

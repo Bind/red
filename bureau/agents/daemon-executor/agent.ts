@@ -18,7 +18,8 @@ import {
   createTrackTool,
   type DaemonSpec,
 } from "../../../pkg/daemons/src/index";
-import { createWideEvent, memorySink, stdoutSink, type WideEvent, type WideEventSink } from "../../../pkg/daemons/src/wide-events";
+import { createWideEvent, memorySink, stdoutSink, type WideEvent } from "../../../pkg/daemons/src/wide-events";
+import type { WorkflowObserver } from "../../observability";
 import { collectScopeInventory } from "../../../pkg/daemons/src/memory";
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../../pkg/daemons/src/providers/pi";
 import { getServerLogger } from "../../../pkg/server/src";
@@ -35,6 +36,7 @@ type DaemonExecutionInput = {
   trustedRoot: string;
   reviewRoot: string;
   relevantFiles: string[];
+  observer?: WorkflowObserver;
 };
 
 type DaemonExecutorDeps = {
@@ -188,7 +190,7 @@ function summarizeInitialMemory(
 function viewedFilesFromEvents(outcomeWideEvents: DaemonOutcome["wideEvents"]): string[] {
   const files = new Set<string>();
   for (const event of outcomeWideEvents) {
-    if (event.kind !== "daemon.tool.called") continue;
+    if (event.kind !== "agent.tool.called") continue;
     const checkedPath = event.data.checkedPath;
     if (typeof checkedPath === "string" && checkedPath.length > 0) {
       files.add(checkedPath);
@@ -210,7 +212,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
 }) {
   return {
     async run(input: DaemonExecutionInput): Promise<DaemonOutcome> {
-      const { spec, trustedRoot, reviewRoot, relevantFiles } = input;
+      const { spec, trustedRoot, reviewRoot, relevantFiles, observer } = input;
       const proposalMode = proposalModeEnabled();
       const workingRoot = proposalMode
         ? await mkdtemp(join(tmpdir(), `daemon-review-${spec.name}-`))
@@ -232,11 +234,22 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
       const readPaths = new Set<string>();
       const events: WideEvent[] = [];
       const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(initialSnapshot));
-      const sink = stdoutSink();
+      const fallbackSink = observer ? null : stdoutSink();
+      const workflowContext = observer
+        ? { workflowRunId: observer.runId, workflowName: observer.workflowName }
+        : {};
       const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
-        const full = createWideEvent(event);
+        const enriched = {
+          ...event,
+          data: { ...workflowContext, ...event.data },
+        };
+        const full = createWideEvent(enriched);
         events.push(full);
-        sink(full);
+        if (observer) {
+          observer.emit(full);
+        } else if (fallbackSink) {
+          fallbackSink(full);
+        }
       };
 
       try {
@@ -264,7 +277,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         });
         const wideEventBuffer = memorySink();
         emit({
-          kind: "daemon.run.started",
+          kind: "agent.run.started",
           route_name: spec.name,
           data: {
             runId,
@@ -283,7 +296,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
           extraTools: [deps.createTrackTool(memoryStore, runId)],
           onTurnStart(turn) {
             emit({
-              kind: "daemon.turn.started",
+              kind: "agent.turn.started",
               route_name: spec.name,
               data: { runId, turn },
             });
@@ -292,14 +305,14 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
             const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
             if (readPath) readPaths.add(readPath);
             emit({
-              kind: "daemon.tool.called",
+              kind: "agent.tool.called",
               route_name: spec.name,
               data: { runId, turn, toolName, checkedPath: readPath },
             });
           },
           onTurnEnd(turn, info) {
             emit({
-              kind: "daemon.turn.completed",
+              kind: "agent.turn.completed",
               route_name: spec.name,
               data: {
                 runId,
@@ -318,7 +331,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         if (result.ok === false) {
           const failure = result as ProviderRunFailure;
           emit({
-            kind: "daemon.run.failed",
+            kind: "agent.run.failed",
             route_name: spec.name,
             data: {
               runId,
@@ -397,13 +410,13 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         );
         for (const finding of result.payload.findings) {
           emit({
-            kind: "daemon.finding",
+            kind: "agent.finding",
             route_name: spec.name,
             data: { runId, ...finding },
           });
         }
         emit({
-          kind: "daemon.run.completed",
+          kind: "agent.run.completed",
           route_name: spec.name,
           data: {
             runId,
