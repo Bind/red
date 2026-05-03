@@ -5,7 +5,7 @@ This document describes the internal agent/runtime substrate we want for `red`.
 The intent is not to copy Flue or Sandcastle directly. The intent is to borrow
 the good parts of both:
 
-- Flue-style packaging for agents, roles, skills, and prompts
+- Flue-style packaging for agents and skills
 - Sandcastle-style isolation and execution backends for code-changing runs
 - Bun-native local and CI ergonomics
 - no required build step just to test an agent locally
@@ -34,7 +34,7 @@ substrate for packaging and running agents in this repo.
 
 - Bun-first local and CI execution
 - no bundling requirement for local development or CI invocation
-- simple repo-native packaging for agents, roles, prompts, and skills
+- simple repo-native packaging for agents and skills
 - one shared runtime model across:
   - GitHub Actions review agents
   - local daemon debugging
@@ -76,7 +76,7 @@ an adapter, not the core development path.
 We want the simplicity of Flue’s packaging model:
 
 - obvious entrypoint
-- obvious colocated prompts/roles/skills
+- obvious colocated skills
 - obvious trigger metadata
 
 But we want it in repo-native form.
@@ -103,7 +103,7 @@ This gives us:
 The core principle is:
 
 - the directory structure communicates capability boundaries
-- manifests describe runtime requirements
+- runtime conventions should be inferred from path and code whenever possible
 - code resolves adjacent assets by path first
 
 ### Tools Are Not Skills
@@ -128,7 +128,7 @@ Those are not packaging assets. They are runtime capabilities.
 
 So the substrate must model:
 
-- asset packaging for prompts/roles/skills
+- asset packaging for skills
 - a separate tool registry for executable capabilities
 
 ### Separate Outer Harness From Inner Engine
@@ -213,30 +213,15 @@ The packaging should look roughly like this:
 bureau/
   daemon-review/
     agent.ts
-    agent.json
-    prompts/
-      review-summary.md
-    roles/
-      reviewer.md
     skills/
       summarize-diff/
         SKILL.md
   triage/
     agent.ts
-    agent.json
-    prompts/
-      diagnose.md
-    roles/
-      operator.md
     skills/
       investigate-failure/
         SKILL.md
   shared/
-    roles/
-      researcher.md
-      operator.md
-    prompts/
-      review-summary.md
     skills/
       shell-audit/
         SKILL.md
@@ -245,9 +230,8 @@ bureau/
 Notes:
 
 - `agent.ts` is the executable entrypoint
-- `agent.json` or frontmatter-backed metadata describes runtime shape
-- `roles/`, `prompts/`, and `skills/` stay repo-owned and discoverable
-- each agent can have its own local `skills/`, `prompts/`, and `roles/`
+- `skills/` stay repo-owned and discoverable
+- each agent can have its own local `skills/`
 - shared assets can live under `bureau/shared/`
 - this packaging is intentionally simple and Bun-friendly
 - adjacent assets should be resolvable by relative path
@@ -262,47 +246,208 @@ Each agent should expose a single Bun-native entrypoint at:
 
 - `bureau/<agent-name>/agent.ts`
 
-That file should feel very close to Flue's `default export` model:
+That file should expose a single obvious public agent instance, usually via a
+small named factory:
 
 ```ts
-export default async function agent(ctx: AgentContext<Input, Output>) {
-  // parse input
-  // build execution context
-  // call shared engine
-  // return structured output
+export function daemonReviewer() {
+  return agent<Input>()
+    .plan(async (ctx) => {
+      // build execution context
+      // call shared engine
+      // return a plan or output
+    })
+    .build();
 }
+
+export default daemonReviewer();
 ```
 
 The goal is:
 
 - one obvious entrypoint
-- one obvious place for agent-local assets
+- one obvious place for agent-local skills
 - no heavy framework runtime required to discover or invoke the agent
 
 This is the main part of Flue's ergonomics that we want to preserve.
 
-## Agent Manifest
+## Convention Over Manifest
 
-Each agent should have a small manifest declaring only what orchestration
-needs to know.
+We should infer as much as possible from packaging conventions:
 
-Possible shape:
+- the agent entrypoint is always `bureau/<agent-name>/agent.ts`
+- the agent name is the folder name
+- agent-local skills are adjacent by path
 
-```json
-{
-  "name": "daemon-review",
-  "kind": "review",
-  "entry": "./agent.ts",
-  "triggers": ["github_pr", "local_cli"],
-  "defaultModel": "deepseek/deepseek-v4-flash",
-  "artifacts": ["summary", "outcome", "patch", "events"]
+That means the first substrate should not require a separate manifest file.
+
+If we later discover a small amount of metadata is truly needed, it should be
+added reluctantly and kept outside the critical local development path.
+
+Do not let a future manifest turn into a framework DSL.
+Do not bake sandbox constraints into it.
+Do not require agents to predeclare artifacts. Artifact harvesting belongs to
+the runtime/execution layer after the agent has run.
+
+## Current Substrate
+
+We should keep the first SDK extremely small and explicit.
+
+The most important parts of the current substrate are:
+
+- named factories like `daemonReviewer()` or `triage()`
+  - small wrappers that return agent instances with a uniform `run(...)` method
+- `BureauAgentContext<Input, Output>`
+  - the Bun-native runtime context passed into every agent
+- `PreparedWorkspace`
+  - the seeded codebase handoff from the execution backend
+- `BureauToolRegistry`
+  - runtime tool lookup that stays distinct from packaged skills
+- a thin invocation/runtime layer
+- repo-backed sandbox preparation
+- workflow-owned orchestration for daemon-review
+
+What is intentionally *not* part of the current PR:
+
+- trigger taxonomies
+- agent `kind`
+- artifact declarations
+- default model selection
+- the generic `bureau-run` / `bureau-seance` runtime surface
+
+That generic runtime/session layer is tracked separately in:
+
+- issue #50: `Define bureau run/seance runtime and session model`
+
+Those either belong to the outer adapter/runtime or should be discovered from
+the sandbox/output after execution.
+
+The intended feel is:
+
+```ts
+export function daemonReviewer() {
+  return agent<DaemonReviewInput>()
+    .plan(async (ctx) => {
+      const result = await runSharedEngine({
+        workspaceRoot: ctx.workspace.reviewRoot,
+        baseRef: ctx.input.baseRef,
+        headRef: ctx.input.headRef,
+      });
+
+      await ctx.artifacts.writeText("summary.md", result.summaryMarkdown);
+      return ctx.output(result);
+    })
+    .build();
 }
+
+export default daemonReviewer();
 ```
 
-This should stay intentionally small.
+That gives us the Flue-style ergonomics we want:
 
-Do not let the manifest turn into a giant framework DSL.
-Do not bake sandbox constraints into the manifest yet.
+- one obvious agent entrypoint
+- no separate metadata file in the common case
+- colocated agent skills by path
+- no framework build step required to run it locally under Bun
+
+## Typed Invocation
+
+We should be able to keep the filesystem-first packaging model while still
+getting a type-safe SDK for invocation.
+
+The shape we want is something like:
+
+```ts
+const result = await bureau.daemonReview({
+  input: {
+    repoId: "bind/red",
+    baseRef: "origin/main",
+    headRef: "HEAD",
+  },
+  // runtime wiring omitted
+});
+```
+
+Where:
+
+- `bureau.daemonReview(...)` is fully typed
+- the `input` payload is specific to that agent
+- the `output` is specific to that agent
+
+The runtime can get there without adding framework metadata if we do one of
+these:
+
+1. build a typed registry from imported `bureau/*/agent.ts` modules
+2. generate a tiny registry file from the filesystem at build/dev time
+3. use a Bun-native loader that discovers `agent.ts` files and emits types for
+   them into a generated SDK file
+
+The first version should likely be the simplest:
+
+- keep agent packaging convention-only
+- generate or hand-maintain a typed registry
+- expose a `bureau` runtime object from that registry
+
+That gives us the best of both worlds:
+
+- filesystem as router
+- type-safe invocation like `bureau.daemonReview(...)`
+- no trigger taxonomy or manifest DSL
+
+## Runtime Inference vs Type Inference
+
+There is a hard boundary here:
+
+- runtime inference can discover agents from the filesystem
+- TypeScript type inference needs some static source of truth
+
+So pure runtime discovery can give us:
+
+- `invokeAgent("daemon-review", ctx)`
+- dynamic loading from `bureau/<agent>/agent.ts`
+- no code generation
+
+But it cannot, by itself, give us fully typed property-style invocation like:
+
+```ts
+await bureau.daemonReview(...)
+```
+
+For that, we need some static analysis layer somewhere.
+
+### Practical Options
+
+1. pure runtime discovery
+   - simplest
+   - no codegen
+   - weaker ergonomics and weaker property-based types
+
+2. handwritten typed SDK
+   - still no build step
+   - explicit imports in something like `bureau/sdk.ts`
+   - good near-term compromise
+
+3. plugin or generated SDK
+   - scans `bureau/*/agent.ts`
+   - emits a static typed registry or virtual module
+   - gives the best “filesystem as router” plus typed SDK experience
+
+### Best Of Both Worlds
+
+If we eventually want:
+
+- filesystem-first agent discovery
+- no framework metadata DSL
+- typed `bureau.<agent>(...)` invocation
+
+then a Bun/TypeScript plugin or equivalent generated virtual module is the
+cleanest path.
+
+That would let us preserve the packaging conventions while still giving the
+compiler a static artifact to type-check against.
+
+We should not start there, but we should document it as the likely long-term
+path for the highest-ergonomics developer experience.
 
 ## Runtime Model
 
@@ -357,7 +502,7 @@ agent definition itself.
 
 ### 5. Tool Registry
 
-Agents may need custom runtime tools in addition to prompts/skills.
+Agents may need custom runtime tools in addition to skills.
 
 For daemon review, these are already real:
 
@@ -490,7 +635,7 @@ layers.
 It does not just need:
 
 - an agent entrypoint
-- prompts/skills
+- skills
 
 It also needs:
 
@@ -518,23 +663,25 @@ Daemon review should be the first consumer of the substrate, not the only one.
 Current mapping:
 
 - shared engine:
-  - `workflows/daemon-review/src/core.ts`
+  - `bureau/workflows/daemon-review/src/core.ts`
 - GitHub adapter:
-  - `workflows/daemon-review/src/github.ts`
+  - `bureau/workflows/daemon-review/src/github.ts`
 - local adapter:
-  - `workflows/daemon-review/src/local.ts`
+  - `bureau/workflows/daemon-review/src/local.ts`
 - local inspect surface:
-  - `workflows/daemon-review/src/local-inspect.ts`
+  - `bureau/workflows/daemon-review/src/local-inspect.ts`
 
 Next mapping step:
 
-- lift the “agent packaging” convention above `workflows/daemon-review`
+- lift the “agent packaging” convention above `bureau/workflows/daemon-review`
 - leave the domain engine where it is until another agent needs the same
   substrate
 
 This avoids premature churn.
 
-## Future Triage Agent
+## Future Work
+
+### Future Triage Agent
 
 The triage agent is the main reason to design this as a substrate, not a
 GitHub-review-only workflow.
@@ -550,11 +697,11 @@ A future triage agent likely needs:
 That makes the packaging/runtime layer more important than any one review
 workflow.
 
-## Immediate Next Steps
+### Next Steps
 
 1. Keep the current daemon-review runner split as the baseline.
 2. Do not re-introduce Flue-specific runtime code into the branch.
-3. Define a small repo-owned agent manifest.
+3. Standardize the `bureau/<agent>/agent.ts` convention and inference rules.
 4. Extract an explicit execution backend interface from daemon-review.
 5. Make daemon-review the first consumer of that substrate.
 6. Only after that, evaluate whether a triage agent should share the same

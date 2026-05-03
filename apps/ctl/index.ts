@@ -51,7 +51,7 @@ import {
   DEFAULT_PLAYGROUND_PROFILES,
   runDaemonPlayground,
   type PlaygroundProfile,
-} from "../../workflows/daemon-review/src/playground";
+} from "../../bureau/workflows/daemon-review/src/playground";
 import { queryLokiLogEvents, queryLokiLogs } from "./logs/loki";
 import type { LogQueryInput } from "./logs/loki";
 

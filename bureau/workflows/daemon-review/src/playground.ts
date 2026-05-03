@@ -1,4 +1,5 @@
-import { loadDaemons } from "../../../pkg/daemons/src/index";
+import { loadDaemons } from "../../../../pkg/daemons/src/index";
+import librarian from "../../../librarian/agent";
 import {
   evaluateRouting,
   type RouterMode,
@@ -91,6 +92,12 @@ export async function runDaemonPlayground(
     for (let scenarioIndex = 0; scenarioIndex < ROUTING_TRAINING_SET.length; scenarioIndex += 1) {
       const scenario = ROUTING_TRAINING_SET[scenarioIndex]!;
       const scenarioStartedAt = performance.now();
+      const routingLibrarian = profile.mode === "memory_embedding_librarian"
+        ? librarian({
+            model: profile.librarianModel,
+            cwd: process.cwd(),
+          })
+        : undefined;
       logPlaygroundDebug("scenario_start", {
         profile: profile.name,
         scenario: scenario.name,
@@ -101,7 +108,7 @@ export async function runDaemonPlayground(
         memoryByDaemon: scenarioMemoryToMap(scenario.memoryByDaemon),
         routerProviderOverride: profile.routerProvider,
         routerModelOverride: profile.routerModel,
-        librarianModelOverride: profile.librarianModel,
+        librarianOverride: routingLibrarian,
       });
       scenarios.push({
         scenario: scenario.name,

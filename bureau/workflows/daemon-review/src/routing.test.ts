@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { loadDaemons, type DaemonSpec } from "../../../pkg/daemons/src/index";
+import { loadDaemons, type DaemonSpec } from "../../../../pkg/daemons/src/index";
 import type { DaemonRoutingMemory } from "./routing-memory";
 import { evaluateRouting, resetRoutingCachesForTests, routeDaemons } from "./routing";
 
@@ -227,7 +227,7 @@ describe("routeDaemons", () => {
   });
 
   test("routes actual repo files with actual daemon specs", async () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
+    const repoRoot = resolve(import.meta.dir, "../../../../");
     const { specs, errors } = await loadDaemons(repoRoot);
     expect(errors).toEqual([]);
 
@@ -285,7 +285,7 @@ describe("routeDaemons", () => {
   });
 
   test("structured memory boosts route real repo files even when semantic scores are weak", async () => {
-    const repoRoot = resolve(import.meta.dir, "../../..");
+    const repoRoot = resolve(import.meta.dir, "../../../../");
     const { specs, errors } = await loadDaemons(repoRoot);
     expect(errors).toEqual([]);
 
@@ -442,19 +442,9 @@ describe("routeDaemons", () => {
         new Map([
           ["compose-contract", 0.4],
           ["environment-boundaries", 0.55],
-          ["infra-audit", 0.39],
+          ["infra-audit", 0.52],
         ]),
-      memoryByDaemon: new Map([
-        [
-          "compose-contract",
-          {
-            checkedFiles: [],
-            dependencyFiles: ["infra/preview/deploy.sh"],
-            trackedSubjects: ["preview_gateway_contract"],
-            staleTrackedSubjects: [],
-          },
-        ],
-      ]),
+      memoryByDaemon: new Map(),
       modeOverride: "memory_embedding_librarian",
       librarianOverride: async ({ candidates }) => ({
         selectedDaemons: candidates

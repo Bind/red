@@ -20,6 +20,7 @@ apps/web/dist/
 .wide-events-agent/
 .codex-artifacts/
 .codex-debug/
+.bureau/
 .daemons-artifacts/
 .daemons-cache/
 .zig-cache/

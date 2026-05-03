@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DaemonMemorySnapshot } from "../../../pkg/daemons/src/index";
+import type { DaemonMemorySnapshot } from "../../../../pkg/daemons/src/index";
 import { buildDaemonRoutingMemory } from "./routing-memory";
 
 describe("buildDaemonRoutingMemory", () => {

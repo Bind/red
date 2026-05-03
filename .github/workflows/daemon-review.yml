@@ -54,8 +54,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
           DAEMON_REVIEW_MAX_PARALLEL: "3"
           DAEMON_REVIEW_PROPOSAL_MODE: "true"
@@ -70,4 +73,4 @@ jobs:
           AI_DAEMONS_MODEL: deepseek/deepseek-v4-flash
           AI_DAEMONS_MEMORY_BACKEND: r2
           AI_DAEMONS_MEMORY_REPO: ${{ github.repository }}
-        run: dotenvx run -f .env.ci -- bun run workflows/daemon-review/src/main.ts
+        run: dotenvx run -f .env.ci -- bun run bureau/workflows/daemon-review/src/main.ts

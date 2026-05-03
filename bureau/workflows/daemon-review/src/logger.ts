@@ -1,4 +1,4 @@
-import { configureServerLogging, getServerLogger } from "../../../pkg/server/src/index";
+import { configureServerLogging, getServerLogger } from "../../../../pkg/server/src/index";
 
 export async function configureDaemonWorkflowLogging(): Promise<void> {
   await configureServerLogging({ app: "red", lowestLevel: "info" });

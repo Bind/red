@@ -1,8 +1,10 @@
-import type { CompleteFinding } from "../../../pkg/daemons/src/index";
-import type { WideEvent } from "../../../pkg/daemons/src/wide-events";
-import type { DaemonSpec } from "../../../pkg/daemons/src/index";
-import type { RoutedDaemon } from "./routing";
+import type { CompleteFinding } from "../../../../pkg/daemons/src/index";
+import type { WideEvent } from "../../../../pkg/daemons/src/wide-events";
+import type { DaemonSpec } from "../../../../pkg/daemons/src/index";
+import type { Librarian, RoutedDaemon, RoutingEvaluation } from "./routing";
 import type { DaemonClassified } from "./proposals";
+import type { DaemonRoutingMemory } from "./routing-memory";
+import type { RouterProvider } from "./routing";
 
 export type DaemonOutcome = {
   name: string;
@@ -30,10 +32,11 @@ export type GithubPrContext = {
   repo: string;
   prNumber: number;
   githubToken: string;
-  trustedRoot: string;
-  reviewRoot: string;
+  prBaseSha: string;
+  prBaseRef: string;
   prHeadSha: string;
   prHeadRef: string;
+  prHeadRepoFullName: string;
 };
 
 export type DaemonRunPlan = {
@@ -48,6 +51,29 @@ export type ReviewExecutionContext = {
   changedFiles: string[];
   daemonName?: string;
   daemonLimit?: number;
+  librarianOverride?: Librarian;
+};
+
+export type ReviewPreparedContext = {
+  trustedRoot: string;
+  reviewRoot: string;
+  specs: DaemonSpec[];
+  specByName: Map<string, DaemonSpec>;
+  memoryByDaemon: Map<string, DaemonRoutingMemory>;
+};
+
+export type ReviewRoutingContext = {
+  changedFiles: string[];
+  daemonName?: string;
+  daemonLimit?: number;
+  librarianOverride: Librarian;
+  routerProvider: RouterProvider;
+  routerModel: string;
+};
+
+export type ReviewRoutingResult = {
+  evaluation: RoutingEvaluation;
+  routedDaemons: RoutedDaemon[];
 };
 
 export type ProposalArtifacts = {

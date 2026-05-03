@@ -22,7 +22,7 @@ the workflow code.
 
 Today we have coverage for the routing shell, not the final hybrid design:
 
-- `workflows/daemon-review/src/routing.test.ts`
+- `bureau/workflows/daemon-review/src/routing.test.ts`
   - empty routing-categories input returns no routes
   - mocked classifier outputs route files to the expected daemons
 - `pkg/daemons/src/test/schema.test.ts`
@@ -177,7 +177,7 @@ For quick end-to-end evaluation against real repo files and real daemon specs,
 run:
 
 ```bash
-bun run workflows/daemon-review/src/smoke.ts
+bun run bureau/workflows/daemon-review/src/smoke.ts
 ```
 
 This smoke script intentionally uses actual repo paths like `README.md`,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { loadDaemons } from "../../../pkg/daemons/src/index";
+import { loadDaemons } from "../../../../pkg/daemons/src/index";
 import { evaluateRouting } from "./routing";
 import { ROUTING_TRAINING_SET } from "./training-set";
 
