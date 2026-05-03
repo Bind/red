@@ -80,7 +80,7 @@ export function startWorkflowObserver(options: WorkflowObserverOptions): Workflo
     event: emit,
     emit: dispatch,
     drain: buffer.drain,
-    async step<T>(name, fn) {
+    async step<T>(name: string, fn: (step: StepContext) => Promise<T>): Promise<T> {
       const startedAt = Date.now();
       emit("workflow.step.started", {
         step: name,
