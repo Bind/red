@@ -160,6 +160,10 @@ export function stackedFixupBaseRef(context: GithubPrContext): string {
   return context.prHeadRef;
 }
 
+export function canPublishStackedFixups(context: GithubPrContext): boolean {
+  return context.prHeadRepoFullName === `${context.owner}/${context.repo}`;
+}
+
 async function publishGithubProposals(
   context: GithubPrContext,
   execution: DaemonReviewResult,
@@ -186,18 +190,25 @@ async function publishGithubProposals(
   };
 
   let fixup = null;
-  try {
-    fixup = await pushFixupBranch({
-      remote: githubFixupRemote(context.owner, context.repo, context.githubToken),
-      prNumber: context.prNumber,
-      prHeadSha: context.prHeadSha,
-      prHeadRef: stackedFixupBaseRef(context),
-      classifications,
-      prPublisher: (input) =>
-        ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
+  if (canPublishStackedFixups(context)) {
+    try {
+      fixup = await pushFixupBranch({
+        remote: githubFixupRemote(context.owner, context.repo, context.githubToken),
+        prNumber: context.prNumber,
+        prHeadSha: context.prHeadSha,
+        prHeadRef: stackedFixupBaseRef(context),
+        classifications,
+        prPublisher: (input) =>
+          ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
+      });
+    } catch (error) {
+      reviewLogger.error("daemon fixup branch push failed", { error });
+    }
+  } else {
+    reviewLogger.info("skipping stacked fixup branch publishing for fork PR", {
+      prHeadRepo: context.prHeadRepoFullName,
+      baseRepo: `${context.owner}/${context.repo}`,
     });
-  } catch (error) {
-    reviewLogger.error("daemon fixup branch push failed", { error });
   }
 
   for (const classification of classifications) {

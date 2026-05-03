@@ -338,6 +338,7 @@ export async function pushFixupBranch(
         messageLines.push(`- ${daemonName}: ${file}`);
       }
     }
+    await gitOrThrow(fixupRoot, ["add", "-A"]);
     await gitOrThrow(fixupRoot, [
       "-c",
       "user.email=daemon-fixup@local",

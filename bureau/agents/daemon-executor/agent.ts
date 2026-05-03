@@ -217,10 +217,11 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         : reviewRoot;
       const relativeScopeRoot = relative(trustedRoot, spec.scopeRoot);
       const relativeSpecFile = relative(trustedRoot, spec.file);
-      const reviewScopeRoot = resolve(reviewRoot, relativeScopeRoot);
+      const persistenceScopeRoot = resolve(reviewRoot, relativeScopeRoot);
+      const persistenceSpecFile = resolve(reviewRoot, relativeSpecFile);
       const workingScopeRoot = resolve(workingRoot, relativeScopeRoot);
       const workingSpecFile = resolve(workingRoot, relativeSpecFile);
-      const initialSnapshot = await deps.loadMemorySnapshot(spec.name, reviewScopeRoot);
+      const initialSnapshot = await deps.loadMemorySnapshot(spec.name, persistenceScopeRoot);
       const reviewInput = await buildDaemonReviewInput(relevantFiles, initialSnapshot);
       const config: DaemonReviewConfig = {
         maxTurns: spec.review.maxTurns,
@@ -228,7 +229,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
       const provider = selectProvider(deps);
       const runId = `run_${spec.name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
       const startedAt = new Date().toISOString();
-      const memoryStore = await deps.createDaemonMemoryStore(spec.name, workingScopeRoot);
+      const memoryStore = await deps.createDaemonMemoryStore(spec.name, persistenceScopeRoot);
       const readPaths = new Set<string>();
       const events: WideEvent[] = [];
       const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(initialSnapshot));
@@ -332,8 +333,8 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
           await deps.saveDaemonRun(
             {
               daemon: spec.name,
-              scopeRoot: workingScopeRoot,
-              file: workingSpecFile,
+              scopeRoot: persistenceScopeRoot,
+              file: persistenceSpecFile,
               runId,
               provider: provider.name,
               systemPrompt,
@@ -349,7 +350,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
               },
               events: wideEvents,
             },
-            spec.scopeRoot,
+            persistenceScopeRoot,
           );
           return {
             name: spec.name,
@@ -380,7 +381,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
           {
             ...deps.createEmptyMemoryRecord({
               daemon: spec.name,
-              scopeRoot: workingScopeRoot,
+              scopeRoot: persistenceScopeRoot,
               baseCommit: initialSnapshot?.record.commit ?? null,
             }),
             ...nextRecord,
@@ -393,7 +394,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
               fileInventory,
             },
           },
-          workingScopeRoot,
+          persistenceScopeRoot,
         );
         for (const finding of result.payload.findings) {
           emit({
@@ -418,8 +419,8 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         await deps.saveDaemonRun(
           {
             daemon: spec.name,
-            scopeRoot: workingScopeRoot,
-            file: workingSpecFile,
+            scopeRoot: persistenceScopeRoot,
+            file: persistenceSpecFile,
             runId,
             provider: provider.name,
             systemPrompt,
@@ -432,7 +433,7 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
             payload: result.payload,
             events: wideEvents,
           },
-          workingScopeRoot,
+          persistenceScopeRoot,
         );
 
         return {
