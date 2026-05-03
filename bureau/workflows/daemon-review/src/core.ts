@@ -1,6 +1,6 @@
 import { relative, resolve } from "node:path";
 import { loadDaemons, loadMemorySnapshot, type DaemonSpec } from "../../../../pkg/daemons/src/index";
-import { daemonExecutor } from "../../../daemon-executor/agent";
+import { daemonExecutor } from "../../../agents/daemon-executor/agent";
 import { buildDaemonRoutingMemory } from "./routing-memory";
 import {
   evaluateRouting,

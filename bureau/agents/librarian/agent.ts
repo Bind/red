@@ -2,18 +2,18 @@ import { join, resolve } from "node:path";
 import {
   createPiProvider,
   type AgentProvider,
-} from "../../pkg/daemons/src/index";
+} from "../../../pkg/daemons/src/index";
 import {
   createRouteDecisionTool,
   type RouteDecisionCapture,
-} from "../../pkg/daemons/src/tools/route-decision";
-import { agent, type BureauAgentContext } from "../sdk";
+} from "../../../pkg/daemons/src/tools/route-decision";
+import { agent, type BureauAgentContext } from "../../sdk";
 import {
   librarianModel,
   type Librarian,
   type LibrarianCandidate,
   type LibrarianDecision,
-} from "../workflows/daemon-review/src/routing";
+} from "../../workflows/daemon-review/src/routing";
 
 export type LibrarianInput = {
   file: string;
@@ -67,7 +67,7 @@ const librarianAgent = agent<LibrarianInput>()
 
 function buildContext(input: LibrarianInput, cwd: string): BureauAgentContext<LibrarianInput> {
   const root = resolve(cwd);
-  const agentDir = join(root, "bureau", "librarian");
+  const agentDir = join(root, "bureau", "agents", "librarian");
   return {
     name: "librarian",
     sessionId: `librarian_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,

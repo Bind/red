@@ -1,5 +1,5 @@
 import { loadDaemons } from "../../../../pkg/daemons/src/index";
-import librarian from "../../../librarian/agent";
+import librarian from "../../../agents/librarian/agent";
 import {
   evaluateRouting,
   type RouterMode,

@@ -1,5 +1,5 @@
-import { daemonExecutor } from "../../daemon-executor/agent";
-import { librarian } from "../../librarian/agent";
+import { daemonExecutor } from "../../agents/daemon-executor/agent";
+import { librarian } from "../../agents/librarian/agent";
 import type { SandboxRepo } from "../../repo";
 import { sandbox } from "../../sandbox";
 import { createWideEvent, memorySink, stdoutSink, type WideEvent } from "../../../pkg/daemons/src/wide-events";

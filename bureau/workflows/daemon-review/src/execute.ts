@@ -27,8 +27,10 @@ export async function copyTrustedDaemonSpecIntoReviewCodebase(
 function renderFilesTouched(diff: string): number {
   const filesTouched = new Set<string>();
   for (const line of diff.split("\n")) {
-    const match = line.match(/^\+\+\+ b\/(.+)$/);
-    if (match) filesTouched.add(match[1]);
+    const match = line.match(/^\+\+\+ (?:(?:b\/)?(.+)|\/dev\/null)$/);
+    if (match?.[1]) filesTouched.add(match[1]);
+    const binaryMatch = line.match(/^Binary files (?:a\/)?(.+) and (?:b\/)?(.+) differ$/);
+    if (binaryMatch) filesTouched.add(binaryMatch[2]);
   }
   return filesTouched.size;
 }
@@ -71,26 +73,38 @@ export async function runRoutedDaemons(
   const outcomes = new Array<DaemonOutcome>(routedDaemons.length);
   const parallelism = reviewParallelism(routedDaemons.length);
   let nextIndex = 0;
+  const errors: Error[] = [];
 
   async function worker(): Promise<void> {
     while (true) {
-      const index = nextIndex;
+      const index = nextIndex++;
       if (index >= routedDaemons.length) return;
-      nextIndex += 1;
       const routed = routedDaemons[index];
       const spec = specByName.get(routed.name);
       if (!spec) {
-        throw new Error(`missing daemon spec for ${routed.name}`);
+        errors.push(new Error(`missing daemon spec for ${routed.name}`));
+        continue;
       }
-      outcomes[index] = await executor.run({
-        spec,
-        trustedRoot,
-        reviewRoot,
-        relevantFiles: routed.relevantFiles,
-      });
+      try {
+        outcomes[index] = await executor.run({
+          spec,
+          trustedRoot,
+          reviewRoot,
+          relevantFiles: routed.relevantFiles,
+        });
+      } catch (error) {
+        errors.push(
+          error instanceof Error
+            ? error
+            : new Error(`daemon ${routed.name} failed: ${String(error)}`),
+        );
+      }
     }
   }
 
   await Promise.all(Array.from({ length: parallelism }, () => worker()));
+  if (errors.length > 0) {
+    throw new AggregateError(errors, `failed to run ${errors.length} daemon review task(s)`);
+  }
   return outcomes;
 }

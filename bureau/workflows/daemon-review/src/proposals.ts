@@ -55,6 +55,8 @@ export type FixupResult = {
 export type FixupRemote = {
   fetchUrl: string;
   pushUrl?: string;
+  fetchGitConfigArgs?: string[];
+  pushGitConfigArgs?: string[];
   branchUrl?: (branchName: string) => string | null;
 };
 
@@ -265,7 +267,7 @@ async function runGit(
 async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   const result = await runGit(cwd, args);
   if (!result.ok) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+    throw new Error(`git command failed: ${result.stderr || result.stdout}`);
   }
   return result.stdout;
 }
@@ -294,79 +296,93 @@ export async function pushFixupBranch(
   if (contributing.length === 0) return null;
 
   const fixupRoot = await mkdtemp(join(tmpdir(), `daemon-fixup-${prNumber}-`));
-
-  await gitOrThrow(fixupRoot, ["init", "-q"]);
-  await gitOrThrow(fixupRoot, ["remote", "add", "origin", remote.fetchUrl]);
-  if (remote.pushUrl && remote.pushUrl !== remote.fetchUrl) {
-    await gitOrThrow(fixupRoot, ["remote", "set-url", "--push", "origin", remote.pushUrl]);
-  }
-  await gitOrThrow(fixupRoot, ["fetch", "--depth", "1", "origin", prHeadSha]);
-  await gitOrThrow(fixupRoot, ["checkout", "-b", branchName, prHeadSha]);
-
-  const applied: FixupSummaryEntry[] = [];
-  for (const classification of contributing) {
-    const patch = classification.fixupPatchSegments.join("");
-    const patchPath = join(fixupRoot, `.daemon-fixup-${classification.daemonName}.patch`);
-    await writeFile(patchPath, patch);
-    const result = await runGit(fixupRoot, ["apply", "--whitespace=nowarn", patchPath]);
-    await rm(patchPath, { force: true });
-    if (!result.ok) {
-      console.error(
-        `git apply failed for ${classification.daemonName}: ${result.stderr || result.stdout}`,
-      );
-      continue;
+  try {
+    await gitOrThrow(fixupRoot, ["init", "-q"]);
+    await gitOrThrow(fixupRoot, ["remote", "add", "origin", remote.fetchUrl]);
+    if (remote.pushUrl && remote.pushUrl !== remote.fetchUrl) {
+      await gitOrThrow(fixupRoot, ["remote", "set-url", "--push", "origin", remote.pushUrl]);
     }
-    applied.push({ daemonName: classification.daemonName, files: classification.fixupFiles });
-  }
+    await gitOrThrow(fixupRoot, [
+      ...(remote.fetchGitConfigArgs ?? []),
+      "fetch",
+      "--depth",
+      "1",
+      "origin",
+      prHeadSha,
+    ]);
+    await gitOrThrow(fixupRoot, ["checkout", "-b", branchName, prHeadSha]);
 
-  if (applied.length === 0) {
+    const applied: FixupSummaryEntry[] = [];
+    for (const classification of contributing) {
+      const patch = classification.fixupPatchSegments.join("");
+      const patchPath = join(fixupRoot, `.daemon-fixup-${classification.daemonName}.patch`);
+      await writeFile(patchPath, patch);
+      const result = await runGit(fixupRoot, ["apply", "--whitespace=nowarn", patchPath]);
+      await rm(patchPath, { force: true });
+      if (!result.ok) {
+        console.error(
+          `git apply failed for ${classification.daemonName}: ${result.stderr || result.stdout}`,
+        );
+        continue;
+      }
+      applied.push({ daemonName: classification.daemonName, files: classification.fixupFiles });
+    }
+
+    if (applied.length === 0) {
+      return null;
+    }
+
+    const messageLines = [`Daemon fixup for PR #${prNumber}`, ""];
+    for (const { daemonName, files } of applied) {
+      for (const file of files) {
+        messageLines.push(`- ${daemonName}: ${file}`);
+      }
+    }
+    await gitOrThrow(fixupRoot, [
+      "-c",
+      "user.email=daemon-fixup@local",
+      "-c",
+      "user.name=daemon-fixup",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-am",
+      messageLines.join("\n"),
+    ]);
+    await gitOrThrow(fixupRoot, [
+      ...(remote.pushGitConfigArgs ?? remote.fetchGitConfigArgs ?? []),
+      "push",
+      "--force",
+      "origin",
+      branchName,
+    ]);
+
+    let stackedPrUrl: string | null = null;
+    let stackedPrError: string | null = null;
+    if (prPublisher) {
+      try {
+        stackedPrUrl = await prPublisher({
+          branchName,
+          baseRef: prHeadRef,
+          prNumber,
+          applied,
+        });
+      } catch (error) {
+        stackedPrError = error instanceof Error ? error.message : String(error);
+        console.error("failed to ensure stacked fixup PR:", error);
+      }
+    }
+
+    return {
+      branchName,
+      branchUrl: remote.branchUrl?.(branchName) ?? null,
+      stackedPrUrl,
+      stackedPrError,
+      applied,
+    };
+  } finally {
     await rm(fixupRoot, { recursive: true, force: true });
-    return null;
   }
-
-  const messageLines = [`Daemon fixup for PR #${prNumber}`, ""];
-  for (const { daemonName, files } of applied) {
-    for (const file of files) {
-      messageLines.push(`- ${daemonName}: ${file}`);
-    }
-  }
-  await gitOrThrow(fixupRoot, [
-    "-c",
-    "user.email=daemon-fixup@local",
-    "-c",
-    "user.name=daemon-fixup",
-    "-c",
-    "commit.gpgsign=false",
-    "commit",
-    "-am",
-    messageLines.join("\n"),
-  ]);
-  await gitOrThrow(fixupRoot, ["push", "--force", "origin", branchName]);
-  await rm(fixupRoot, { recursive: true, force: true });
-
-  let stackedPrUrl: string | null = null;
-  let stackedPrError: string | null = null;
-  if (prPublisher) {
-    try {
-      stackedPrUrl = await prPublisher({
-        branchName,
-        baseRef: prHeadRef,
-        prNumber,
-        applied,
-      });
-    } catch (error) {
-      stackedPrError = error instanceof Error ? error.message : String(error);
-      console.error("failed to ensure stacked fixup PR:", error);
-    }
-  }
-
-  return {
-    branchName,
-    branchUrl: remote.branchUrl?.(branchName) ?? null,
-    stackedPrUrl,
-    stackedPrError,
-    applied,
-  };
 }
 
 export function buildReviewBody(

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 export type SandboxRepoRemote = {
   fetchUrl: string;
   ref: string;
+  gitConfigArgs?: string[];
 };
 
 export interface SandboxRepo {
@@ -25,11 +26,13 @@ export class GitHubRepo implements SandboxRepo {
   }
 
   async getReadRemote(ref: string): Promise<SandboxRepoRemote> {
-    const base = `https://github.com/${this.options.owner}/${this.options.name}.git`;
-    const fetchUrl = this.options.token
-      ? withBasicAuth(base, "x-access-token", this.options.token)
-      : base;
-    return { fetchUrl, ref };
+    return {
+      fetchUrl: `https://github.com/${this.options.owner}/${this.options.name}.git`,
+      ref,
+      gitConfigArgs: this.options.token
+        ? ["-c", `http.extraHeader=AUTHORIZATION: bearer ${this.options.token}`]
+        : undefined,
+    };
   }
 }
 
@@ -78,11 +81,4 @@ export class GrsRepo implements SandboxRepo {
       ref,
     };
   }
-}
-
-function withBasicAuth(url: string, username: string, password: string) {
-  const target = new URL(url);
-  target.username = username;
-  target.password = password;
-  return target.toString();
 }

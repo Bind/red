@@ -17,12 +17,16 @@ import {
   loadMemorySnapshot,
   createTrackTool,
   type DaemonSpec,
-} from "../../pkg/daemons/src/index";
-import { createWideEvent, memorySink, stdoutSink, type WideEvent, type WideEventSink } from "../../pkg/daemons/src/wide-events";
-import { collectScopeInventory } from "../../pkg/daemons/src/memory";
-import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../pkg/daemons/src/providers/pi";
-import { getServerLogger } from "../../pkg/server/src";
-import type { DaemonOutcome, DaemonReviewConfig, InitialMemoryShape } from "../workflows/daemon-review/src/types";
+} from "../../../pkg/daemons/src/index";
+import { createWideEvent, memorySink, stdoutSink, type WideEvent, type WideEventSink } from "../../../pkg/daemons/src/wide-events";
+import { collectScopeInventory } from "../../../pkg/daemons/src/memory";
+import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../../pkg/daemons/src/providers/pi";
+import { getServerLogger } from "../../../pkg/server/src";
+import type {
+  DaemonOutcome,
+  DaemonReviewConfig,
+  InitialMemoryShape,
+} from "../../workflows/daemon-review/src/types";
 
 const daemonExecutorLogger = getServerLogger(["bureau", "daemon-executor"]);
 
@@ -116,7 +120,7 @@ async function runGit(
 async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   const result = await runGit(cwd, args);
   if (!result.ok) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+    throw new Error(`git command failed: ${result.stderr || result.stdout}`);
   }
   return result.stdout;
 }
@@ -155,8 +159,10 @@ async function buildDaemonReviewInput(
 function filesTouchedFromDiff(diff: string): string[] {
   const filesTouched = new Set<string>();
   for (const line of diff.split("\n")) {
-    const match = line.match(/^\+\+\+ b\/(.+)$/);
-    if (match) filesTouched.add(match[1]);
+    const match = line.match(/^\+\+\+ (?:(?:b\/)?(.+)|\/dev\/null)$/);
+    if (match?.[1]) filesTouched.add(match[1]);
+    const binaryMatch = line.match(/^Binary files (?:a\/)?(.+) and (?:b\/)?(.+) differ$/);
+    if (binaryMatch) filesTouched.add(binaryMatch[2]);
   }
   return [...filesTouched].sort();
 }
@@ -233,104 +239,180 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
         sink(full);
       };
 
-      if (proposalMode) {
-        await copyRepoTree(reviewRoot, workingRoot);
-        await gitOrThrow(workingRoot, ["init", "-q", "-b", "base"]);
-        await gitOrThrow(workingRoot, ["add", "-A"]);
-        await gitOrThrow(workingRoot, [
-          "-c",
-          "user.email=daemon-review@local",
-          "-c",
-          "user.name=daemon-review",
-          "-c",
-          "commit.gpgsign=false",
-          "commit",
-          "-q",
-          "-m",
-          "baseline",
-        ]);
-      }
-
-      daemonExecutorLogger.info("running daemon {daemon} against {root}", {
-        daemon: spec.name,
-        root: workingRoot,
-      });
-      const wideEventBuffer = memorySink();
-      emit({
-        kind: "daemon.run.started",
-        route_name: spec.name,
-        data: {
-          runId,
-          provider: provider.name,
-          file: relative(process.cwd(), workingSpecFile),
-          scopeRoot: relative(process.cwd(), workingScopeRoot),
-          input: reviewInput,
-        },
-      });
-      const result = await provider.runUntilComplete({
-        cwd: workingScopeRoot,
-        systemPrompt,
-        maxTurns: config.maxTurns,
-        initialInput: reviewInput,
-        maxWallclockMs: DEFAULT_MAX_WALLCLOCK_MS,
-        extraTools: [deps.createTrackTool(memoryStore, runId)],
-        onTurnStart(turn) {
-          emit({
-            kind: "daemon.turn.started",
-            route_name: spec.name,
-            data: { runId, turn },
-          });
-        },
-        onToolCall(turn, toolName, args) {
-          const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
-          if (readPath) readPaths.add(readPath);
-          emit({
-            kind: "daemon.tool.called",
-            route_name: spec.name,
-            data: { runId, turn, toolName, checkedPath: readPath },
-          });
-        },
-        onTurnEnd(turn, info) {
-          emit({
-            kind: "daemon.turn.completed",
-            route_name: spec.name,
-            data: {
-              runId,
-              turn,
-              inputTokens: info.tokens.input,
-              outputTokens: info.tokens.output,
-              completeCalled: info.completeCalled,
-            },
-          });
-        },
-      });
-
-      let diff = "";
       try {
-        diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
-      } catch (error) {
-        daemonExecutorLogger.error("failed to capture daemon diff for {daemon}", {
-          daemon: spec.name,
-          error,
-        });
-      }
-      if (proposalMode) {
-        await rm(workingRoot, { recursive: true, force: true });
-      }
-      const wideEvents = [...events, ...wideEventBuffer.drain()];
+        if (proposalMode) {
+          await copyRepoTree(reviewRoot, workingRoot);
+          await gitOrThrow(workingRoot, ["init", "-q", "-b", "base"]);
+          await gitOrThrow(workingRoot, ["add", "-A"]);
+          await gitOrThrow(workingRoot, [
+            "-c",
+            "user.email=daemon-review@local",
+            "-c",
+            "user.name=daemon-review",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "-m",
+            "baseline",
+          ]);
+        }
 
-      if (result.ok === false) {
-        const failure = result as ProviderRunFailure;
+        daemonExecutorLogger.info("running daemon {daemon} against {root}", {
+          daemon: spec.name,
+          root: workingRoot,
+        });
+        const wideEventBuffer = memorySink();
         emit({
-          kind: "daemon.run.failed",
+          kind: "daemon.run.started",
           route_name: spec.name,
           data: {
             runId,
+            provider: provider.name,
+            file: relative(process.cwd(), workingSpecFile),
+            scopeRoot: relative(process.cwd(), workingScopeRoot),
+            input: reviewInput,
+          },
+        });
+        const result = await provider.runUntilComplete({
+          cwd: workingScopeRoot,
+          systemPrompt,
+          maxTurns: config.maxTurns,
+          initialInput: reviewInput,
+          maxWallclockMs: DEFAULT_MAX_WALLCLOCK_MS,
+          extraTools: [deps.createTrackTool(memoryStore, runId)],
+          onTurnStart(turn) {
+            emit({
+              kind: "daemon.turn.started",
+              route_name: spec.name,
+              data: { runId, turn },
+            });
+          },
+          onToolCall(turn, toolName, args) {
+            const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
+            if (readPath) readPaths.add(readPath);
+            emit({
+              kind: "daemon.tool.called",
+              route_name: spec.name,
+              data: { runId, turn, toolName, checkedPath: readPath },
+            });
+          },
+          onTurnEnd(turn, info) {
+            emit({
+              kind: "daemon.turn.completed",
+              route_name: spec.name,
+              data: {
+                runId,
+                turn,
+                inputTokens: info.tokens.input,
+                outputTokens: info.tokens.output,
+                completeCalled: info.completeCalled,
+              },
+            });
+          },
+        });
+
+        const diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
+        const wideEvents = [...events, ...wideEventBuffer.drain()];
+
+        if (result.ok === false) {
+          const failure = result as ProviderRunFailure;
+          emit({
+            kind: "daemon.run.failed",
+            route_name: spec.name,
+            data: {
+              runId,
+              reason: failure.reason,
+              message: failure.message,
+              turns: failure.turns,
+              input: failure.tokens.input,
+              output: failure.tokens.output,
+            },
+          });
+          await deps.saveDaemonRun(
+            {
+              daemon: spec.name,
+              scopeRoot: workingScopeRoot,
+              file: workingSpecFile,
+              runId,
+              provider: provider.name,
+              systemPrompt,
+              input: reviewInput,
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              status: "failed",
+              turns: failure.turns,
+              tokens: failure.tokens,
+              failure: {
+                reason: failure.reason,
+                message: failure.message,
+              },
+              events: wideEvents,
+            },
+            spec.scopeRoot,
+          );
+          return {
+            name: spec.name,
+            ok: false,
+            runId,
+            summary: "",
+            findings: [],
+            wideEvents,
+            turns: failure.turns,
+            tokens: failure.tokens,
+            viewedFiles: viewedFilesFromEvents(wideEvents),
+            changedFiles: filesTouchedFromDiff(diff),
+            initialMemory: summarizeInitialMemory(initialSnapshot),
+            diff: "",
             reason: failure.reason,
             message: failure.message,
-            turns: failure.turns,
-            input: failure.tokens.input,
-            output: failure.tokens.output,
+          };
+        }
+
+        const freshCheckedFiles = await deps.collectCheckedFiles(workingScopeRoot, readPaths);
+        const checkedFiles =
+          freshCheckedFiles.length > 0
+            ? freshCheckedFiles
+            : (initialSnapshot?.record.lastRun.checkedFiles ?? []);
+        const fileInventory = await deps.collectScopeInventory(workingScopeRoot);
+        const nextRecord = memoryStore.snapshot();
+        await deps.saveMemoryRecord(
+          {
+            ...deps.createEmptyMemoryRecord({
+              daemon: spec.name,
+              scopeRoot: workingScopeRoot,
+              baseCommit: initialSnapshot?.record.commit ?? null,
+            }),
+            ...nextRecord,
+            updatedAt: new Date().toISOString(),
+            lastRun: {
+              summary: result.payload.summary,
+              nextRunHint: result.payload.nextRunHint,
+              findings: result.payload.findings,
+              checkedFiles,
+              fileInventory,
+            },
+          },
+          workingScopeRoot,
+        );
+        for (const finding of result.payload.findings) {
+          emit({
+            kind: "daemon.finding",
+            route_name: spec.name,
+            data: { runId, ...finding },
+          });
+        }
+        emit({
+          kind: "daemon.run.completed",
+          route_name: spec.name,
+          data: {
+            runId,
+            turns: result.turns,
+            summary: result.payload.summary,
+            findingCount: result.payload.findings.length,
+            nextRunHint: result.payload.nextRunHint ?? null,
+            inputTokens: result.tokens.input,
+            outputTokens: result.tokens.output,
           },
         });
         await deps.saveDaemonRun(
@@ -344,115 +426,34 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
             input: reviewInput,
             startedAt,
             finishedAt: new Date().toISOString(),
-            status: "failed",
-            turns: failure.turns,
-            tokens: failure.tokens,
-            failure: {
-              reason: failure.reason,
-              message: failure.message,
-            },
+            status: "completed",
+            turns: result.turns,
+            tokens: result.tokens,
+            payload: result.payload,
             events: wideEvents,
           },
-          spec.scopeRoot,
+          workingScopeRoot,
         );
+
         return {
           name: spec.name,
-          ok: false,
+          ok: true,
           runId,
-          summary: "",
-          findings: [],
+          summary: result.payload.summary,
+          findings: result.payload.findings,
           wideEvents,
-          turns: failure.turns,
-          tokens: failure.tokens,
+          turns: result.turns,
+          tokens: result.tokens,
           viewedFiles: viewedFilesFromEvents(wideEvents),
           changedFiles: filesTouchedFromDiff(diff),
           initialMemory: summarizeInitialMemory(initialSnapshot),
-          diff: "",
-          reason: failure.reason,
-          message: failure.message,
+          diff,
         };
+      } finally {
+        if (proposalMode) {
+          await rm(workingRoot, { recursive: true, force: true });
+        }
       }
-
-      const freshCheckedFiles = await deps.collectCheckedFiles(workingScopeRoot, readPaths);
-      const checkedFiles =
-        freshCheckedFiles.length > 0
-          ? freshCheckedFiles
-          : (initialSnapshot?.record.lastRun.checkedFiles ?? []);
-      const fileInventory = await deps.collectScopeInventory(workingScopeRoot);
-      const nextRecord = memoryStore.snapshot();
-      await deps.saveMemoryRecord(
-        {
-          ...deps.createEmptyMemoryRecord({
-            daemon: spec.name,
-            scopeRoot: workingScopeRoot,
-            baseCommit: initialSnapshot?.record.commit ?? null,
-          }),
-          ...nextRecord,
-          updatedAt: new Date().toISOString(),
-          lastRun: {
-            summary: result.payload.summary,
-            nextRunHint: result.payload.nextRunHint,
-            findings: result.payload.findings,
-            checkedFiles,
-            fileInventory,
-          },
-        },
-        workingScopeRoot,
-      );
-      for (const finding of result.payload.findings) {
-        emit({
-          kind: "daemon.finding",
-          route_name: spec.name,
-          data: { runId, ...finding },
-        });
-      }
-      emit({
-        kind: "daemon.run.completed",
-        route_name: spec.name,
-        data: {
-          runId,
-          turns: result.turns,
-          summary: result.payload.summary,
-          findingCount: result.payload.findings.length,
-          nextRunHint: result.payload.nextRunHint ?? null,
-          inputTokens: result.tokens.input,
-          outputTokens: result.tokens.output,
-        },
-      });
-      await deps.saveDaemonRun(
-        {
-          daemon: spec.name,
-          scopeRoot: workingScopeRoot,
-          file: workingSpecFile,
-          runId,
-          provider: provider.name,
-          systemPrompt,
-          input: reviewInput,
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          status: "completed",
-          turns: result.turns,
-          tokens: result.tokens,
-          payload: result.payload,
-          events: wideEvents,
-        },
-        workingScopeRoot,
-      );
-
-      return {
-        name: spec.name,
-        ok: true,
-        runId,
-        summary: result.payload.summary,
-        findings: result.payload.findings,
-        wideEvents,
-        turns: result.turns,
-        tokens: result.tokens,
-        viewedFiles: viewedFilesFromEvents(wideEvents),
-        changedFiles: filesTouchedFromDiff(diff),
-        initialMemory: summarizeInitialMemory(initialSnapshot),
-        diff,
-      };
     },
   };
 }

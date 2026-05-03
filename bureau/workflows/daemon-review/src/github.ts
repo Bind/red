@@ -22,7 +22,7 @@ export function requiredEnv(name: string): string {
 }
 
 export function githubContextFromEnv(): GithubPrContext {
-  const [owner, repo] = requiredEnv("REPO").split("/");
+  const [owner, repo] = parseRepoFullName(requiredEnv("REPO"), "REPO");
   return {
     owner,
     repo,
@@ -34,6 +34,14 @@ export function githubContextFromEnv(): GithubPrContext {
     prBaseRef: requiredEnv("PR_BASE_REF"),
     prHeadRepoFullName: requiredEnv("PR_HEAD_REPO"),
   };
+}
+
+function parseRepoFullName(value: string, envName: string): [string, string] {
+  const [owner, repo] = value.split("/", 2);
+  if (!owner || !repo) {
+    throw new Error(`${envName} must be in owner/repo format`);
+  }
+  return [owner, repo];
 }
 
 export async function fetchChangedFiles(
@@ -139,12 +147,76 @@ export async function postProposalReview(
 }
 
 function githubFixupRemote(owner: string, repo: string, githubToken: string) {
-  const authenticatedUrl = `https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git`;
   return {
-    fetchUrl: authenticatedUrl,
-    pushUrl: authenticatedUrl,
+    fetchUrl: `https://github.com/${owner}/${repo}.git`,
+    pushUrl: `https://github.com/${owner}/${repo}.git`,
+    fetchGitConfigArgs: ["-c", `http.extraHeader=AUTHORIZATION: bearer ${githubToken}`],
+    pushGitConfigArgs: ["-c", `http.extraHeader=AUTHORIZATION: bearer ${githubToken}`],
     branchUrl: (branchName: string) => `https://github.com/${owner}/${repo}/tree/${branchName}`,
   };
+}
+
+async function publishGithubProposals(
+  context: GithubPrContext,
+  execution: DaemonReviewResult,
+): Promise<DaemonReviewResult["proposalArtifacts"]> {
+  const editingOutcomes = execution.outcomes.filter(
+    (outcome) => outcome.ok && outcome.diff.trim().length > 0,
+  );
+  if (editingOutcomes.length === 0) {
+    return execution.proposalArtifacts ?? null;
+  }
+
+  const prFiles = await fetchPrFiles(
+    context.githubToken,
+    context.owner,
+    context.repo,
+    context.prNumber,
+  );
+  const classifications = editingOutcomes.map((outcome) =>
+    classifyDaemonDiff(outcome.name, outcome.diff, prFiles),
+  );
+  const proposalArtifacts = {
+    edits: execution.proposalArtifacts?.edits ?? [],
+    classifications,
+  };
+
+  let fixup = null;
+  try {
+    fixup = await pushFixupBranch({
+      remote: githubFixupRemote(context.owner, context.repo, context.githubToken),
+      prNumber: context.prNumber,
+      prHeadSha: context.prHeadSha,
+      prHeadRef: context.prBaseRef,
+      classifications,
+      prPublisher: (input) =>
+        ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
+    });
+  } catch (error) {
+    reviewLogger.error("daemon fixup branch push failed", { error });
+  }
+
+  for (const classification of classifications) {
+    const body = buildReviewBody(classification, fixup);
+    try {
+      await postProposalReview(
+        context.githubToken,
+        context.owner,
+        context.repo,
+        context.prNumber,
+        classification.daemonName,
+        classification.inlineComments,
+        body,
+      );
+    } catch (error) {
+      reviewLogger.error("daemon review inline suggestions failed for {daemon}", {
+        daemon: classification.daemonName,
+        error,
+      });
+    }
+  }
+
+  return proposalArtifacts;
 }
 
 async function ensureStackedGithubPr(
@@ -222,7 +294,7 @@ export async function runGithubDaemonReview(context: GithubPrContext): Promise<D
     name: context.repo,
     token: context.githubToken,
   });
-  const [headOwner, headRepo] = context.prHeadRepoFullName.split("/", 2);
+  const [headOwner, headRepo] = parseRepoFullName(context.prHeadRepoFullName, "PR_HEAD_REPO");
   const branchRepo = new GitHubRepo({
     owner: headOwner,
     name: headRepo,
@@ -249,61 +321,12 @@ export async function runGithubDaemonReview(context: GithubPrContext): Promise<D
     await writeFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   }
 
-  const editingOutcomes = execution.outcomes.filter(
-    (outcome) => outcome.ok && outcome.diff.trim().length > 0,
-  );
-  let proposalArtifacts = execution.proposalArtifacts;
-  if (editingOutcomes.length > 0) {
-    try {
-      const prFiles = await fetchPrFiles(
-        context.githubToken,
-        context.owner,
-        context.repo,
-        context.prNumber,
-      );
-      const classifications = editingOutcomes.map((outcome) =>
-        classifyDaemonDiff(outcome.name, outcome.diff, prFiles),
-      );
-      proposalArtifacts = {
-        edits: execution.proposalArtifacts?.edits ?? [],
-        classifications,
-      };
-      let fixup = null;
-      try {
-        fixup = await pushFixupBranch({
-          remote: githubFixupRemote(context.owner, context.repo, context.githubToken),
-          prNumber: context.prNumber,
-          prHeadSha: context.prHeadSha,
-          prHeadRef: context.prBaseRef,
-          classifications,
-          prPublisher: (input) =>
-            ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
-        });
-      } catch (error) {
-        reviewLogger.error("daemon fixup branch push failed", { error });
-      }
-      for (const classification of classifications) {
-        const body = buildReviewBody(classification, fixup);
-        try {
-          await postProposalReview(
-            context.githubToken,
-            context.owner,
-            context.repo,
-            context.prNumber,
-            classification.daemonName,
-            classification.inlineComments,
-            body,
-          );
-        } catch (error) {
-          reviewLogger.error("daemon review inline suggestions failed for {daemon}", {
-            daemon: classification.daemonName,
-            error,
-          });
-        }
-      }
-    } catch (error) {
-      reviewLogger.error("daemon review proposal posting failed", { error });
-    }
+  let proposalArtifacts: DaemonReviewResult["proposalArtifacts"] | null =
+    execution.proposalArtifacts ?? null;
+  try {
+    proposalArtifacts = await publishGithubProposals(context, execution);
+  } catch (error) {
+    reviewLogger.error("daemon review proposal publishing failed", { error });
   }
 
   return {

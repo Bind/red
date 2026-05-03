@@ -83,7 +83,7 @@ async function runGit(
 async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   const result = await runGit(cwd, args);
   if (!result.ok) {
-    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+    throw new Error(`git command failed: ${result.stderr || result.stdout}`);
   }
   return result.stdout;
 }
@@ -102,7 +102,14 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
         const remote = await cloneOptions.repo.getReadRemote(cloneOptions.ref);
         await gitOrThrow(destinationRoot, ["init", "-q"]);
         await gitOrThrow(destinationRoot, ["remote", "add", "origin", remote.fetchUrl]);
-        await gitOrThrow(destinationRoot, ["fetch", "--depth", "1", "origin", remote.ref]);
+        await gitOrThrow(destinationRoot, [
+          ...(remote.gitConfigArgs ?? []),
+          "fetch",
+          "--depth",
+          "1",
+          "origin",
+          remote.ref,
+        ]);
         await gitOrThrow(destinationRoot, ["checkout", "--detach", "FETCH_HEAD"]);
 
         const requestedCwd = resolve(destinationRoot, cloneOptions.cwd ?? ".");

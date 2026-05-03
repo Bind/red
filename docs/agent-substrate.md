@@ -211,16 +211,17 @@ The packaging should look roughly like this:
 
 ```text
 bureau/
-  daemon-review/
-    agent.ts
-    skills/
-      summarize-diff/
-        SKILL.md
-  triage/
-    agent.ts
-    skills/
-      investigate-failure/
-        SKILL.md
+  agents/
+    daemon-review/
+      agent.ts
+      skills/
+        summarize-diff/
+          SKILL.md
+    triage/
+      agent.ts
+      skills/
+        investigate-failure/
+          SKILL.md
   shared/
     skills/
       shell-audit/
@@ -244,7 +245,7 @@ mental model.
 
 Each agent should expose a single Bun-native entrypoint at:
 
-- `bureau/<agent-name>/agent.ts`
+- `bureau/agents/<agent-name>/agent.ts`
 
 That file should expose a single obvious public agent instance, usually via a
 small named factory:
@@ -275,7 +276,7 @@ This is the main part of Flue's ergonomics that we want to preserve.
 
 We should infer as much as possible from packaging conventions:
 
-- the agent entrypoint is always `bureau/<agent-name>/agent.ts`
+- the agent entrypoint is always `bureau/agents/<agent-name>/agent.ts`
 - the agent name is the folder name
 - agent-local skills are adjacent by path
 
@@ -295,17 +296,27 @@ We should keep the first SDK extremely small and explicit.
 
 The most important parts of the current substrate are:
 
+- plain-code workflows under `bureau/workflows/**`
+- bureau-owned agents under `bureau/agents/**`
 - named factories like `daemonReviewer()` or `triage()`
   - small wrappers that return agent instances with a uniform `run(...)` method
 - `BureauAgentContext<Input, Output>`
   - the Bun-native runtime context passed into every agent
-- `PreparedWorkspace`
+- `BureauSandboxProvider` and repo-backed `clone(...)`
   - the seeded codebase handoff from the execution backend
 - `BureauToolRegistry`
   - runtime tool lookup that stays distinct from packaged skills
 - a thin invocation/runtime layer
 - repo-backed sandbox preparation
 - workflow-owned orchestration for daemon-review
+
+What exists now in code:
+
+- `bureau/workflows/daemon-review/**`
+- `bureau/agents/librarian/agent.ts`
+- `bureau/agents/daemon-executor/agent.ts`
+- `bureau/sandbox.ts`
+- `bureau/repo.ts`
 
 What is intentionally *not* part of the current PR:
 
