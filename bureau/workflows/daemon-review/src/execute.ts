@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { type DaemonSpec } from "../../../../pkg/daemons/src/index";
+import type { WorkflowObserver } from "../../../observability";
 import { reviewParallelism, type RoutedDaemon } from "./routing";
 import type { DaemonOutcome } from "./types";
 
@@ -10,6 +11,7 @@ export type DaemonExecutorInstance = {
     trustedRoot: string;
     reviewRoot: string;
     relevantFiles: string[];
+    observer?: WorkflowObserver;
   }): Promise<DaemonOutcome>;
 };
 
@@ -69,6 +71,7 @@ export async function runRoutedDaemons(
   trustedRoot: string,
   reviewRoot: string,
   executor: DaemonExecutorInstance,
+  observer?: WorkflowObserver,
 ): Promise<DaemonOutcome[]> {
   const outcomes = new Array<DaemonOutcome>(routedDaemons.length);
   const parallelism = reviewParallelism(routedDaemons.length);
@@ -91,6 +94,7 @@ export async function runRoutedDaemons(
           trustedRoot,
           reviewRoot,
           relevantFiles: routed.relevantFiles,
+          observer,
         });
       } catch (error) {
         errors.push(
