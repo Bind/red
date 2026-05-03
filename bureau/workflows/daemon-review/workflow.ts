@@ -156,6 +156,7 @@ export async function runDaemonReviewWorkflow(
       return result;
     });
 
+    await sb.cleanup();
     observer.event("workflow.run.completed", {
       durationMs: Date.now() - startedAt,
       status: "completed",
@@ -195,9 +196,8 @@ export async function runDaemonReviewWorkflow(
       workflowRunId: observer.runId,
       error,
     });
-    throw error;
-  } finally {
     await sb.cleanup();
+    throw error;
   }
 }
 

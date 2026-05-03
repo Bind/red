@@ -14,11 +14,13 @@ import {
   normalizeCheckedPath,
   type AgentProvider,
   type ProviderRunFailure,
+  type ProviderRunResult,
   loadMemorySnapshot,
   createTrackTool,
   type DaemonSpec,
 } from "../../../pkg/daemons/src/index";
-import { createWideEvent, memorySink, stdoutSink, type WideEvent } from "../../../pkg/daemons/src/wide-events";
+import { createWideEvent, stdoutSink, type WideEvent } from "../../../pkg/daemons/src/wide-events";
+import { runAgent } from "../../agent-runtime";
 import type { WorkflowObserver } from "../../observability";
 import { collectScopeInventory } from "../../../pkg/daemons/src/memory";
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../../pkg/daemons/src/providers/pi";
@@ -232,19 +234,24 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
       const startedAt = new Date().toISOString();
       const memoryStore = await deps.createDaemonMemoryStore(spec.name, workingScopeRoot);
       const readPaths = new Set<string>();
-      const events: WideEvent[] = [];
+      const findingEvents: WideEvent[] = [];
       const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(initialSnapshot));
       const fallbackSink = observer ? null : stdoutSink();
       const workflowContext = observer
         ? { workflowRunId: observer.runId, workflowName: observer.workflowName }
         : {};
-      const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
-        const enriched = {
-          ...event,
-          data: { ...workflowContext, ...event.data },
-        };
-        const full = createWideEvent(enriched);
-        events.push(full);
+      const emitFinding = (data: Record<string, unknown>) => {
+        const full = createWideEvent({
+          kind: "agent.finding",
+          route_name: spec.name,
+          data: {
+            agentName: spec.name,
+            agentRunId: runId,
+            ...workflowContext,
+            ...data,
+          },
+        });
+        findingEvents.push(full);
         if (observer) {
           observer.emit(full);
         } else if (fallbackSink) {
@@ -275,73 +282,67 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
           daemon: spec.name,
           root: workingRoot,
         });
-        const wideEventBuffer = memorySink();
-        emit({
-          kind: "agent.run.started",
-          route_name: spec.name,
-          data: {
-            runId,
-            provider: provider.name,
-            file: relative(process.cwd(), workingSpecFile),
-            scopeRoot: relative(process.cwd(), workingScopeRoot),
-            input: reviewInput,
+
+        const { result, events: agentEvents } = await runAgent<ProviderRunResult>(
+          {
+            agentName: spec.name,
+            observer,
+            agentRunId: runId,
+            startData: {
+              provider: provider.name,
+              file: relative(process.cwd(), workingSpecFile),
+              scopeRoot: relative(process.cwd(), workingScopeRoot),
+              input: reviewInput,
+            },
+            toolCallExtractor: (_turn, toolName, args) => {
+              const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
+              if (readPath) readPaths.add(readPath);
+              return readPath ? { checkedPath: readPath } : null;
+            },
+            classifyResult: (r) => {
+              if (r.ok === false) {
+                const failure = r as ProviderRunFailure;
+                return {
+                  kind: "failed",
+                  data: {
+                    reason: failure.reason,
+                    message: failure.message,
+                    inputTokens: failure.tokens.input,
+                    outputTokens: failure.tokens.output,
+                  },
+                };
+              }
+              return {
+                kind: "completed",
+                data: {
+                  summary: r.payload.summary,
+                  findingCount: r.payload.findings.length,
+                  nextRunHint: r.payload.nextRunHint ?? null,
+                  inputTokens: r.tokens.input,
+                  outputTokens: r.tokens.output,
+                },
+              };
+            },
           },
-        });
-        const result = await provider.runUntilComplete({
-          cwd: workingScopeRoot,
-          systemPrompt,
-          maxTurns: config.maxTurns,
-          initialInput: reviewInput,
-          maxWallclockMs: DEFAULT_MAX_WALLCLOCK_MS,
-          extraTools: [deps.createTrackTool(memoryStore, runId)],
-          onTurnStart(turn) {
-            emit({
-              kind: "agent.turn.started",
-              route_name: spec.name,
-              data: { runId, turn },
-            });
-          },
-          onToolCall(turn, toolName, args) {
-            const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
-            if (readPath) readPaths.add(readPath);
-            emit({
-              kind: "agent.tool.called",
-              route_name: spec.name,
-              data: { runId, turn, toolName, checkedPath: readPath },
-            });
-          },
-          onTurnEnd(turn, info) {
-            emit({
-              kind: "agent.turn.completed",
-              route_name: spec.name,
-              data: {
-                runId,
-                turn,
-                inputTokens: info.tokens.input,
-                outputTokens: info.tokens.output,
-                completeCalled: info.completeCalled,
-              },
-            });
-          },
-        });
+          (hooks) =>
+            provider.runUntilComplete({
+              cwd: workingScopeRoot,
+              systemPrompt,
+              maxTurns: config.maxTurns,
+              initialInput: reviewInput,
+              maxWallclockMs: DEFAULT_MAX_WALLCLOCK_MS,
+              extraTools: [deps.createTrackTool(memoryStore, runId)],
+              onTurnStart: hooks.onTurnStart,
+              onToolCall: hooks.onToolCall,
+              onTurnEnd: hooks.onTurnEnd,
+            }),
+        );
 
         const diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
-        const wideEvents = [...events, ...wideEventBuffer.drain()];
 
         if (result.ok === false) {
           const failure = result as ProviderRunFailure;
-          emit({
-            kind: "agent.run.failed",
-            route_name: spec.name,
-            data: {
-              runId,
-              reason: failure.reason,
-              message: failure.message,
-              turns: failure.turns,
-              input: failure.tokens.input,
-              output: failure.tokens.output,
-            },
-          });
+          const wideEvents = [...agentEvents, ...findingEvents];
           await deps.saveDaemonRun(
             {
               daemon: spec.name,
@@ -409,25 +410,9 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
           workingScopeRoot,
         );
         for (const finding of result.payload.findings) {
-          emit({
-            kind: "agent.finding",
-            route_name: spec.name,
-            data: { runId, ...finding },
-          });
+          emitFinding(finding);
         }
-        emit({
-          kind: "agent.run.completed",
-          route_name: spec.name,
-          data: {
-            runId,
-            turns: result.turns,
-            summary: result.payload.summary,
-            findingCount: result.payload.findings.length,
-            nextRunHint: result.payload.nextRunHint ?? null,
-            inputTokens: result.tokens.input,
-            outputTokens: result.tokens.output,
-          },
-        });
+        const wideEvents = [...agentEvents, ...findingEvents];
         await deps.saveDaemonRun(
           {
             daemon: spec.name,
