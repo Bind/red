@@ -3,11 +3,17 @@ import type { CompletePayload } from "../schema";
 
 export type ProviderTokenUsage = { input: number; output: number };
 
+export type ProviderSessionSnapshot = {
+  systemPrompt: string;
+  messages: unknown[];
+};
+
 export type ProviderRunSuccess = {
   ok: true;
   payload: CompletePayload;
   turns: number;
   tokens: ProviderTokenUsage;
+  session: ProviderSessionSnapshot;
 };
 
 export type ProviderRunFailure = {
@@ -16,6 +22,7 @@ export type ProviderRunFailure = {
   message: string;
   turns: number;
   tokens: ProviderTokenUsage;
+  session: ProviderSessionSnapshot;
 };
 
 export type ProviderRunResult = ProviderRunSuccess | ProviderRunFailure;

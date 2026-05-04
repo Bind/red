@@ -25,6 +25,7 @@ export type BureauStoredSession = {
 
 export type BureauSessionStore = {
   createRoot(input: {
+    sessionId?: string;
     agentName: string;
     args: unknown;
     mode?: string | null;
@@ -45,8 +46,7 @@ export function createLocalBureauSessionStore(input: {
   const sessionsRoot = join(input.rootDir, ".bureau", "sessions");
 
   return {
-    async createRoot({ agentName, args, mode = null, sourceSha = null, snapshot }) {
-      const sessionId = createSessionId();
+    async createRoot({ sessionId = createBureauSessionId(), agentName, args, mode = null, sourceSha = null, snapshot }) {
       const timestamp = new Date().toISOString();
       const meta: BureauSessionMeta = {
         sessionId,
@@ -82,9 +82,12 @@ export function createLocalBureauSessionStore(input: {
     },
 
     async list(filter = {}) {
-      let entries: Awaited<ReturnType<typeof readdir>> = [];
+      let entries: Array<{ name: string; isDirectory(): boolean }> = [];
       try {
-        entries = await readdir(sessionsRoot, { withFileTypes: true });
+        entries = (await readdir(sessionsRoot, { withFileTypes: true })).map((entry) => ({
+          name: String(entry.name),
+          isDirectory: () => entry.isDirectory(),
+        }));
       } catch (error) {
         if (isMissingFileError(error)) return [];
         throw error;
@@ -119,7 +122,7 @@ async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
-function createSessionId(): string {
+export function createBureauSessionId(): string {
   return `${encodeTime(Date.now())}${randomBase32(16)}`;
 }
 

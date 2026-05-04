@@ -7,6 +7,7 @@ import {
   createRouteDecisionTool,
   type RouteDecisionCapture,
 } from "../../../pkg/daemons/src/tools/route-decision";
+import { runBureauAgent } from "../../runtime";
 import { agent, type BureauAgentContext } from "../../sdk";
 import {
   librarianModel,
@@ -65,16 +66,14 @@ const librarianAgent = agent<LibrarianInput>()
     throw new Error("route_decision tool capture was not configured");
   });
 
-function buildContext(input: LibrarianInput, cwd: string): BureauAgentContext<LibrarianInput> {
+function buildContext(cwd: string): Omit<BureauAgentContext<LibrarianInput>, "sessionId" | "input"> {
   const root = resolve(cwd);
   const agentDir = join(root, "bureau", "agents", "librarian");
   return {
     name: "librarian",
-    sessionId: `librarian_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     sourceRoot: root,
     root,
     cwd: root,
-    input,
     agentDir,
     assets: { skills: [] },
     emit() {},
@@ -126,20 +125,21 @@ export function librarian(options: LibrarianOptions = {}): Librarian {
         apiKey: apiKey!,
       });
 
-    const ctx = buildContext(input, options.cwd ?? process.cwd());
+    const ctx = buildContext(options.cwd ?? process.cwd());
     const capture: RouteDecisionCapture = {};
-    const plan = await librarianAgent
+    const definition = librarianAgent
       .tools(() => [createRouteDecisionTool(capture)])
-      .build()
-      .run(ctx);
-    const result = await provider.runUntilComplete({
-      cwd: plan.cwd ?? ctx.cwd,
-      systemPrompt: plan.systemPrompt,
-      initialInput: plan.initialInput,
+      .build();
+    const execution = await runBureauAgent({
+      definition,
+      context: ctx,
+      input,
+      args: input,
+      provider,
       maxTurns: 4,
       maxWallclockMs: 120_000,
-      extraTools: plan.tools ?? [],
     });
+    const result = execution.result;
 
     if (!result.ok) {
       throw new Error(`bureau librarian failed: ${result.reason}: ${result.message}`);

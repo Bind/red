@@ -51,6 +51,10 @@ type MockScenario = {
 
 function mockProvider(scenario: MockScenario): AgentProvider {
   const perTurnTokens = scenario.perTurnTokens ?? { input: 10, output: 5 };
+  const session = {
+    systemPrompt: "mock daemon prompt",
+    messages: [{ role: "user", content: "Begin your run." }],
+  };
   return {
     name: "mock",
     async runUntilComplete(opts: ProviderRunOptions): Promise<ProviderRunResult> {
@@ -68,7 +72,7 @@ function mockProvider(scenario: MockScenario): AgentProvider {
         opts.onTurnEnd?.(i, { tokens: perTurnTokens, completeCalled });
       }
       if (scenario.outcome.kind === "complete") {
-        return { ok: true, payload: scenario.outcome.payload, turns, tokens };
+        return { ok: true, payload: scenario.outcome.payload, turns, tokens, session };
       }
       if (scenario.outcome.kind === "turn_budget") {
         return {
@@ -77,6 +81,7 @@ function mockProvider(scenario: MockScenario): AgentProvider {
           message: `exceeded max turns (${opts.maxTurns})`,
           turns,
           tokens,
+          session,
         };
       }
       if (scenario.outcome.kind === "wallclock") {
@@ -86,6 +91,7 @@ function mockProvider(scenario: MockScenario): AgentProvider {
           message: `exceeded max wallclock (${opts.maxWallclockMs}ms)`,
           turns,
           tokens,
+          session,
         };
       }
       return {
@@ -94,6 +100,7 @@ function mockProvider(scenario: MockScenario): AgentProvider {
         message: scenario.outcome.message,
         turns,
         tokens,
+        session,
       };
     },
   };
@@ -242,7 +249,16 @@ describe("runner", () => {
         name: "capture",
         async runUntilComplete(opts: ProviderRunOptions): Promise<ProviderRunResult> {
           capturedSystemPrompt = opts.systemPrompt;
-          return { ok: true, payload: { summary: "done", findings: [] }, turns: 1, tokens: { input: 0, output: 0 } };
+          return {
+            ok: true,
+            payload: { summary: "done", findings: [] },
+            turns: 1,
+            tokens: { input: 0, output: 0 },
+            session: {
+              systemPrompt: opts.systemPrompt,
+              messages: [{ role: "user", content: opts.initialInput }],
+            },
+          };
         },
       },
     });

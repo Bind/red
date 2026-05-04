@@ -227,7 +227,13 @@ async function runOnce(
   }
 
   if (capture.payload) {
-    return { ok: true, payload: capture.payload, turns: turnIndex, tokens };
+    return {
+      ok: true,
+      payload: capture.payload,
+      turns: turnIndex,
+      tokens,
+      session: snapshotAgentState(agent, options.systemPrompt),
+    };
   }
 
   return {
@@ -236,6 +242,7 @@ async function runOnce(
     message: failureMessage || "agent ended without calling complete",
     turns: turnIndex,
     tokens,
+    session: snapshotAgentState(agent, options.systemPrompt),
   };
 }
 
@@ -262,4 +269,14 @@ function extractProviderError(message: unknown): string | undefined {
   } catch {
     return raw;
   }
+}
+
+function snapshotAgentState(
+  agent: Agent,
+  systemPrompt: string,
+): { systemPrompt: string; messages: unknown[] } {
+  return {
+    systemPrompt: typeof agent.state.systemPrompt === "string" ? agent.state.systemPrompt : systemPrompt,
+    messages: Array.isArray(agent.state.messages) ? [...agent.state.messages] : [],
+  };
 }
