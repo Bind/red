@@ -33,6 +33,15 @@ export type BureauSessionStore = {
     snapshot: PiSessionSnapshot;
   }): Promise<BureauStoredSession>;
   get(sessionId: string): Promise<BureauStoredSession | null>;
+  createChild(input: {
+    sessionId?: string;
+    parentSessionId: string;
+    agentName: string;
+    args: unknown;
+    mode?: string | null;
+    sourceSha?: string | null;
+    snapshot: PiSessionSnapshot;
+  }): Promise<BureauStoredSession>;
   list(filter?: {
     agentName?: string;
     parentSessionId?: string | null;
@@ -79,6 +88,35 @@ export function createLocalBureauSessionStore(input: {
         if (isMissingFileError(error)) return null;
         throw error;
       }
+    },
+
+    async createChild({
+      sessionId = createBureauSessionId(),
+      parentSessionId,
+      agentName,
+      args,
+      mode = null,
+      sourceSha = null,
+      snapshot,
+    }) {
+      const timestamp = new Date().toISOString();
+      const meta: BureauSessionMeta = {
+        sessionId,
+        parentSessionId,
+        agentName,
+        args,
+        mode,
+        sourceSha,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      const dir = join(sessionsRoot, sessionId);
+
+      await mkdir(dir, { recursive: true });
+      await writeJson(join(dir, "session.json"), snapshot);
+      await writeJson(join(dir, "meta.json"), meta);
+
+      return { snapshot, meta };
     },
 
     async list(filter = {}) {

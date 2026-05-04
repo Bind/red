@@ -1,4 +1,4 @@
-import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
+import { Agent, type AgentEvent, type AgentMessage } from "@mariozechner/pi-agent-core";
 import {
   getEnvApiKey,
   getModel,
@@ -151,6 +151,9 @@ async function runOnce(
 
   agent.state.model = model;
   agent.state.systemPrompt = options.systemPrompt;
+  agent.state.messages = Array.isArray(options.messages)
+    ? ([...options.messages] as AgentMessage[])
+    : [];
   agent.state.tools = [...codingTools, ...(options.extraTools ?? []), completeTool];
 
   const unsubscribe = agent.subscribe((event: AgentEvent) => {
@@ -166,6 +169,12 @@ async function runOnce(
         options.onToolCall?.(turnIndex, event.toolName, event.args);
         if (event.toolName === COMPLETE_TOOL_NAME) {
           completeCalledThisTurn = true;
+        }
+        break;
+      case "message_update":
+        if (terminalTurnObserved) break;
+        if (event.assistantMessageEvent.type === "text_delta") {
+          options.onAssistantTextDelta?.(turnIndex, event.assistantMessageEvent.delta);
         }
         break;
       case "turn_end": {

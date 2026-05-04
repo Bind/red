@@ -65,14 +65,24 @@ describe("resolveBureauAgent", () => {
     expect(resolved.context.root).toBe(rootDir);
     expect(resolved.context.cwd).toBe(rootDir);
 
+    const builtInput = resolved.buildInput("hi from operator");
+    expect(builtInput).toEqual({
+      args: {
+        daemonName: "docs-command-surface",
+        relevantFiles: ["apps/docs/README.md"],
+      },
+      userInput: "hi from operator",
+    });
+
     const plan = await resolved.definition.run({
       ...resolved.context,
       sessionId: "ses_test",
-      input: resolved.args,
+      input: builtInput,
     });
 
     expect(plan.initialInput).toContain("\"daemonName\": \"docs-command-surface\"");
     expect(plan.initialInput).toContain("\"relevantFiles\"");
+    expect(plan.initialInput).toContain("User request:\nhi from operator");
   });
 
   test("fails clearly when the bureau agent name does not resolve", async () => {

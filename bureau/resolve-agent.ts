@@ -36,8 +36,11 @@ export async function resolveBureauAgent(input: {
       args: input.args,
       definition: createDaemonExecutorDefinition(),
       context: buildDaemonExecutorContext(input.root),
-      buildInput() {
-        return input.args;
+      buildInput(userInput) {
+        return {
+          args: input.args,
+          userInput,
+        };
       },
     };
   }
@@ -46,7 +49,7 @@ export async function resolveBureauAgent(input: {
 }
 
 function createDaemonExecutorDefinition() {
-  return agent<unknown>()
+  return agent<{ args: unknown; userInput: string | null }>()
     .instructions(
       [
         "You are the bureau daemon executor.",
@@ -54,7 +57,11 @@ function createDaemonExecutorDefinition() {
         "Stay within the daemon's declared scope and use the available runtime tools.",
       ].join(" "),
     )
-    .initialInput((ctx) => JSON.stringify(ctx.input, null, 2))
+    .initialInput((ctx) => {
+      const payload = JSON.stringify(ctx.input.args, null, 2);
+      if (!ctx.input.userInput) return payload;
+      return `${payload}\n\nUser request:\n${ctx.input.userInput}`;
+    })
     .build();
 }
 
