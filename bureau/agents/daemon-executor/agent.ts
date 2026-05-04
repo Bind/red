@@ -22,6 +22,8 @@ import { createWideEvent, memorySink, stdoutSink, type WideEvent, type WideEvent
 import { collectScopeInventory } from "../../../pkg/daemons/src/memory";
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../../pkg/daemons/src/providers/pi";
 import { getServerLogger } from "../../../pkg/server/src";
+import { runBureauAgent } from "../../runtime";
+import { agent, type BureauAgentContext } from "../../sdk";
 import type {
   DaemonOutcome,
   DaemonReviewConfig,
@@ -197,6 +199,28 @@ function viewedFilesFromEvents(outcomeWideEvents: DaemonOutcome["wideEvents"]): 
   return [...files].sort();
 }
 
+function buildContext(input: {
+  trustedRoot: string;
+  reviewRoot: string;
+  workingScopeRoot: string;
+}): Omit<BureauAgentContext<DaemonExecutionInput>, "sessionId" | "input"> {
+  return {
+    name: "daemon-executor",
+    sourceRoot: input.trustedRoot,
+    root: input.reviewRoot,
+    cwd: input.workingScopeRoot,
+    agentDir: join(input.trustedRoot, "bureau", "agents", "daemon-executor"),
+    assets: { skills: [] },
+    emit() {},
+    resolveAsset(relativePath: string) {
+      return join(input.trustedRoot, "bureau", "agents", "daemon-executor", relativePath);
+    },
+    resolveSharedAsset(relativePath: string) {
+      return join(input.trustedRoot, "bureau", "shared", relativePath);
+    },
+  };
+}
+
 export function daemonExecutor(deps: DaemonExecutorDeps = {
   loadMemorySnapshot,
   createDaemonMemoryStore,
@@ -233,6 +257,15 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
       const readPaths = new Set<string>();
       const events: WideEvent[] = [];
       const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(initialSnapshot));
+      const trackTool = deps.createTrackTool(memoryStore, runId);
+      const definition = agent<DaemonExecutionInput>()
+        .plan(() => ({
+          systemPrompt,
+          initialInput: reviewInput,
+          tools: [trackTool],
+          cwd: workingScopeRoot,
+        }))
+        .build();
       const sink = stdoutSink();
       const emit = (event: Omit<WideEvent, "event_id" | "ts">) => {
         const full = createWideEvent(event);
@@ -275,43 +308,54 @@ export function daemonExecutor(deps: DaemonExecutorDeps = {
             input: reviewInput,
           },
         });
-        const result = await provider.runUntilComplete({
-          cwd: workingScopeRoot,
-          systemPrompt,
+        const execution = await runBureauAgent({
+          definition,
+          context: buildContext({
+            trustedRoot,
+            reviewRoot,
+            workingScopeRoot,
+          }),
+          input,
+          args: {
+            daemonName: spec.name,
+            relevantFiles,
+          },
+          provider,
           maxTurns: config.maxTurns,
-          initialInput: reviewInput,
           maxWallclockMs: DEFAULT_MAX_WALLCLOCK_MS,
-          extraTools: [deps.createTrackTool(memoryStore, runId)],
-          onTurnStart(turn) {
-            emit({
-              kind: "daemon.turn.started",
-              route_name: spec.name,
-              data: { runId, turn },
-            });
-          },
-          onToolCall(turn, toolName, args) {
-            const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
-            if (readPath) readPaths.add(readPath);
-            emit({
-              kind: "daemon.tool.called",
-              route_name: spec.name,
-              data: { runId, turn, toolName, checkedPath: readPath },
-            });
-          },
-          onTurnEnd(turn, info) {
-            emit({
-              kind: "daemon.turn.completed",
-              route_name: spec.name,
-              data: {
-                runId,
-                turn,
-                inputTokens: info.tokens.input,
-                outputTokens: info.tokens.output,
-                completeCalled: info.completeCalled,
-              },
-            });
+          providerCallbacks: {
+            onTurnStart(turn) {
+              emit({
+                kind: "daemon.turn.started",
+                route_name: spec.name,
+                data: { runId, turn },
+              });
+            },
+            onToolCall(turn, toolName, args) {
+              const readPath = extractCheckedPath(workingScopeRoot, toolName, args);
+              if (readPath) readPaths.add(readPath);
+              emit({
+                kind: "daemon.tool.called",
+                route_name: spec.name,
+                data: { runId, turn, toolName, checkedPath: readPath },
+              });
+            },
+            onTurnEnd(turn, info) {
+              emit({
+                kind: "daemon.turn.completed",
+                route_name: spec.name,
+                data: {
+                  runId,
+                  turn,
+                  inputTokens: info.tokens.input,
+                  outputTokens: info.tokens.output,
+                  completeCalled: info.completeCalled,
+                },
+              });
+            },
           },
         });
+        const result = execution.result;
 
         const diff = await gitOrThrow(workingRoot, ["diff", "--no-color"]);
         const wideEvents = [...events, ...wideEventBuffer.drain()];
