@@ -10,6 +10,7 @@ export type ResolvedBureauAgent<Input = unknown> = {
   args: Input;
   definition: BureauAgentDefinition<Input>;
   context: Omit<BureauAgentContext<Input>, "sessionId" | "input">;
+  buildInput(userInput: string | null): Input;
 };
 
 export async function resolveBureauAgent(input: {
@@ -23,6 +24,9 @@ export async function resolveBureauAgent(input: {
       args: input.args as LibrarianInput,
       definition: createLibrarianDefinition(),
       context: buildLibrarianContext(input.root),
+      buildInput() {
+        return input.args as LibrarianInput;
+      },
     };
   }
 
@@ -32,6 +36,9 @@ export async function resolveBureauAgent(input: {
       args: input.args,
       definition: createDaemonExecutorDefinition(),
       context: buildDaemonExecutorContext(input.root),
+      buildInput() {
+        return input.args;
+      },
     };
   }
 
