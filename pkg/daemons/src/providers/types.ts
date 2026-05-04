@@ -31,12 +31,14 @@ export type ProviderRunCallbacks = {
   onTurnStart?(turnIndex: number): void;
   onTurnEnd?(turnIndex: number, info: { tokens: ProviderTokenUsage; completeCalled: boolean }): void;
   onToolCall?(turnIndex: number, toolName: string, args?: unknown): void;
+  onAssistantTextDelta?(turnIndex: number, delta: string): void;
 };
 
 export type ProviderRunOptions = ProviderRunCallbacks & {
   cwd: string;
   systemPrompt: string;
   initialInput: string;
+  messages?: unknown[];
   maxTurns: number;
   maxWallclockMs: number;
   extraTools?: AgentTool<any>[];
