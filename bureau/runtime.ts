@@ -1,4 +1,4 @@
-import type { AgentProvider, ProviderRunResult } from "../pkg/daemons/src/providers/types";
+import type { AgentProvider, ProviderRunCallbacks, ProviderRunResult } from "../pkg/daemons/src/providers/types";
 import {
   createBureauSessionId,
   createLocalBureauSessionStore,
@@ -17,6 +17,7 @@ export async function runBureauAgent<Input>(input: {
   maxWallclockMs: number;
   mode?: string | null;
   sourceSha?: string | null;
+  providerCallbacks?: ProviderRunCallbacks;
 }): Promise<{
   context: BureauAgentContext<Input>;
   plan: Awaited<ReturnType<BureauAgentDefinition<Input>["run"]>>;
@@ -37,6 +38,7 @@ export async function runBureauAgent<Input>(input: {
     maxTurns: input.maxTurns,
     maxWallclockMs: input.maxWallclockMs,
     extraTools: plan.tools ?? [],
+    ...input.providerCallbacks,
   });
   const store = createLocalBureauSessionStore({ rootDir: ctx.root });
   const session = await store.createRoot({
