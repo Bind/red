@@ -66,7 +66,9 @@ const librarianAgent = agent<LibrarianInput>()
     throw new Error("route_decision tool capture was not configured");
   });
 
-function buildContext(cwd: string): Omit<BureauAgentContext<LibrarianInput>, "sessionId" | "input"> {
+export function buildLibrarianContext(
+  cwd: string,
+): Omit<BureauAgentContext<LibrarianInput>, "sessionId" | "input"> {
   const root = resolve(cwd);
   const agentDir = join(root, "bureau", "agents", "librarian");
   return {
@@ -125,11 +127,9 @@ export function librarian(options: LibrarianOptions = {}): Librarian {
         apiKey: apiKey!,
       });
 
-    const ctx = buildContext(options.cwd ?? process.cwd());
+    const ctx = buildLibrarianContext(options.cwd ?? process.cwd());
     const capture: RouteDecisionCapture = {};
-    const definition = librarianAgent
-      .tools(() => [createRouteDecisionTool(capture)])
-      .build();
+    const definition = createLibrarianDefinition(capture);
     const execution = await runBureauAgent({
       definition,
       context: ctx,
@@ -153,6 +153,12 @@ export function librarian(options: LibrarianOptions = {}): Librarian {
 
     return parseDecision(capture.payload, input.candidates);
   };
+}
+
+export function createLibrarianDefinition(capture: RouteDecisionCapture = {}) {
+  return librarianAgent
+    .tools(() => [createRouteDecisionTool(capture)])
+    .build();
 }
 
 export default librarian;
