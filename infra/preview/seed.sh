@@ -235,6 +235,20 @@ fi
 
 SEEDED_HEAD_SHA="${HEAD_SHA}"
 
+echo "==> Writing HEAD symbolic ref to GRS storage (refs/heads/${BASE_BRANCH})"
+docker run --rm \
+  --network "${PROJECT}_default" \
+  --entrypoint /bin/sh \
+  -e "MINIO_ENDPOINT=${MINIO_ENDPOINT:-s3}" \
+  -e "MINIO_PORT=${MINIO_PORT:-9000}" \
+  -e "MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}" \
+  -e "MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}" \
+  -e "GIT_SERVER_BUCKET=${GIT_SERVER_BUCKET_NAME}" \
+  -e "HEAD_TARGET=refs/heads/${BASE_BRANCH}" \
+  -e "REPO_PATH=repos/${REPO_ID}" \
+  minio/mc:latest \
+  -c 'mc alias set local "http://${MINIO_ENDPOINT}:${MINIO_PORT}" "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}" >/dev/null 2>&1 && printf "ref: %s\n" "${HEAD_TARGET}" | mc pipe "local/${GIT_SERVER_BUCKET}/${REPO_PATH}/HEAD"'
+
 cat > "${PAYLOAD_DIR}/ingest-ref-update.json" <<EOF
 {"repo":"${REPO_ID}","branch":"${HEAD_BRANCH}","base_branch":"${BASE_BRANCH}","head_sha":"${SEEDED_HEAD_SHA}","created_by":"human","delivery_id":"${DELIVERY_ID}","metadata":{"source":"preview_seed","pr_number":${PR_NUMBER},"preview_url":"${PREVIEW_URL}"}}
 EOF
