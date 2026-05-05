@@ -1,5 +1,5 @@
 ARG WORKSPACE_DEPS_IMAGE=red-workspace-deps-alpine:dev
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1 AS base
 WORKDIR /app
 
 FROM ${WORKSPACE_DEPS_IMAGE} AS workspace-deps
@@ -10,6 +10,9 @@ FROM base AS release
 ARG GIT_COMMIT=unknown
 COPY --from=install /app/node_modules ./node_modules
 COPY --from=install /app/apps/obs/node_modules ./apps/obs/node_modules
+COPY --from=install /app/pkg/daemons/node_modules ./pkg/daemons/node_modules
+COPY --from=install /app/pkg/obs/node_modules ./pkg/obs/node_modules
+COPY --from=install /app/pkg/server/node_modules ./pkg/server/node_modules
 COPY apps/obs ./apps/obs
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
