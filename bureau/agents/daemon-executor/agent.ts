@@ -127,7 +127,7 @@ async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function buildDaemonReviewInput(
+export async function buildDaemonReviewInput(
   relevantFiles: string[],
   snapshot: Awaited<ReturnType<typeof loadMemorySnapshot>>,
 ): Promise<string> {
@@ -518,7 +518,7 @@ function selectProvider(deps: DaemonExecutorDeps): AgentProvider {
   throw new Error(`unsupported AI_DAEMONS_PROVIDER: ${name}`);
 }
 
-function buildSystemPrompt(spec: DaemonSpec, memoryPrompt?: string | null): string {
+export function buildSystemPrompt(spec: DaemonSpec, memoryPrompt?: string | null): string {
   const sections = [
     `# Daemon: ${spec.name}`,
     "",

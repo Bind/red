@@ -1,6 +1,7 @@
 import { join, resolve } from "node:path";
 import {
   createPiProvider,
+  loadDaemons,
   type AgentProvider,
 } from "../../../pkg/daemons/src/index";
 import {
@@ -18,8 +19,8 @@ import {
 
 export type LibrarianInput = {
   file: string;
-  fileSummary: string;
-  candidates: LibrarianCandidate[];
+  fileSummary?: string;
+  candidates?: LibrarianCandidate[];
 };
 
 export type LibrarianOptions = {
@@ -28,43 +29,17 @@ export type LibrarianOptions = {
   cwd?: string;
 };
 
-const librarianAgent = agent<LibrarianInput>()
-  .instructions(
-    [
-      "You are a reusable routing librarian for daemon-based review systems.",
-      "Your job is only to decide which candidate daemons should review one file.",
-      "Use the provided daemon metadata, routing scores, and memory signals.",
-      "Prefer narrower candidate ownership when a broad candidate is only weakly supported.",
-      "It is valid to select zero, one, or many daemons.",
-      "Do not audit the file. Do not suggest code changes. Do not invent candidate daemons.",
-      "Call the route_decision tool exactly once with selected_daemons, rationale, and confidence.",
-      "selected_daemons must be a subset of the provided candidate daemon names.",
-      "After route_decision, call complete exactly once with a short plain-language summary.",
-    ].join(" "),
-  )
-  .initialInput((ctx) => {
-    const userPayload = {
-      file: ctx.input.file,
-      file_summary: ctx.input.fileSummary,
-      candidates: ctx.input.candidates.map((candidate) => ({
-        daemon_name: candidate.daemonName,
-        semantic_score: Number(candidate.semanticScore.toFixed(3)),
-        score_boost: Number(candidate.scoreBoost.toFixed(3)),
-        final_score: Number(candidate.finalScore.toFixed(3)),
-        dependency_exact: candidate.dependencyExact,
-        checked_exact: candidate.checkedExact,
-        path_neighbor_score: Number(candidate.pathNeighborScore.toFixed(3)),
-        tracked_subjects: candidate.trackedSubjects,
-        tracked_dependency_paths: candidate.trackedDependencyPaths,
-        daemon_profile: candidate.profile,
-      })),
-    };
-
-    return `${JSON.stringify(userPayload, null, 2)}\n\nCall route_decision before complete.`;
-  })
-  .tools(() => {
-    throw new Error("route_decision tool capture was not configured");
-  });
+const LIBRARIAN_INSTRUCTIONS = [
+  "You are a reusable routing librarian for daemon-based review systems.",
+  "Your job is only to decide which candidate daemons should review one file.",
+  "Use the provided daemon metadata, routing scores, and memory signals.",
+  "Prefer narrower candidate ownership when a broad candidate is only weakly supported.",
+  "It is valid to select zero, one, or many daemons.",
+  "Do not audit the file. Do not suggest code changes. Do not invent candidate daemons.",
+  "Call the route_decision tool exactly once with selected_daemons, rationale, and confidence.",
+  "selected_daemons must be a subset of the provided candidate daemon names.",
+  "After route_decision, call complete exactly once with a short plain-language summary.",
+].join(" ");
 
 export function buildLibrarianContext(
   cwd: string,
@@ -156,8 +131,46 @@ export function librarian(options: LibrarianOptions = {}): Librarian {
 }
 
 export function createLibrarianDefinition(capture: RouteDecisionCapture = {}) {
-  return librarianAgent
-    .tools(() => [createRouteDecisionTool(capture)])
+  return agent<LibrarianInput>()
+    .plan(async (ctx) => {
+      let candidates = ctx.input.candidates ?? [];
+      if (candidates.length === 0) {
+        const { specs } = await loadDaemons(ctx.sourceRoot);
+        candidates = specs.map((spec) => ({
+          daemonName: spec.name,
+          profile: spec.description,
+          trackedSubjects: [],
+          trackedDependencyPaths: [],
+          semanticScore: 0,
+          scoreBoost: 0,
+          finalScore: 0,
+          dependencyExact: false,
+          checkedExact: false,
+          pathNeighborScore: 0,
+        }));
+      }
+      const userPayload = {
+        file: ctx.input.file,
+        file_summary: ctx.input.fileSummary ?? "",
+        candidates: candidates.map((c) => ({
+          daemon_name: c.daemonName,
+          semantic_score: Number(c.semanticScore.toFixed(3)),
+          score_boost: Number(c.scoreBoost.toFixed(3)),
+          final_score: Number(c.finalScore.toFixed(3)),
+          dependency_exact: c.dependencyExact,
+          checked_exact: c.checkedExact,
+          path_neighbor_score: Number(c.pathNeighborScore.toFixed(3)),
+          tracked_subjects: c.trackedSubjects,
+          tracked_dependency_paths: c.trackedDependencyPaths,
+          daemon_profile: c.profile,
+        })),
+      };
+      return {
+        systemPrompt: LIBRARIAN_INSTRUCTIONS,
+        initialInput: `${JSON.stringify(userPayload, null, 2)}\n\nCall route_decision before complete.`,
+        tools: [createRouteDecisionTool(capture)],
+      };
+    })
     .build();
 }
 

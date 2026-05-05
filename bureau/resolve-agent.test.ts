@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import type { AgentProvider, ProviderRunOptions, ProviderRunResult } from "../pkg/daemons/src/providers/types";
+import { runBureauAgent } from "./runtime";
 import { resolveBureauAgent } from "./resolve-agent";
 
 let rootDir: string;
@@ -47,6 +49,19 @@ describe("resolveBureauAgent", () => {
   });
 
   test("resolves daemon-executor from raw JSON args into a runnable generic session spec", async () => {
+    const daemonFile = join(rootDir, "apps", "docs", "docs-command-surface.daemon.md");
+    await mkdir(dirname(daemonFile), { recursive: true });
+    await writeFile(
+      daemonFile,
+      [
+        "---",
+        "name: docs-command-surface",
+        "description: checks docs command surface",
+        "---",
+        "Audit the changed docs command surface.",
+      ].join("\n"),
+    );
+
     const resolved = await resolveBureauAgent({
       agentName: "daemon-executor",
       args: {
@@ -80,9 +95,89 @@ describe("resolveBureauAgent", () => {
       input: builtInput,
     });
 
-    expect(plan.initialInput).toContain("\"daemonName\": \"docs-command-surface\"");
-    expect(plan.initialInput).toContain("\"relevantFiles\"");
+    expect(plan.systemPrompt).toContain("docs-command-surface");
+    expect(plan.systemPrompt).toContain("Audit the changed docs command surface.");
+    expect(plan.initialInput).toContain("Changed files relevant to this daemon:");
+    expect(plan.initialInput).toContain("apps/docs/README.md");
     expect(plan.initialInput).toContain("User request:\nhi from operator");
+  });
+
+  test("runs daemon-executor through the generic bureau runtime and persists bureau session artifacts", async () => {
+    const daemonFile = join(rootDir, "apps", "docs", "docs-command-surface.daemon.md");
+    await mkdir(dirname(daemonFile), { recursive: true });
+    await writeFile(
+      daemonFile,
+      [
+        "---",
+        "name: docs-command-surface",
+        "description: checks docs command surface",
+        "---",
+        "Audit the changed docs command surface.",
+      ].join("\n"),
+    );
+
+    const args = {
+      daemonName: "docs-command-surface",
+      relevantFiles: ["apps/docs/README.md"],
+    };
+
+    const resolved = await resolveBureauAgent({
+      agentName: "daemon-executor",
+      args,
+      root: rootDir,
+    });
+
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts: ProviderRunOptions): Promise<ProviderRunResult> {
+        return {
+          ok: true,
+          payload: { summary: "all clear", findings: [] },
+          turns: 1,
+          tokens: { input: 5, output: 7 },
+          session: {
+            systemPrompt: opts.systemPrompt,
+            messages: [
+              { role: "user", content: opts.initialInput },
+              { role: "assistant", content: "done" },
+            ],
+          },
+        };
+      },
+    };
+
+    const outcome = await runBureauAgent({
+      definition: resolved.definition,
+      context: resolved.context,
+      input: resolved.buildInput(null),
+      args: resolved.args,
+      provider,
+      maxTurns: 2,
+      maxWallclockMs: 5_000,
+      mode: "run",
+    });
+
+    expect(outcome.result.ok).toBe(true);
+    expect(outcome.session.meta.agentName).toBe("daemon-executor");
+    expect(outcome.session.meta.args).toEqual(args);
+    expect(outcome.session.snapshot.systemPrompt).toContain("docs-command-surface");
+    expect(outcome.session.snapshot.systemPrompt).toContain("Audit the changed docs command surface.");
+
+    const sessionsRoot = join(rootDir, ".bureau", "sessions");
+    const sessionIds = await readdir(sessionsRoot);
+    expect(sessionIds).toHaveLength(1);
+
+    const meta = JSON.parse(
+      await readFile(join(sessionsRoot, sessionIds[0]!, "meta.json"), "utf8"),
+    );
+    const session = JSON.parse(
+      await readFile(join(sessionsRoot, sessionIds[0]!, "session.json"), "utf8"),
+    );
+
+    expect(meta.agentName).toBe("daemon-executor");
+    expect(meta.args).toEqual(args);
+    expect(session.version).toBe(1);
+    expect(session.messages).toHaveLength(2);
   });
 
   test("fails clearly when the bureau agent name does not resolve", async () => {

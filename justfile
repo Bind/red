@@ -3,6 +3,7 @@
 set dotenv-load
 
 mod infra
+mod bureau
 
 DEV_COMPOSE := "infra/dev/compose.yml"
 BASE_COMPOSE := "infra/base/compose.yml"
@@ -42,76 +43,6 @@ playground-daemons:
 daemon-review-local *args:
     dotenvx run -f .env.development -- bun run bureau/workflows/daemon-review/src/local-entry.ts {{ args }}
 
-# Run a bureau agent locally, or pick one with fzf if omitted
-[positional-arguments]
-bureau-run *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    selected_agent=""
-    if [ $# -gt 0 ] && [[ "${1:-}" != -* ]]; then
-        selected_agent="$1"
-        shift
-    fi
-    if [ -z "$selected_agent" ]; then
-        selected_agent="$(
-            find bureau/agents -mindepth 1 -maxdepth 1 -type d -exec basename {} \; \
-              | sort \
-              | fzf --prompt='agent> ' --height=40% --reverse
-        )"
-    fi
-    [ -n "$selected_agent" ] || exit 0
-    bun run bureau/main.ts run "$selected_agent" "$@"
-
-# Resume a bureau session locally, or pick one with fzf if omitted
-[positional-arguments]
-bureau-resume *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    selected_session=""
-    if [ $# -gt 0 ] && [[ "${1:-}" != -* ]]; then
-        selected_session="$1"
-        shift
-    fi
-    if [ -z "$selected_session" ]; then
-        selected_session="$(
-            bun -e '
-              import { readdir, readFile } from "node:fs/promises";
-              import { join } from "node:path";
-              const sessionsRoot = join(process.cwd(), ".bureau", "sessions");
-              const truncate = (value) => value.length > 120 ? `${value.slice(0, 117)}...` : value;
-              try {
-                const entries = await readdir(sessionsRoot, { withFileTypes: true });
-                const rows = [];
-                for (const entry of entries) {
-                  if (!entry.isDirectory()) continue;
-                  const sessionId = String(entry.name);
-                  const sessionPath = join(sessionsRoot, sessionId, "session.json");
-                  try {
-                    const session = JSON.parse(await readFile(sessionPath, "utf8"));
-                    const messages = Array.isArray(session.messages) ? session.messages : [];
-                    const lastAssistant = [...messages]
-                      .reverse()
-                      .find((message) => message && typeof message === "object" && message.role === "assistant");
-                    const content = typeof lastAssistant?.content === "string"
-                      ? lastAssistant.content
-                      : Array.isArray(lastAssistant?.content)
-                        ? lastAssistant.content
-                            .map((part) => typeof part?.text === "string" ? part.text : "")
-                            .join(" ")
-                        : "";
-                    rows.push(`${sessionId}\t${truncate(content || "(no assistant output yet)")}`);
-                  } catch {}
-                }
-                rows.sort((a, b) => b.localeCompare(a));
-                if (rows.length > 0) console.log(rows.join("\n"));
-              } catch {}
-            ' \
-              | fzf --delimiter=$'\t' --with-nth=1,2 --prompt='session> ' --height=50% --reverse \
-              | cut -f1
-        )"
-    fi
-    [ -n "$selected_session" ] || exit 0
-    bun run bureau/main.ts resume "$selected_session" "$@"
 
 # Inspect the most recent local daemon review artifact bundle
 daemon-review-local-inspect:
