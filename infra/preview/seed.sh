@@ -9,9 +9,8 @@ HEAD_BRANCH="${5:?Usage: $0 <project> <remote-dir> <repo-id> <base-branch> <head
 PR_NUMBER="${6:?Usage: $0 <project> <remote-dir> <repo-id> <base-branch> <head-branch> <pr-number> <head-sha> <preview-url>}"
 HEAD_SHA="${7:?Usage: $0 <project> <remote-dir> <repo-id> <base-branch> <head-branch> <pr-number> <head-sha> <preview-url>}"
 PREVIEW_URL="${8:?Usage: $0 <project> <remote-dir> <repo-id> <base-branch> <head-branch> <pr-number> <head-sha> <preview-url>}"
+GITHUB_TOKEN="${GITHUB_TOKEN:?GITHUB_TOKEN env var is required}"
 
-BASE_EXPORT_DIR="${REMOTE_DIR}/.preview-seed/base"
-HEAD_EXPORT_DIR="${REMOTE_DIR}/.preview-seed/head"
 OWNER="${REPO_ID%%/*}"
 NAME="${REPO_ID#*/}"
 DELIVERY_ID="preview:pr-${PR_NUMBER}:${HEAD_SHA}"
@@ -77,19 +76,6 @@ print(f"http://{username}:{password}@grs:8080/{owner}/{name}.git")
 PY
 }
 
-bootstrap_seed_repo() {
-  REPO_DIR_REAL="$(cd "${REPO_DIR}" && pwd -P)"
-
-  env -i \
-    PATH="${PATH}" \
-    HOME="${HOME}" \
-    USER="${USER:-root}" \
-    LANG="${LANG:-C.UTF-8}" \
-    git config --global --add safe.directory "${REPO_DIR_REAL}"
-
-  run_seed_git init
-  run_seed_git branch -M "${BASE_BRANCH}"
-}
 
 cleanup() {
   rm -rf "${TMP_DIR}"
@@ -221,6 +207,16 @@ run_git_push() {
     push --force "${remote_url}" "${refspec}"
 }
 
+echo "==> Cloning ${REPO_ID}@${BASE_BRANCH} from GitHub"
+GITHUB_CLONE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO_ID}.git"
+git clone --depth=100 --branch="${BASE_BRANCH}" "${GITHUB_CLONE_URL}" "${REPO_DIR}"
+git config --global --add safe.directory "$(cd "${REPO_DIR}" && pwd -P)"
+
+if [ "${HEAD_BRANCH}" != "${BASE_BRANCH}" ]; then
+  echo "==> Fetching PR branch ${HEAD_BRANCH}"
+  run_seed_git fetch --depth=100 origin "${HEAD_BRANCH}:refs/heads/${HEAD_BRANCH}"
+fi
+
 echo "==> Ensuring preview repo ${REPO_ID} exists in ctl"
 wait_for_http "api" "http://api:3000/health"
 wait_for_s3
@@ -229,24 +225,15 @@ wait_for_grs
 run_api_post "/api/repos" "${PAYLOAD_DIR}/create-repo.json" "201" "409"
 PUSH_REMOTE_URL="$(build_push_remote_url "preview-seeder")"
 
-echo "==> Seeding ${REPO_ID} base branch ${BASE_BRANCH}"
-rsync -a --delete --exclude='.git' "${BASE_EXPORT_DIR}/" "${REPO_DIR}/"
-bootstrap_seed_repo
-run_seed_git config user.name "preview seeder"
-run_seed_git config user.email "preview-seed@red.local"
-run_seed_git add -A
-run_seed_git commit --allow-empty -m "seed ${BASE_BRANCH}"
-run_git_push "HEAD:refs/heads/${BASE_BRANCH}" "${PUSH_REMOTE_URL}"
+echo "==> Pushing ${REPO_ID} ${BASE_BRANCH} to GRS"
+run_git_push "refs/heads/${BASE_BRANCH}:refs/heads/${BASE_BRANCH}" "${PUSH_REMOTE_URL}"
 
-echo "==> Seeding PR branch ${HEAD_BRANCH}"
-rsync -a --delete --exclude='.git' "${HEAD_EXPORT_DIR}/" "${REPO_DIR}/"
-run_seed_git checkout -B "${HEAD_BRANCH}"
-run_seed_git add -A
-if ! run_seed_git diff --cached --quiet; then
-  run_seed_git commit -m "seed PR #${PR_NUMBER}"
+if [ "${HEAD_BRANCH}" != "${BASE_BRANCH}" ]; then
+  echo "==> Pushing PR branch ${HEAD_BRANCH} to GRS"
+  run_git_push "refs/heads/${HEAD_BRANCH}:refs/heads/${HEAD_BRANCH}" "${PUSH_REMOTE_URL}"
 fi
-SEEDED_HEAD_SHA="$(run_seed_git rev-parse HEAD)"
-run_git_push "HEAD:refs/heads/${HEAD_BRANCH}" "${PUSH_REMOTE_URL}"
+
+SEEDED_HEAD_SHA="${HEAD_SHA}"
 
 cat > "${PAYLOAD_DIR}/ingest-ref-update.json" <<EOF
 {"repo":"${REPO_ID}","branch":"${HEAD_BRANCH}","base_branch":"${BASE_BRANCH}","head_sha":"${SEEDED_HEAD_SHA}","created_by":"human","delivery_id":"${DELIVERY_ID}","metadata":{"source":"preview_seed","pr_number":${PR_NUMBER},"preview_url":"${PREVIEW_URL}"}}
