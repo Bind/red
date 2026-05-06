@@ -287,6 +287,48 @@ describe("service client", () => {
     expect(await res.json()).toEqual({ runs: [] });
   });
 
+  test("from() resolves a typed url via the upstream's hc client", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      if (url.pathname === "/api/changes/42") return Response.json({ id: 42 });
+      return new Response("nf", { status: 404 });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      api(c).from(($) => $.api.changes[":id"].$url({ param: { id: "42" } })).send(),
+    );
+
+    const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 42 });
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
+      "/session/exchange",
+      "/api/changes/42",
+    ]);
+    expect(calls[1]?.authorization).toBe("Bearer tok-1");
+  });
+
+  test("from() merges .query() allowlist on top of typed url", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      return Response.json({ summarized: 1, pending_review: 0 });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      api(c).from(($) => $.api.velocity.$url()).query(["hours"]).send(),
+    );
+
+    await app.request("/test?hours=12&unrelated=ignored");
+
+    const target = new URL(calls[1]!.url);
+    expect(target.pathname).toBe("/api/velocity");
+    expect(target.searchParams.get("hours")).toBe("12");
+    expect(target.searchParams.has("unrelated")).toBe(false);
+  });
+
   test("POST forwards the request body upstream after exchange", async () => {
     const { calls, fetchImpl } = recorder(async (req) => {
       const url = new URL(req.url);

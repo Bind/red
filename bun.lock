@@ -41,6 +41,7 @@
       "name": "red-bff",
       "version": "0.1.0",
       "dependencies": {
+        "@red/ctl": "workspace:*",
         "@red/obs": "workspace:*",
         "@red/server": "workspace:*",
       },

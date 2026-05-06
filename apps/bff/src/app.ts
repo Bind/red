@@ -203,7 +203,9 @@ export function createApp(config: BffConfig) {
       return api(c)
         .auth("none")
         .as("stream")
-        .path(`/api/repos/${owner}/${name}/tree`)
+        .from(($) =>
+          $.api.repos[":owner"][":repo"].tree.$url({ param: { owner, repo: name } }),
+        )
         .query(["ref"])
         .send();
     })
@@ -216,7 +218,9 @@ export function createApp(config: BffConfig) {
       return api(c)
         .auth("none")
         .as("stream")
-        .path(`/api/repos/${owner}/${name}/file`)
+        .from(($) =>
+          $.api.repos[":owner"][":repo"].file.$url({ param: { owner, repo: name } }),
+        )
         .query(["path", "ref"])
         .send();
     })
@@ -224,40 +228,81 @@ export function createApp(config: BffConfig) {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
       if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const sha = encodeURIComponent(c.req.param("sha"));
       return api(c)
         .auth("none")
         .as("stream")
-        .path(`/api/repos/${owner}/${name}/commits/${sha}/diff`)
+        .from(($) =>
+          $.api.repos[":owner"][":repo"].commits[":sha"].diff.$url({
+            param: { owner, repo: name, sha: c.req.param("sha") },
+          }),
+        )
         .send();
     })
-    .get("/velocity", (c) => api(c).path("/api/velocity").query(["hours"]).send())
-    .get("/review", (c) => api(c).path("/api/review").send())
-    .get("/jobs/pending", (c) => api(c).path("/api/jobs/pending").send())
-    .get("/repos", (c) => api(c).path("/api/repos").send())
-    .post("/repos", (c) => api(c).path("/api/repos").send())
-    .get("/branches", (c) => api(c).path("/api/branches").query(["repo"]).send())
+    .get("/velocity", (c) =>
+      api(c).from(($) => $.api.velocity.$url()).query(["hours"]).send(),
+    )
+    .get("/review", (c) => api(c).from(($) => $.api.review.$url()).send())
+    .get("/jobs/pending", (c) =>
+      api(c).from(($) => $.api.jobs.pending.$url()).send(),
+    )
+    .get("/repos", (c) => api(c).from(($) => $.api.repos.$url()).send())
+    .post("/repos", (c) => api(c).from(($) => $.api.repos.$url()).send())
+    .get("/branches", (c) =>
+      api(c).from(($) => $.api.branches.$url()).query(["repo"]).send(),
+    )
     .get("/changes/:id", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}`).send(),
+      api(c)
+        .from(($) => $.api.changes[":id"].$url({ param: { id: c.req.param("id") } }))
+        .send(),
     )
     .get("/changes/:id/diff", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}/diff`).as("text").send(),
+      api(c)
+        .from(($) =>
+          $.api.changes[":id"].diff.$url({ param: { id: c.req.param("id") } }),
+        )
+        .as("text")
+        .send(),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}/regenerate-summary`).send(),
+      api(c)
+        .from(($) =>
+          $.api.changes[":id"]["regenerate-summary"].$url({
+            param: { id: c.req.param("id") },
+          }),
+        )
+        .send(),
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}/requeue-summary`).send(),
+      api(c)
+        .from(($) =>
+          $.api.changes[":id"]["requeue-summary"].$url({
+            param: { id: c.req.param("id") },
+          }),
+        )
+        .send(),
     )
     .get("/changes/:id/sessions", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}/sessions`).send(),
+      api(c)
+        .from(($) =>
+          $.api.changes[":id"].sessions.$url({ param: { id: c.req.param("id") } }),
+        )
+        .send(),
     )
     .get("/changes/:id/agent-events", (c) =>
-      api(c).path(`/api/changes/${c.req.param("id")}/agent-events`).as("stream").send(),
+      api(c)
+        .from(($) =>
+          $.api.changes[":id"]["agent-events"].$url({
+            param: { id: c.req.param("id") },
+          }),
+        )
+        .as("stream")
+        .send(),
     )
     .get("/sessions/:id/events", (c) =>
       api(c)
-        .path(`/api/sessions/${c.req.param("id")}/events`)
+        .from(($) =>
+          $.api.sessions[":id"].events.$url({ param: { id: c.req.param("id") } }),
+        )
         .query(["after", "limit"])
         .send(),
     )
@@ -286,7 +331,7 @@ export function createApp(config: BffConfig) {
     .get("/logs", (c) =>
       api(c)
         .auth("session")
-        .path("/api/logs")
+        .from(($) => $.api.logs.$url())
         .query([
           "service",
           "level",
@@ -303,7 +348,7 @@ export function createApp(config: BffConfig) {
       api(c)
         .auth("session")
         .as("stream")
-        .path("/api/logs/stream")
+        .from(($) => $.api.logs.stream.$url())
         .query(["service", "level", "logger", "search", "status_class", "history_window"])
         .send(),
     )

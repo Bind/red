@@ -1,6 +1,6 @@
 import { hc } from "hono/client";
 import superjson from "superjson";
-import type { AppType } from "../../../bff/src/app";
+import type { AppRouter } from "../../../bff/src/app";
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
@@ -169,7 +169,7 @@ export interface CreateRepoInput {
   visibility?: RepoVisibility;
 }
 
-const client = hc<AppType>("/") as any;
+const client = hc<AppRouter>("/") as any;
 
 function decodeResponseBody<T>(text: string): T {
   const trimmed = text.trim();

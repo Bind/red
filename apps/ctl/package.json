@@ -2,6 +2,12 @@
   "name": "@red/ctl",
   "private": true,
   "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./api/router": "./api/router.ts"
+  },
   "scripts": {
     "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
