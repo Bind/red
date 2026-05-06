@@ -89,7 +89,7 @@ Draft PRs are skipped (`github.event.pull_request.draft == false`).
 
 Preview stacks now include every service with a Dockerfile:
 
-- `api` (ctl), `auth`, `grs`, `bff`, `obs`, `triage`, `triage-smithers`, `web`
+- `api` (ctl), `auth`, `grs`, `bff`, `obs`, `mcp`, `triage`, `triage-smithers`, `web`
 - supporting: `gateway` (envoy), `db-auth` (postgres), `s3` (minio)
 
 This is intentionally **broader** than production. Preview catches build and

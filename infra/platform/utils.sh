@@ -7,16 +7,6 @@ teardown_preview_project() {
     return 0
   fi
 
-  if [ -f "${dir}/infra/compose/runtime.yml" ] && [ -f "${dir}/infra/compose/preview.yml" ]; then
-    (cd "${dir}" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/runtime.yml -f infra/compose/preview.yml down -v --remove-orphans) || true
-    return 0
-  fi
-
-  if [ -f "${dir}/infra/compose/preview.yml" ]; then
-    (cd "${dir}" && COMPOSE_PROJECT_NAME="${project}" docker compose -f infra/compose/preview.yml down -v --remove-orphans) || true
-    return 0
-  fi
-
   ids=$(docker ps -aq --filter label=com.docker.compose.project="${project}")
   if [ -n "${ids}" ]; then
     docker rm -f ${ids} || true
