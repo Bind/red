@@ -7,11 +7,15 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src"
   },
   "dependencies": {
     "@red/ctl": "workspace:*",
     "@red/obs": "workspace:*",
     "@red/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest"
   }
 }

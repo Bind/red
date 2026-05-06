@@ -131,6 +131,11 @@ fmt:
 # Run repository linters
 lint:
     just auth-lint
+    just bff-lint
+
+# Lint the bff service (biome; enforces no-explicit-any)
+bff-lint:
+    cd apps/bff && bun run lint
 
 # Build the production frontend bundle inside Docker
 web-build:

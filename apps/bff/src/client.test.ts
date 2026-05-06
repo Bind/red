@@ -157,7 +157,8 @@ describe("service client", () => {
         .send(($) =>
           $.api.repos[":owner"][":repo"].tree.$get({
             param: { owner: "x", repo: "y" },
-          } as any),
+            query: {},
+          }),
         ),
     );
 
@@ -268,13 +269,13 @@ describe("service client", () => {
             service: c.req.query("service"),
             outcome: c.req.query("outcome"),
           },
-        } as any),
+        }),
       ),
     );
 
     await app.request("/test?service=ctl&outcome=ok");
 
-    const target = new URL(calls[0]!.url);
+    const target = new URL(calls[0]?.url);
     expect(target.pathname).toBe("/v1/rollups");
     expect(target.searchParams.get("service")).toBe("ctl");
     expect(target.searchParams.get("outcome")).toBe("ok");
@@ -288,8 +289,8 @@ describe("service client", () => {
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().post("/test", async (c) => {
-      const body = await c.req.json();
-      return api(c).send(($) => $.api.repos.$post({ json: body } as any));
+      const body = await c.req.json<{ owner: string; name: string }>();
+      return api(c).send(($) => $.api.repos.$post({ json: body }));
     });
 
     const payload = { owner: "red", name: "demo" };
@@ -304,7 +305,7 @@ describe("service client", () => {
       ["POST", "/session/exchange"],
       ["POST", "/api/repos"],
     ]);
-    expect(JSON.parse(calls[1]!.body!)).toEqual(payload);
+    expect(JSON.parse(calls[1]?.body ?? "")).toEqual(payload);
     expect(calls[1]?.authorization).toBe("Bearer tok-1");
   });
 
@@ -341,12 +342,12 @@ describe("service client", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie")).toContain("session=new");
     expect(calls).toHaveLength(1);
-    const target = new URL(calls[0]!.url);
+    const target = new URL(calls[0]?.url);
     expect(target.pathname).toBe("/api/auth/sign-in");
     expect(target.searchParams.get("cb")).toBe("/");
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.cookie).toBe("session=abc");
     expect(calls[0]?.redirect).toBe("manual");
-    expect(JSON.parse(calls[0]!.body!)).toEqual({ email: "x@y.z" });
+    expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ email: "x@y.z" });
   });
 });

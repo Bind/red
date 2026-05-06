@@ -1,5 +1,11 @@
 import { hc } from "hono/client";
+import type { Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+
+// Hono's typed generics intentionally use `any` for un-pinned slots; this
+// alias is the single quarantined site so the rest of the file stays clean.
+// biome-ignore lint/suspicious/noExplicitAny: hono internal generics
+type HonoApp = Hono<any, any, any>;
 import type { AppRouter as CtlAppRouter } from "@red/ctl";
 import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
 import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
@@ -40,45 +46,45 @@ export type TriageClient = ReturnType<typeof hc<TriageAppRouter>>;
  * stream) configure the pre-/post-fetch envelope around hc's call.
  */
 
-export function makeApi(deps: ClientDeps): (c: any) => RouteBuilder<CtlClient> {
-  return (c: any) =>
-    new RouteBuilder<CtlClient>(c, deps.config, deps.fetchImpl, "api", {
+export function makeApi(deps: ClientDeps): (c: Context) => RouteBuilder<CtlAppRouter> {
+  return (c) =>
+    new RouteBuilder<CtlAppRouter>(c, deps.config, deps.fetchImpl, "api", {
       auth: "jwt",
       as: "json",
     });
 }
 
-export function makeAuth(deps: ClientDeps): (c: any) => RouteBuilder<AuthClient> {
-  return (c: any) =>
-    new RouteBuilder<AuthClient>(c, deps.config, deps.fetchImpl, "auth", {
+export function makeAuth(deps: ClientDeps): (c: Context) => RouteBuilder<AuthAppRouter> {
+  return (c) =>
+    new RouteBuilder<AuthAppRouter>(c, deps.config, deps.fetchImpl, "auth", {
       auth: "cookie",
       as: "stream",
     });
 }
 
-export function makeObs(deps: ClientDeps): (c: any) => RouteBuilder<ObsClient> {
-  return (c: any) =>
-    new RouteBuilder<ObsClient>(c, deps.config, deps.fetchImpl, "obs", {
+export function makeObs(deps: ClientDeps): (c: Context) => RouteBuilder<ObsAppRouter> {
+  return (c) =>
+    new RouteBuilder<ObsAppRouter>(c, deps.config, deps.fetchImpl, "obs", {
       auth: "session",
       as: "json",
     });
 }
 
-export function makeTriage(deps: ClientDeps): (c: any) => RouteBuilder<TriageClient> {
-  return (c: any) =>
-    new RouteBuilder<TriageClient>(c, deps.config, deps.fetchImpl, "triage", {
+export function makeTriage(deps: ClientDeps): (c: Context) => RouteBuilder<TriageAppRouter> {
+  return (c) =>
+    new RouteBuilder<TriageAppRouter>(c, deps.config, deps.fetchImpl, "triage", {
       auth: "session",
       as: "json",
     });
 }
 
-class RouteBuilder<TClient> {
+class RouteBuilder<TAppRouter extends HonoApp> {
   private _auth: AuthMode;
   private _bodyMode: BodyMode;
   private _onError: ((err: unknown) => Response | Promise<Response>) | undefined;
 
   constructor(
-    private c: any,
+    private c: Context,
     private config: ClientConfig,
     private fetchImpl: FetchImpl,
     private upstream: Upstream,
@@ -112,7 +118,9 @@ class RouteBuilder<TClient> {
    *   api(c).send($ => $.api.changes[":id"].$get({ param: { id } }))
    *   api(c).as("stream").send($ => $.api.changes[":id"]["agent-events"].$get({ param: { id } }))
    */
-  async send(callback: (client: TClient) => Promise<Response>): Promise<Response> {
+  async send(
+    callback: (client: ReturnType<typeof hc<TAppRouter>>) => Promise<Response>,
+  ): Promise<Response> {
     const baseUrl = this.upstreamBaseUrl();
     if (!baseUrl) {
       return this.c.json({ error: `${this.upstream} backend not configured` }, 503);
@@ -140,13 +148,15 @@ class RouteBuilder<TClient> {
     const isCookie = this._auth === "cookie";
     const customFetch: FetchImpl = async (input, init) => {
       const merged = new Headers(init?.headers);
-      forwardHeaders.forEach((value, key) => merged.set(key, value));
+      forwardHeaders.forEach((value, key) => {
+        merged.set(key, value);
+      });
       const finalInit: RequestInit = { ...init, headers: merged };
       if (isCookie) finalInit.redirect = "manual";
       return this.fetchImpl(input, finalInit);
     };
 
-    const client = hc<any>(baseUrl, { fetch: customFetch }) as TClient;
+    const client = hc<TAppRouter>(baseUrl, { fetch: customFetch });
 
     try {
       const upstream = await callback(client);
@@ -205,7 +215,7 @@ class RouteBuilder<TClient> {
  * the prefix proxy.
  */
 export async function forwardAuthRequest(
-  c: any,
+  c: Context,
   deps: ClientDeps,
   pathAndSearch: string,
 ): Promise<Response> {
@@ -226,7 +236,7 @@ export async function forwardAuthRequest(
 
 export function joinUrl(baseUrl: string, path: string, query?: URLSearchParams): string {
   const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
-  if (query && query.toString()) {
+  if (query?.toString()) {
     url.search = query.toString();
   }
   return url.toString();

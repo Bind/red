@@ -47,6 +47,9 @@
         "@red/obs": "workspace:*",
         "@red/server": "workspace:*",
       },
+      "devDependencies": {
+        "@biomejs/biome": "latest",
+      },
     },
     "apps/ctl": {
       "name": "@red/ctl",
