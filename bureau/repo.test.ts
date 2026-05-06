@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { GitHubRepo } from "./repo";
 
-test("GitHubRepo keeps tokens out of fetchUrl and exposes auth via git config args", async () => {
+test("GitHubRepo embeds token in fetchUrl using x-access-token Basic auth", async () => {
   const repo = new GitHubRepo({
     owner: "Bind",
     name: "red",
@@ -10,10 +10,13 @@ test("GitHubRepo keeps tokens out of fetchUrl and exposes auth via git config ar
 
   const remote = await repo.getReadRemote("refs/heads/main");
 
+  expect(remote.fetchUrl).toBe("https://x-access-token:ghs_super_secret@github.com/Bind/red.git");
+  expect(remote.gitConfigArgs).toBeUndefined();
+});
+
+test("GitHubRepo omits credentials when no token is provided", async () => {
+  const repo = new GitHubRepo({ owner: "Bind", name: "red" });
+  const remote = await repo.getReadRemote("refs/heads/main");
   expect(remote.fetchUrl).toBe("https://github.com/Bind/red.git");
-  expect(remote.fetchUrl).not.toContain("ghs_super_secret");
-  expect(remote.gitConfigArgs).toEqual([
-    "-c",
-    "http.extraHeader=AUTHORIZATION: bearer ghs_super_secret",
-  ]);
+  expect(remote.gitConfigArgs).toBeUndefined();
 });

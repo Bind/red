@@ -48,6 +48,11 @@ jobs:
         working-directory: trusted-base
         run: bun install --frozen-lockfile
 
+      - name: Configure git credentials for sandbox clones
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
       - name: Run daemon review
         working-directory: trusted-base
         env:

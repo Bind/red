@@ -144,6 +144,8 @@ jobs:
         run: echo "host=$(./infra/platform/get-required-dotenvx-value.sh RED_SERVER_IP .env.ci)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy preview
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           just deploy-preview
           "pr-${{ github.event.pull_request.number }}"
