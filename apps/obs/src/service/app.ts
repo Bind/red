@@ -127,18 +127,16 @@ function renderDaemonDebugPage(
 </html>`;
 }
 
-export function createApp(deps: CollectorDependencies): CollectorApp {
-	const app = new Hono();
-	app.use("*", createHttpLogger({ service: "obs", app: "red" }));
-
-	app.get("/health", (c) => {
-		const health = buildHealth({ service: "obs" });
-		return c.json(health, statusHttpCode(health.status));
-	});
-
+export function createApp(deps: CollectorDependencies) {
 	const query = deps.rollupQuery;
 
-	app.get("/v1/rollups", async (c) => {
+	const app = new Hono()
+		.use("*", createHttpLogger({ service: "obs", app: "red" }))
+		.get("/health", (c) => {
+			const health = buildHealth({ service: "obs" });
+			return c.json(health, statusHttpCode(health.status));
+		})
+		.get("/v1/rollups", async (c) => {
 		if (!query) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
@@ -164,9 +162,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			limit,
 		});
 		return superjsonResponse(c, { rollups: records, count: records.length });
-	});
+	})
 
-	app.get("/v1/rollups/stream", (c) => {
+		.get("/v1/rollups/stream", (c) => {
 		if (!query) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
@@ -239,9 +237,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 				unsubscribe();
 			}
 		});
-	});
+	})
 
-	app.get("/v1/rollups/stats", async (c) => {
+		.get("/v1/rollups/stats", async (c) => {
 		if (!query?.aggregateRollups) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
@@ -273,25 +271,25 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			limit,
 		});
 		return c.json({ rows });
-	});
+	})
 
-	app.get("/v1/rollups/:request_id", async (c) => {
+		.get("/v1/rollups/:request_id", async (c) => {
 		if (!query) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
 		const record = await query.getRollup(c.req.param("request_id"));
 		if (!record) return c.json({ error: "not found" }, 404);
 		return superjsonResponse(c, record);
-	});
+	})
 
-	app.get("/v1/daemons", async (c) => {
+		.get("/v1/daemons", async (c) => {
 		const root = process.env.REPO_ROOT ?? await findGitRoot(process.cwd());
 		const result = await loadDaemons(root).catch(() => null);
 		if (!result) return c.json({ daemons: [] });
 		return c.json({ daemons: result.specs });
-	});
+	})
 
-	app.get("/v1/daemons/:daemon/memory", async (c) => {
+		.get("/v1/daemons/:daemon/memory", async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
@@ -300,9 +298,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		const memory = await deps.daemonQuery.getMemory(daemon, repo).catch(() => null);
 		if (!memory) return c.json({ error: "not found" }, 404);
 		return c.json(memory);
-	});
+	})
 
-	app.get("/v1/daemons/:daemon/runs", async (c) => {
+		.get("/v1/daemons/:daemon/runs", async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
@@ -311,9 +309,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		const runs = await deps.daemonQuery.listRuns(daemon, repo).catch(() => null);
 		if (!runs) return c.json({ error: "not found" }, 404);
 		return c.json({ runs, count: runs.length });
-	});
+	})
 
-	app.get("/v1/daemons/:daemon/runs/:run_id", async (c) => {
+		.get("/v1/daemons/:daemon/runs/:run_id", async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
@@ -324,9 +322,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			.catch(() => null);
 		if (!run) return c.json({ error: "not found" }, 404);
 		return c.json(run);
-	});
+	})
 
-	app.get("/v1/daemons/:daemon/debug", async (c) => {
+		.get("/v1/daemons/:daemon/debug", async (c) => {
 		if (!deps.daemonQuery) {
 			return c.html("<p>daemon query engine not configured</p>", 501);
 		}
@@ -339,9 +337,9 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 			? await deps.daemonQuery.getRun(daemon, runs[0].runId).catch(() => null)
 			: null;
 		return c.html(renderDaemonDebugPage(daemon, memory, runs, latestRun));
-	});
+	})
 
-	app.post("/v1/events", async (c) => {
+		.post("/v1/events", async (c) => {
 		const payload = await c.req.json().catch(() => null);
 		if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
 			return c.json(
@@ -370,3 +368,5 @@ export function createApp(deps: CollectorDependencies): CollectorApp {
 		},
 	});
 }
+
+export type AppRouter = ReturnType<typeof createApp>;
