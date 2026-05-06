@@ -12,7 +12,15 @@ import {
   type HostedRepoConfig,
   type HostedRepoReader,
 } from "./hosted-repo";
-import { joinUrl, makeApi, makeAuth, makeObs, makeTriage, type ClientConfig } from "./client";
+import {
+  forwardAuthRequest,
+  joinUrl,
+  makeApi,
+  makeAuth,
+  makeObs,
+  makeTriage,
+  type ClientConfig,
+} from "./client";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -127,10 +135,11 @@ async function probeHealthEndpoint(
 export function createApp(config: BffConfig) {
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
-  const api = makeApi({ config, fetchImpl });
-  const auth = makeAuth({ config, fetchImpl });
-  const obs = makeObs({ config, fetchImpl });
-  const triage = makeTriage({ config, fetchImpl });
+  const deps = { config, fetchImpl };
+  const api = makeApi(deps);
+  const auth = makeAuth(deps);
+  const obs = makeObs(deps);
+  const triage = makeTriage(deps);
 
   const rpc = new Hono()
     .get("/status", async (c) => {
@@ -161,29 +170,39 @@ export function createApp(config: BffConfig) {
       };
       return c.json(report, report.overall_status === "ok" ? 200 : 503);
     })
-    .get("/me", (c) => auth(c).path("/me").send())
+    .get("/me", (c) => auth(c).send(($) => $.me.$get()))
     .get("/dev/magic-link", (c) =>
-      auth(c).path("/__test__/mailbox/latest").query(["email"]).send(),
+      auth(c).send(($) =>
+        $.__test__.mailbox.latest.$get({
+          query: { email: c.req.query("email") },
+        } as any),
+      ),
     )
-    .post("/auth/login-attempts", (c) => auth(c).path("/login-attempts").send())
+    .post("/auth/login-attempts", (c) =>
+      auth(c).send(($) => $["login-attempts"].$post({} as any)),
+    )
     .get("/auth/login-attempts/:id", (c) =>
-      auth(c).path(`/login-attempts/${c.req.param("id")}`).send(),
+      auth(c).send(($) =>
+        $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } }),
+      ),
     )
     .post("/auth/login-attempts/redeem", (c) =>
-      auth(c).path("/login-attempts/redeem").send(),
+      auth(c).send(($) => $["login-attempts"].redeem.$post({} as any)),
     )
     .post("/auth/magic-link/complete", (c) =>
-      auth(c).path("/magic-link/complete").send(),
+      auth(c).send(($) => $["magic-link"].complete.$post({} as any)),
     )
     .post("/auth/user/two-factor/enroll", (c) =>
-      auth(c).path("/user/two-factor/enroll").send(),
+      auth(c).send(($) => $.user["two-factor"].enroll.$post({} as any)),
     )
     .post("/auth/user/two-factor/verify", (c) =>
-      auth(c).path("/user/two-factor/verify").send(),
+      auth(c).send(($) => $.user["two-factor"].verify.$post({} as any)),
     )
-    .post("/auth/user/totp-login", (c) => auth(c).path("/user/totp-login").send())
+    .post("/auth/user/totp-login", (c) =>
+      auth(c).send(($) => $.user["totp-login"].$post({} as any)),
+    )
     .post("/auth/user/onboarding/complete", (c) =>
-      auth(c).path("/user/onboarding/complete").send(),
+      auth(c).send(($) => $.user.onboarding.complete.$post({} as any)),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -203,11 +222,12 @@ export function createApp(config: BffConfig) {
       return api(c)
         .auth("none")
         .as("stream")
-        .from(($) =>
-          $.api.repos[":owner"][":repo"].tree.$url({ param: { owner, repo: name } }),
-        )
-        .query(["ref"])
-        .send();
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].tree.$get({
+            param: { owner, repo: name },
+            query: { ref: c.req.query("ref") },
+          } as any),
+        );
     })
     .get("/app/hosted-repo/file", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -218,11 +238,12 @@ export function createApp(config: BffConfig) {
       return api(c)
         .auth("none")
         .as("stream")
-        .from(($) =>
-          $.api.repos[":owner"][":repo"].file.$url({ param: { owner, repo: name } }),
-        )
-        .query(["path", "ref"])
-        .send();
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].file.$get({
+            param: { owner, repo: name },
+            query: { path, ref: c.req.query("ref") },
+          } as any),
+        );
     })
     .get("/app/hosted-repo/commits/:sha/diff", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -231,135 +252,169 @@ export function createApp(config: BffConfig) {
       return api(c)
         .auth("none")
         .as("stream")
-        .from(($) =>
-          $.api.repos[":owner"][":repo"].commits[":sha"].diff.$url({
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].commits[":sha"].diff.$get({
             param: { owner, repo: name, sha: c.req.param("sha") },
           }),
-        )
-        .send();
+        );
     })
     .get("/velocity", (c) =>
-      api(c).from(($) => $.api.velocity.$url()).query(["hours"]).send(),
+      api(c).send(($) =>
+        $.api.velocity.$get({ query: { hours: c.req.query("hours") } } as any),
+      ),
     )
-    .get("/review", (c) => api(c).from(($) => $.api.review.$url()).send())
-    .get("/jobs/pending", (c) =>
-      api(c).from(($) => $.api.jobs.pending.$url()).send(),
-    )
-    .get("/repos", (c) => api(c).from(($) => $.api.repos.$url()).send())
-    .post("/repos", (c) => api(c).from(($) => $.api.repos.$url()).send())
+    .get("/review", (c) => api(c).send(($) => $.api.review.$get()))
+    .get("/jobs/pending", (c) => api(c).send(($) => $.api.jobs.pending.$get()))
+    .get("/repos", (c) => api(c).send(($) => $.api.repos.$get()))
+    .post("/repos", async (c) => {
+      const body = await c.req.json().catch(() => ({}));
+      return api(c).send(($) => $.api.repos.$post({ json: body } as any));
+    })
     .get("/branches", (c) =>
-      api(c).from(($) => $.api.branches.$url()).query(["repo"]).send(),
+      api(c).send(($) =>
+        $.api.branches.$get({ query: { repo: c.req.query("repo") } } as any),
+      ),
     )
     .get("/changes/:id", (c) =>
-      api(c)
-        .from(($) => $.api.changes[":id"].$url({ param: { id: c.req.param("id") } }))
-        .send(),
+      api(c).send(($) => $.api.changes[":id"].$get({ param: { id: c.req.param("id") } })),
     )
     .get("/changes/:id/diff", (c) =>
       api(c)
-        .from(($) =>
-          $.api.changes[":id"].diff.$url({ param: { id: c.req.param("id") } }),
-        )
         .as("text")
-        .send(),
+        .send(($) =>
+          $.api.changes[":id"].diff.$get({ param: { id: c.req.param("id") } }),
+        ),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      api(c)
-        .from(($) =>
-          $.api.changes[":id"]["regenerate-summary"].$url({
-            param: { id: c.req.param("id") },
-          }),
-        )
-        .send(),
+      api(c).send(($) =>
+        $.api.changes[":id"]["regenerate-summary"].$post({
+          param: { id: c.req.param("id") },
+        } as any),
+      ),
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      api(c)
-        .from(($) =>
-          $.api.changes[":id"]["requeue-summary"].$url({
-            param: { id: c.req.param("id") },
-          }),
-        )
-        .send(),
+      api(c).send(($) =>
+        $.api.changes[":id"]["requeue-summary"].$post({
+          param: { id: c.req.param("id") },
+        } as any),
+      ),
     )
     .get("/changes/:id/sessions", (c) =>
-      api(c)
-        .from(($) =>
-          $.api.changes[":id"].sessions.$url({ param: { id: c.req.param("id") } }),
-        )
-        .send(),
+      api(c).send(($) =>
+        $.api.changes[":id"].sessions.$get({ param: { id: c.req.param("id") } }),
+      ),
     )
     .get("/changes/:id/agent-events", (c) =>
       api(c)
-        .from(($) =>
-          $.api.changes[":id"]["agent-events"].$url({
-            param: { id: c.req.param("id") },
-          }),
-        )
         .as("stream")
-        .send(),
+        .send(($) =>
+          $.api.changes[":id"]["agent-events"].$get({ param: { id: c.req.param("id") } }),
+        ),
     )
     .get("/sessions/:id/events", (c) =>
-      api(c)
-        .from(($) =>
-          $.api.sessions[":id"].events.$url({ param: { id: c.req.param("id") } }),
-        )
-        .query(["after", "limit"])
-        .send(),
+      api(c).send(($) =>
+        $.api.sessions[":id"].events.$get({
+          param: { id: c.req.param("id") },
+          query: {
+            after: c.req.query("after"),
+            limit: c.req.query("limit"),
+          },
+        } as any),
+      ),
     )
     // ── triage UI data: wide events + triage runs ───────────────────────────
     // These talk to obs + triage as internal services; auth("session") gates
     // access without injecting a Bearer (and is a no-op when disableAuth is set).
-    .get("/daemons", (c) => obs(c).path("/v1/daemons").send())
-    .get("/daemons/:name/memory", (c) => {
-      const name = encodeURIComponent(c.req.param("name"));
-      return obs(c).path(`/v1/daemons/${name}/memory`).query(["repo"]).send();
-    })
-    .get("/daemons/:name/runs", (c) => {
-      const name = encodeURIComponent(c.req.param("name"));
-      return obs(c).path(`/v1/daemons/${name}/runs`).query(["repo"]).send();
-    })
+    .get("/daemons", (c) => obs(c).send(($) => $.v1.daemons.$get()))
+    .get("/daemons/:name/memory", (c) =>
+      obs(c).send(($) =>
+        $.v1.daemons[":daemon"].memory.$get({
+          param: { daemon: c.req.param("name") },
+          query: { repo: c.req.query("repo") },
+        } as any),
+      ),
+    )
+    .get("/daemons/:name/runs", (c) =>
+      obs(c).send(($) =>
+        $.v1.daemons[":daemon"].runs.$get({
+          param: { daemon: c.req.param("name") },
+          query: { repo: c.req.query("repo") },
+        } as any),
+      ),
+    )
     .get("/rollups", (c) =>
-      obs(c).path("/v1/rollups").query(["service", "outcome", "since", "limit"]).send(),
+      obs(c).send(($) =>
+        $.v1.rollups.$get({
+          query: {
+            service: c.req.query("service"),
+            outcome: c.req.query("outcome"),
+            since: c.req.query("since"),
+            limit: c.req.query("limit"),
+          },
+        } as any),
+      ),
     )
     .get("/rollups/stream", (c) =>
-      obs(c).as("stream").path("/v1/rollups/stream").query(["service", "outcome"]).send(),
+      obs(c)
+        .as("stream")
+        .send(($) =>
+          ($ as any).v1.rollups.stream.$get({
+            query: {
+              service: c.req.query("service"),
+              outcome: c.req.query("outcome"),
+            },
+          }),
+        ),
     )
-    .get("/rollups/:request_id", (c) => {
-      const id = encodeURIComponent(c.req.param("request_id"));
-      return obs(c).path(`/v1/rollups/${id}`).send();
-    })
+    .get("/rollups/:request_id", (c) =>
+      obs(c).send(($) =>
+        $.v1.rollups[":request_id"].$get({
+          param: { request_id: c.req.param("request_id") },
+        }),
+      ),
+    )
     .get("/logs", (c) =>
       api(c)
         .auth("session")
-        .from(($) => $.api.logs.$url())
-        .query([
-          "service",
-          "level",
-          "logger",
-          "search",
-          "window",
-          "limit",
-          "status_code",
-          "status_class",
-        ])
-        .send(),
+        .send(($) =>
+          $.api.logs.$get({
+            query: {
+              service: c.req.query("service"),
+              level: c.req.query("level"),
+              logger: c.req.query("logger"),
+              search: c.req.query("search"),
+              window: c.req.query("window"),
+              limit: c.req.query("limit"),
+              status_code: c.req.query("status_code"),
+              status_class: c.req.query("status_class"),
+            },
+          } as any),
+        ),
     )
     .get("/logs/stream", (c) =>
       api(c)
         .auth("session")
         .as("stream")
-        .from(($) => $.api.logs.stream.$url())
-        .query(["service", "level", "logger", "search", "status_class", "history_window"])
-        .send(),
+        .send(($) =>
+          ($ as any).api.logs.stream.$get({
+            query: {
+              service: c.req.query("service"),
+              level: c.req.query("level"),
+              logger: c.req.query("logger"),
+              search: c.req.query("search"),
+              status_class: c.req.query("status_class"),
+              history_window: c.req.query("history_window"),
+            },
+          }),
+        ),
     )
     .get("/triage/runs", (c) =>
       triage(c)
-        .path("/v1/runs")
         .onError((err) => {
           console.warn("[bff] triage runs unavailable, returning empty list", err);
           return c.json({ runs: [] });
         })
-        .send(),
+        .send(($) => $.v1.runs.$get()),
     );
 
   const app = new Hono()
@@ -414,7 +469,7 @@ export function createApp(config: BffConfig) {
     })
     .all("/api/auth/*", (c) => {
       const incoming = new URL(c.req.url);
-      return auth(c).path(incoming.pathname + incoming.search).send();
+      return forwardAuthRequest(c, deps, incoming.pathname + incoming.search);
     })
     .route("/rpc", rpc);
 

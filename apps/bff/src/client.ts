@@ -1,5 +1,8 @@
 import { hc } from "hono/client";
 import type { AppRouter as CtlAppRouter } from "@red/ctl";
+import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
+import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
+import type { AppRouter as TriageAppRouter } from "../../triage/src/app";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -23,81 +26,65 @@ export interface ClientDeps {
 }
 
 export type CtlClient = ReturnType<typeof hc<CtlAppRouter>>;
+export type AuthClient = ReturnType<typeof hc<AuthAppRouter>>;
+export type ObsClient = ReturnType<typeof hc<ObsAppRouter>>;
+export type TriageClient = ReturnType<typeof hc<TriageAppRouter>>;
 
 /**
- * Per-service client factories. Each preset bakes in the upstream + auth
- * mode + body mode that match how that upstream is actually used today.
- * All presets remain overridable via the chain (e.g. `auth(c).auth("none")`).
+ * Per-service client factories. Each carries a typed `hc<UpstreamAppRouter>`
+ * client; routes invoke upstream methods via `.send($ => $.x.y.$get(...))`
+ * with full path / param / query / body type checking.
  *
- * `makeApi` additionally seeds the route builder with a typed `hc<CtlAppRouter>`
- * client so handlers can opt into typed paths via `.from($ => $.api.repos.$url())`
- * instead of stringly-typed `.path("/api/repos")`. Streaming/text/wildcard
- * routes still use `.path()` as the escape hatch.
+ * Auth modes (jwt / session / cookie / none) and body shape (json / text /
+ * stream) configure the pre-/post-fetch envelope around hc's call.
  */
 
 export function makeApi(deps: ClientDeps): (c: any) => RouteBuilder<CtlClient> {
-  const ctlClient = hc<CtlAppRouter>(deps.config.apiBaseUrl);
   return (c: any) =>
-    new RouteBuilder<CtlClient>(c, deps.config, deps.fetchImpl, ctlClient, "api");
+    new RouteBuilder<CtlClient>(c, deps.config, deps.fetchImpl, "api", {
+      auth: "jwt",
+      as: "json",
+    });
 }
 
-export function makeAuth(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
+export function makeAuth(deps: ClientDeps): (c: any) => RouteBuilder<AuthClient> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "auth")
-      .auth("cookie")
-      .as("stream");
+    new RouteBuilder<AuthClient>(c, deps.config, deps.fetchImpl, "auth", {
+      auth: "cookie",
+      as: "stream",
+    });
 }
 
-export function makeObs(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
+export function makeObs(deps: ClientDeps): (c: any) => RouteBuilder<ObsClient> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "obs")
-      .auth("session");
+    new RouteBuilder<ObsClient>(c, deps.config, deps.fetchImpl, "obs", {
+      auth: "session",
+      as: "json",
+    });
 }
 
-export function makeTriage(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
+export function makeTriage(deps: ClientDeps): (c: any) => RouteBuilder<TriageClient> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "triage")
-      .auth("session");
+    new RouteBuilder<TriageClient>(c, deps.config, deps.fetchImpl, "triage", {
+      auth: "session",
+      as: "json",
+    });
 }
 
 class RouteBuilder<TClient> {
-  private _path: string | undefined;
-  private _query = new URLSearchParams();
-  private _typedUrl: URL | undefined;
-  private _auth: AuthMode = "jwt";
-  private _bodyMode: BodyMode = "json";
+  private _auth: AuthMode;
+  private _bodyMode: BodyMode;
   private _onError: ((err: unknown) => Response | Promise<Response>) | undefined;
 
   constructor(
     private c: any,
     private config: ClientConfig,
     private fetchImpl: FetchImpl,
-    private hcClient: TClient | undefined,
     private upstream: Upstream,
-  ) {}
-
-  /** Stringly-typed path. Escape hatch for wildcards / non-typed upstreams. */
-  path(target: string): this {
-    this._path = target;
-    return this;
-  }
-
-  /**
-   * Typed path via `hc<UpstreamAppRouter>`. The extractor is called with
-   * the upstream's typed client and should return the URL via hc's
-   * `$url()` — e.g. `from($ => $.api.repos.$url())` or
-   * `from($ => $.api.changes[":id"].$url({ param: { id } }))`.
-   *
-   * Path/param/query types flow through; typos are caught at compile.
-   */
-  from(extractor: (client: TClient) => URL): this {
-    if (this.hcClient === undefined) {
-      throw new Error(
-        "RouteBuilder.from(): no typed client available for this factory; use .path() instead",
-      );
-    }
-    this._typedUrl = extractor(this.hcClient);
-    return this;
+    defaults: { auth: AuthMode; as: BodyMode },
+  ) {
+    this._auth = defaults.auth;
+    this._bodyMode = defaults.as;
   }
 
   auth(mode: AuthMode): this {
@@ -110,29 +97,25 @@ class RouteBuilder<TClient> {
     return this;
   }
 
-  query(allowlist: readonly string[]): this {
-    for (const key of allowlist) {
-      const value = this.c.req.query(key);
-      if (value) this._query.set(key, value);
-    }
-    return this;
-  }
-
-  queryAdd(extra: Record<string, string | undefined>): this {
-    for (const [key, value] of Object.entries(extra)) {
-      if (value) this._query.set(key, value);
-    }
-    return this;
-  }
-
   onError(fn: (err: unknown) => Response | Promise<Response>): this {
     this._onError = fn;
     return this;
   }
 
-  async send(): Promise<Response> {
-    const targetUrl = this.resolveTargetUrl();
-    if (typeof targetUrl !== "string") return targetUrl;
+  /**
+   * Invoke an upstream endpoint via the typed hc client. The callback
+   * receives the per-request hc client (configured with auth + forwarded
+   * headers) and returns hc's typed Response.
+   *
+   *   api(c).send($ => $.api.repos.$get())
+   *   api(c).send($ => $.api.changes[":id"].$get({ param: { id } }))
+   *   api(c).as("stream").send($ => $.api.changes[":id"]["agent-events"].$get({ param: { id } }))
+   */
+  async send(callback: (client: TClient) => Promise<Response>): Promise<Response> {
+    const baseUrl = this.upstreamBaseUrl();
+    if (!baseUrl) {
+      return this.c.json({ error: `${this.upstream} backend not configured` }, 503);
+    }
 
     const forwardHeaders = buildForwardHeaders(this.c.req.raw);
 
@@ -153,46 +136,24 @@ class RouteBuilder<TClient> {
       if (gate instanceof Response) return gate;
     }
 
-    const body = await readForwardBody(this.c.req.raw);
-    const init: RequestInit = {
-      method: this.c.req.method,
-      headers: forwardHeaders,
-      body,
+    const isCookie = this._auth === "cookie";
+    const customFetch: FetchImpl = async (input, init) => {
+      const merged = new Headers(init?.headers);
+      forwardHeaders.forEach((value, key) => merged.set(key, value));
+      const finalInit: RequestInit = { ...init, headers: merged };
+      if (isCookie) finalInit.redirect = "manual";
+      return this.fetchImpl(input, finalInit);
     };
-    if (this._auth === "cookie") {
-      init.redirect = "manual";
-    }
+
+    const client = hc<any>(baseUrl, { fetch: customFetch }) as TClient;
 
     try {
-      const upstream = await this.fetchImpl(targetUrl, init);
+      const upstream = await callback(client);
       return await this.shape(upstream);
     } catch (err) {
       if (this._onError) return await this._onError(err);
       throw err;
     }
-  }
-
-  private resolveTargetUrl(): string | Response {
-    if (this._typedUrl) {
-      // hc-extracted URL has the upstream base baked in; just stringify.
-      // Apply any extra .query() allowlist entries on top.
-      if (this._query.toString()) {
-        const merged = new URL(this._typedUrl.toString());
-        for (const [k, v] of this._query) merged.searchParams.set(k, v);
-        return merged.toString();
-      }
-      return this._typedUrl.toString();
-    }
-    const baseUrl = this.upstreamBaseUrl();
-    if (!baseUrl) {
-      return this.c.json({ error: `${this.upstream} backend not configured` }, 503);
-    }
-    if (!this._path) {
-      throw new Error(
-        "RouteBuilder: .path() or .from() is required before .send()",
-      );
-    }
-    return joinUrl(baseUrl, this._path, this._query);
   }
 
   private async shape(upstream: Response): Promise<Response> {
@@ -231,6 +192,35 @@ class RouteBuilder<TClient> {
         return this.config.mcpBaseUrl;
     }
   }
+}
+
+/**
+ * Wildcard escape hatch: forwards an opaque path under `authBaseUrl`
+ * verbatim (cookies preserved, redirects manual, set-cookie passed back).
+ *
+ * Used only for the `app.all("/api/auth/*", ...)` mount where better-auth's
+ * adapter handles dynamic sub-paths that aren't part of any typed RPC
+ * surface. Should disappear once edge routing (Caddy / Envoy) takes over
+ * the prefix proxy.
+ */
+export async function forwardAuthRequest(
+  c: any,
+  deps: ClientDeps,
+  pathAndSearch: string,
+): Promise<Response> {
+  const targetUrl = joinUrl(deps.config.authBaseUrl, pathAndSearch);
+  const headers = buildForwardHeaders(c.req.raw);
+  const body = await readForwardBody(c.req.raw);
+  const upstream = await deps.fetchImpl(targetUrl, {
+    method: c.req.method,
+    headers,
+    body,
+    redirect: "manual",
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: copyResponseHeaders(upstream.headers),
+  });
 }
 
 export function joinUrl(baseUrl: string, path: string, query?: URLSearchParams): string {

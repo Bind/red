@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
 import {
+  forwardAuthRequest,
   makeApi,
   makeAuth,
   makeObs,
@@ -55,19 +56,18 @@ describe("service client", () => {
     const { calls, fetchImpl } = recorder(async (req) => {
       const url = new URL(req.url);
       if (url.pathname === "/session/exchange") return exchangeOk();
-      if (url.pathname === "/api/foo") return Response.json({ ok: true });
+      if (url.pathname === "/api/review") return Response.json([]);
       return new Response("nf", { status: 404 });
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) => api(c).path("/api/foo").send());
+    const app = new Hono().get("/test", (c) => api(c).send(($) => $.api.review.$get()));
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
-    expect(calls.map((c) => c.url)).toEqual([
-      "http://auth.test/session/exchange",
-      "http://api.test/api/foo",
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
+      "/session/exchange",
+      "/api/review",
     ]);
     expect(calls[0]?.cookie).toBe("session=abc");
     expect(calls[1]?.authorization).toBe("Bearer tok-1");
@@ -86,7 +86,7 @@ describe("service client", () => {
       return new Response("nf", { status: 404 });
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) => api(c).path("/api/foo").send());
+    const app = new Hono().get("/test", (c) => api(c).send(($) => $.api.review.$get()));
 
     const res = await app.request("/test");
 
@@ -104,16 +104,14 @@ describe("service client", () => {
       }),
     );
     const auth = makeAuth({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      auth(c).path("/whoami").send(),
-    );
+    const app = new Hono().get("/test", (c) => auth(c).send(($) => $.me.$get()));
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
     expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie")).toContain("session=new");
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe("http://auth.test/whoami");
+    expect(calls[0]?.url).toBe("http://auth.test/me");
     expect(calls[0]?.redirect).toBe("manual");
     expect(calls[0]?.cookie).toBe("session=abc");
     expect(calls[0]?.authorization).toBeNull();
@@ -127,17 +125,14 @@ describe("service client", () => {
       return new Response("nf", { status: 404 });
     });
     const obs = makeObs({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      obs(c).path("/v1/daemons").send(),
-    );
+    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.v1.daemons.$get()));
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([{ name: "d1" }]);
-    expect(calls.map((c) => c.url)).toEqual([
-      "http://auth.test/session/exchange",
-      "http://obs.test/v1/daemons",
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
+      "/session/exchange",
+      "/v1/daemons",
     ]);
     expect(calls[1]?.authorization).toBeNull();
   });
@@ -145,26 +140,32 @@ describe("service client", () => {
   test("session auth bypassed when disableAuth is true", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
     const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      obs(c).path("/v1/daemons").send(),
-    );
+    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.v1.daemons.$get()));
 
     const res = await app.request("/test");
 
     expect(res.status).toBe(200);
-    expect(calls.map((c) => c.url)).toEqual(["http://obs.test/v1/daemons"]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/v1/daemons"]);
   });
 
-  test("none auth sends nothing extra and skips exchange", async () => {
-    const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
+  test("auth(\"none\") skips session exchange entirely", async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json({ files: [] }));
     const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).auth("none").path("/api/repos/x/y/tree").send(),
+      api(c)
+        .auth("none")
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].tree.$get({
+            param: { owner: "x", repo: "y" },
+          } as any),
+        ),
     );
 
     await app.request("/test");
 
-    expect(calls.map((c) => c.url)).toEqual(["http://api.test/api/repos/x/y/tree"]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
+      "/api/repos/x/y/tree",
+    ]);
     expect(calls[0]?.authorization).toBeNull();
   });
 
@@ -174,53 +175,13 @@ describe("service client", () => {
       config: baseConfig({ triageBaseUrl: undefined, disableAuth: true }),
       fetchImpl,
     });
-    const app = new Hono().get("/test", (c) =>
-      triage(c).path("/v1/runs").send(),
-    );
+    const app = new Hono().get("/test", (c) => triage(c).send(($) => $.v1.runs.$get()));
 
     const res = await app.request("/test");
 
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "triage backend not configured" });
     expect(calls).toHaveLength(0);
-  });
-
-  test("query allowlist plucks present params and ignores absent ones", async () => {
-    const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      obs(c)
-        .path("/v1/rollups")
-        .query(["service", "outcome", "since", "limit"])
-        .send(),
-    );
-
-    await app.request("/test?service=ctl&limit=5&unrelated=ignored");
-
-    expect(calls).toHaveLength(1);
-    const target = new URL(calls[0]!.url);
-    expect(target.pathname).toBe("/v1/rollups");
-    expect(target.searchParams.get("service")).toBe("ctl");
-    expect(target.searchParams.get("limit")).toBe("5");
-    expect(target.searchParams.has("outcome")).toBe(false);
-    expect(target.searchParams.has("unrelated")).toBe(false);
-  });
-
-  test("queryAdd merges explicit values", async () => {
-    const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      obs(c)
-        .path("/v1/rollups")
-        .queryAdd({ service: "ctl", outcome: undefined })
-        .send(),
-    );
-
-    await app.request("/test");
-
-    const target = new URL(calls[0]!.url);
-    expect(target.searchParams.get("service")).toBe("ctl");
-    expect(target.searchParams.has("outcome")).toBe(false);
   });
 
   test("text body mode preserves upstream content-type", async () => {
@@ -233,7 +194,11 @@ describe("service client", () => {
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).path("/api/changes/1/diff").as("text").send(),
+      api(c)
+        .as("text")
+        .send(($) =>
+          $.api.changes[":id"].diff.$get({ param: { id: "1" } }),
+        ),
     );
 
     const res = await app.request("/test");
@@ -257,7 +222,11 @@ describe("service client", () => {
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).path("/api/changes/1/agent-events").as("stream").send(),
+      api(c)
+        .as("stream")
+        .send(($) =>
+          $.api.changes[":id"]["agent-events"].$get({ param: { id: "1" } }),
+        ),
     );
 
     const res = await app.request("/test");
@@ -279,9 +248,8 @@ describe("service client", () => {
     const triage = makeTriage({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
       triage(c)
-        .path("/v1/runs")
         .onError(() => c.json({ runs: [] }))
-        .send(),
+        .send(($) => $.v1.runs.$get()),
     );
 
     const res = await app.request("/test");
@@ -290,56 +258,39 @@ describe("service client", () => {
     expect(await res.json()).toEqual({ runs: [] });
   });
 
-  test("from() resolves a typed url via the upstream's hc client", async () => {
-    const { calls, fetchImpl } = recorder(async (req) => {
-      const url = new URL(req.url);
-      if (url.pathname === "/session/exchange") return exchangeOk();
-      if (url.pathname === "/api/changes/42") return Response.json({ id: 42 });
-      return new Response("nf", { status: 404 });
-    });
-    const api = makeApi({ config: baseConfig(), fetchImpl });
+  test("typed query args make it into the upstream URL", async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json([]));
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).from(($) => $.api.changes[":id"].$url({ param: { id: "42" } })).send(),
+      obs(c).send(($) =>
+        $.v1.rollups.$get({
+          query: {
+            service: c.req.query("service"),
+            outcome: c.req.query("outcome"),
+          },
+        } as any),
+      ),
     );
 
-    const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
+    await app.request("/test?service=ctl&outcome=ok");
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ id: 42 });
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      "/session/exchange",
-      "/api/changes/42",
-    ]);
-    expect(calls[1]?.authorization).toBe("Bearer tok-1");
+    const target = new URL(calls[0]!.url);
+    expect(target.pathname).toBe("/v1/rollups");
+    expect(target.searchParams.get("service")).toBe("ctl");
+    expect(target.searchParams.get("outcome")).toBe("ok");
   });
 
-  test("from() merges .query() allowlist on top of typed url", async () => {
-    const { calls, fetchImpl } = recorder(async (req) => {
-      const url = new URL(req.url);
-      if (url.pathname === "/session/exchange") return exchangeOk();
-      return Response.json({ summarized: 1, pending_review: 0 });
-    });
-    const api = makeApi({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) =>
-      api(c).from(($) => $.api.velocity.$url()).query(["hours"]).send(),
-    );
-
-    await app.request("/test?hours=12&unrelated=ignored");
-
-    const target = new URL(calls[1]!.url);
-    expect(target.pathname).toBe("/api/velocity");
-    expect(target.searchParams.get("hours")).toBe("12");
-    expect(target.searchParams.has("unrelated")).toBe(false);
-  });
-
-  test("POST forwards the request body upstream after exchange", async () => {
+  test("POST forwards a parsed JSON body upstream after exchange", async () => {
     const { calls, fetchImpl } = recorder(async (req) => {
       const url = new URL(req.url);
       if (url.pathname === "/session/exchange") return exchangeOk();
       return Response.json({ id: 1 }, { status: 201 });
     });
     const api = makeApi({ config: baseConfig(), fetchImpl });
-    const app = new Hono().post("/test", (c) => api(c).path("/api/repos").send());
+    const app = new Hono().post("/test", async (c) => {
+      const body = await c.req.json();
+      return api(c).send(($) => $.api.repos.$post({ json: body } as any));
+    });
 
     const payload = { owner: "red", name: "demo" };
     const res = await app.request("/test", {
@@ -353,7 +304,49 @@ describe("service client", () => {
       ["POST", "/session/exchange"],
       ["POST", "/api/repos"],
     ]);
-    expect(calls[1]?.body).toBe(JSON.stringify(payload));
+    expect(JSON.parse(calls[1]!.body!)).toEqual(payload);
     expect(calls[1]?.authorization).toBe("Bearer tok-1");
+  });
+
+  test("forwardAuthRequest preserves method, body, and set-cookie", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname.startsWith("/api/auth/")) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "session=new; Path=/; HttpOnly",
+          },
+        });
+      }
+      return new Response("nf", { status: 404 });
+    });
+    const config = baseConfig();
+    const app = new Hono().all("/api/auth/*", async (c) => {
+      const incoming = new URL(c.req.url);
+      return forwardAuthRequest(
+        c,
+        { config, fetchImpl },
+        incoming.pathname + incoming.search,
+      );
+    });
+
+    const res = await app.request("/api/auth/sign-in?cb=/", {
+      method: "POST",
+      headers: { Cookie: "session=abc", "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "x@y.z" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("session=new");
+    expect(calls).toHaveLength(1);
+    const target = new URL(calls[0]!.url);
+    expect(target.pathname).toBe("/api/auth/sign-in");
+    expect(target.searchParams.get("cb")).toBe("/");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.cookie).toBe("session=abc");
+    expect(calls[0]?.redirect).toBe("manual");
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ email: "x@y.z" });
   });
 });

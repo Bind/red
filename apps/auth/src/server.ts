@@ -54,7 +54,6 @@ export interface AuthServer {
   authority: Awaited<ReturnType<typeof createTokenAuthority>>;
   registry: ReturnType<typeof createMachineClientRegistry>;
   userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
-  apiRouter: unknown;
 }
 
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
@@ -181,7 +180,7 @@ function resolveSessionCookie(setCookieHeader: string): { name: string; value: s
   return null;
 }
 
-export async function createAuthServer(config: AuthServerConfig): Promise<AuthServer> {
+export async function createAuthServer(config: AuthServerConfig) {
   const webClients = new Map(
     (config.webClients ?? []).map((client) => [client.clientId, client] as const),
   );
