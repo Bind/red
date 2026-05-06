@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
-import { makeApi, type ClientConfig } from "./client";
+import {
+  makeApi,
+  makeAuth,
+  makeObs,
+  makeTriage,
+  type ClientConfig,
+} from "./client";
 
 type Call = {
   url: string;
@@ -97,9 +103,9 @@ describe("service client", () => {
         },
       }),
     );
-    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const auth = makeAuth({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).to("auth").auth("cookie").as("stream").path("/whoami").send(),
+      auth(c).path("/whoami").send(),
     );
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
@@ -120,9 +126,9 @@ describe("service client", () => {
       if (url.pathname === "/v1/daemons") return Response.json([{ name: "d1" }]);
       return new Response("nf", { status: 404 });
     });
-    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const obs = makeObs({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).to("obs").auth("session").path("/v1/daemons").send(),
+      obs(c).path("/v1/daemons").send(),
     );
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
@@ -138,9 +144,9 @@ describe("service client", () => {
 
   test("session auth bypassed when disableAuth is true", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c).to("obs").auth("session").path("/v1/daemons").send(),
+      obs(c).path("/v1/daemons").send(),
     );
 
     const res = await app.request("/test");
@@ -164,9 +170,12 @@ describe("service client", () => {
 
   test("503 when upstream is unconfigured, with shaped error body", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
-    const api = makeApi({ config: baseConfig({ triageBaseUrl: undefined }), fetchImpl });
+    const triage = makeTriage({
+      config: baseConfig({ triageBaseUrl: undefined, disableAuth: true }),
+      fetchImpl,
+    });
     const app = new Hono().get("/test", (c) =>
-      api(c).to("triage").auth("none").path("/v1/runs").send(),
+      triage(c).path("/v1/runs").send(),
     );
 
     const res = await app.request("/test");
@@ -178,11 +187,9 @@ describe("service client", () => {
 
   test("query allowlist plucks present params and ignores absent ones", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c)
-        .to("obs")
-        .auth("session")
+      obs(c)
         .path("/v1/rollups")
         .query(["service", "outcome", "since", "limit"])
         .send(),
@@ -201,11 +208,9 @@ describe("service client", () => {
 
   test("queryAdd merges explicit values", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c)
-        .to("obs")
-        .auth("session")
+      obs(c)
         .path("/v1/rollups")
         .queryAdd({ service: "ctl", outcome: undefined })
         .send(),
@@ -271,11 +276,9 @@ describe("service client", () => {
       if (url.pathname === "/session/exchange") return exchangeOk();
       throw new Error("connect ECONNREFUSED");
     };
-    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const triage = makeTriage({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      api(c)
-        .to("triage")
-        .auth("session")
+      triage(c)
         .path("/v1/runs")
         .onError(() => c.json({ runs: [] }))
         .send(),

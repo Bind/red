@@ -38,33 +38,29 @@ export type CtlClient = ReturnType<typeof hc<CtlAppRouter>>;
 export function makeApi(deps: ClientDeps): (c: any) => RouteBuilder<CtlClient> {
   const ctlClient = hc<CtlAppRouter>(deps.config.apiBaseUrl);
   return (c: any) =>
-    new RouteBuilder<CtlClient>(c, deps.config, deps.fetchImpl, ctlClient);
+    new RouteBuilder<CtlClient>(c, deps.config, deps.fetchImpl, ctlClient, "api");
 }
 
 export function makeAuth(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined)
-      .to("auth")
+    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "auth")
       .auth("cookie")
       .as("stream");
 }
 
 export function makeObs(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined)
-      .to("obs")
+    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "obs")
       .auth("session");
 }
 
 export function makeTriage(deps: ClientDeps): (c: any) => RouteBuilder<unknown> {
   return (c: any) =>
-    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined)
-      .to("triage")
+    new RouteBuilder<unknown>(c, deps.config, deps.fetchImpl, undefined, "triage")
       .auth("session");
 }
 
 class RouteBuilder<TClient> {
-  private _upstream: Upstream = "api";
   private _path: string | undefined;
   private _query = new URLSearchParams();
   private _typedUrl: URL | undefined;
@@ -77,12 +73,8 @@ class RouteBuilder<TClient> {
     private config: ClientConfig,
     private fetchImpl: FetchImpl,
     private hcClient: TClient | undefined,
+    private upstream: Upstream,
   ) {}
-
-  to(upstream: Upstream): this {
-    this._upstream = upstream;
-    return this;
-  }
 
   /** Stringly-typed path. Escape hatch for wildcards / non-typed upstreams. */
   path(target: string): this {
@@ -193,7 +185,7 @@ class RouteBuilder<TClient> {
     }
     const baseUrl = this.upstreamBaseUrl();
     if (!baseUrl) {
-      return this.c.json({ error: `${this._upstream} backend not configured` }, 503);
+      return this.c.json({ error: `${this.upstream} backend not configured` }, 503);
     }
     if (!this._path) {
       throw new Error(
@@ -224,7 +216,7 @@ class RouteBuilder<TClient> {
   }
 
   private upstreamBaseUrl(): string | undefined {
-    switch (this._upstream) {
+    switch (this.upstream) {
       case "api":
         return this.config.apiBaseUrl;
       case "auth":
