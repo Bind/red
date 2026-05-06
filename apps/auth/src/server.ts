@@ -7,6 +7,8 @@ import {
   obsMiddleware,
 } from "@red/obs";
 import { createHttpLogger, getServerLogger, Hono, type MiddlewareHandler } from "@red/server";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
@@ -433,7 +435,10 @@ export async function createAuthServer(config: AuthServerConfig) {
       scopes_supported: collectScopes(registry.list().flatMap((client) => client.allowedScopes)),
     }),
   )
-    .get("/__test__/mailbox/latest", (c) => {
+    .get(
+      "/__test__/mailbox/latest",
+      zValidator("query", z.object({ email: z.string().optional() })),
+      (c) => {
     if (!config.exposeTestMailbox) {
       return c.json({ error: "Not found" }, 404);
     }
@@ -445,9 +450,13 @@ export async function createAuthServer(config: AuthServerConfig) {
       return c.json({ error: "No mailbox entry found" }, 404);
     }
     return c.json(mail);
-  })
+      },
+    )
 
-  .post("/user/two-factor/enroll", async (c) => {
+  .post(
+    "/user/two-factor/enroll",
+    zValidator("json", z.object({}).optional()),
+    async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -463,14 +472,21 @@ export async function createAuthServer(config: AuthServerConfig) {
       },
     });
     return c.json(await userLifecycle.enrollRecoveryFactor(session.id, user.email));
-  })
+    },
+  )
 
-  .post("/user/two-factor/verify", async (c) => {
+  .post(
+    "/user/two-factor/verify",
+    zValidator(
+      "json",
+      z.object({ code: z.string(), kind: z.string().optional() }),
+    ),
+    async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
     }
-    const fields = await readBodyFields(c.req.raw);
+    const fields = c.req.valid("json");
     const code = fields.code?.trim();
     const kind = fields.kind?.trim();
     if (!code) {
@@ -493,11 +509,15 @@ export async function createAuthServer(config: AuthServerConfig) {
         kind: kind === "backup_code" ? "backup_code" : "totp",
       }),
     );
-  })
+    },
+  )
 
-  .post("/user/totp-login", async (c) => {
+  .post(
+    "/user/totp-login",
+    zValidator("json", z.object({ email: z.string(), code: z.string() })),
+    async (c) => {
     const requestId = getEnvelope(c).requestId;
-    const fields = await readBodyFields(c.req.raw);
+    const fields = c.req.valid("json");
     const email = fields.email?.trim().toLowerCase();
     const code = fields.code?.trim();
     if (!email || !code) {
@@ -592,9 +612,13 @@ export async function createAuthServer(config: AuthServerConfig) {
       session_id: session.id,
       email,
     });
-  })
+    },
+  )
 
-  .post("/user/onboarding/complete", async (c) => {
+  .post(
+    "/user/onboarding/complete",
+    zValidator("json", z.object({}).optional()),
+    async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -611,7 +635,8 @@ export async function createAuthServer(config: AuthServerConfig) {
     });
     await userLifecycle.completeOnboarding(session.id, user.email);
     return c.json({ ok: true, sessionId: session.id, email: user.email });
-  })
+    },
+  )
 
   .post("/user/recovery/start", async (c) => {
     const requestId = getEnvelope(c).requestId;
@@ -645,9 +670,19 @@ export async function createAuthServer(config: AuthServerConfig) {
     return authAdapter.handle(mailRequest);
   })
 
-  .post("/login-attempts", async (c) => {
+  .post(
+    "/login-attempts",
+    zValidator(
+      "json",
+      z.object({
+        email: z.string(),
+        client_id: z.string().optional(),
+        clientId: z.string().optional(),
+      }),
+    ),
+    async (c) => {
     const requestId = getEnvelope(c).requestId;
-    const fields = await readBodyFields(c.req.raw);
+    const fields = c.req.valid("json");
     const email = fields.email?.trim().toLowerCase();
     const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
     if (!email) {
@@ -732,7 +767,8 @@ export async function createAuthServer(config: AuthServerConfig) {
       status: "pending",
       expires_at: attempt.expiresAt,
     });
-  })
+    },
+  )
 
   .get("/login-attempts/:id", async (c) => {
     getEnvelope(c).set({
@@ -776,9 +812,21 @@ export async function createAuthServer(config: AuthServerConfig) {
     return c.json(body);
   })
 
-  .post("/magic-link/complete", async (c) => {
+  .post(
+    "/magic-link/complete",
+    zValidator(
+      "json",
+      z.object({
+        attempt_id: z.string().optional(),
+        attemptId: z.string().optional(),
+        token: z.string(),
+        client_id: z.string().optional(),
+        clientId: z.string().optional(),
+      }),
+    ),
+    async (c) => {
     const requestId = getEnvelope(c).requestId;
-    const fields = await readBodyFields(c.req.raw);
+    const fields = c.req.valid("json");
     const attemptId = fields.attempt_id ?? fields.attemptId;
     const token = fields.token?.trim();
     const clientId = normalizeClientId(fields.client_id ?? fields.clientId);
@@ -896,10 +944,22 @@ export async function createAuthServer(config: AuthServerConfig) {
       session_id: sessionResult.response.session.id,
       client_id: client.clientId,
     });
-  })
+    },
+  )
 
-  .post("/login-attempts/redeem", async (c) => {
-    const fields = await readBodyFields(c.req.raw);
+  .post(
+    "/login-attempts/redeem",
+    zValidator(
+      "json",
+      z.object({
+        attempt_id: z.string().optional(),
+        attemptId: z.string().optional(),
+        login_grant: z.string().optional(),
+        loginGrant: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+    const fields = c.req.valid("json");
     const attemptId = fields.attempt_id ?? fields.attemptId;
     const loginGrant = fields.login_grant ?? fields.loginGrant;
     if (!attemptId || !loginGrant) {
@@ -966,7 +1026,8 @@ export async function createAuthServer(config: AuthServerConfig) {
         "set-cookie": setCookie,
       },
     );
-  })
+    },
+  )
 
   .post("/session/exchange", async (c) => {
     const result = await sessionExchange.exchange(c.req.raw);

@@ -1,4 +1,5 @@
 import { hc } from "hono/client";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppRouter as CtlAppRouter } from "@red/ctl";
 import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
 import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
@@ -173,7 +174,7 @@ class RouteBuilder<TClient> {
     }
     const text = await upstream.text();
     const json = text ? JSON.parse(text) : null;
-    return this.c.json(json, status as any);
+    return this.c.json(json, status as ContentfulStatusCode);
   }
 
   private upstreamBaseUrl(): string | undefined {

@@ -143,7 +143,7 @@ export function createApp(config: BffConfig) {
 
   const rpc = new Hono()
     .get("/status", async (c) => {
-      const envelope = getEnvelope(c as any);
+      const envelope = getEnvelope(c);
       const checkedAt = new Date().toISOString();
       const services = await Promise.all([
         Promise.resolve({
@@ -175,38 +175,43 @@ export function createApp(config: BffConfig) {
       auth(c).send(($) =>
         $.__test__.mailbox.latest.$get({
           query: { email: c.req.query("email") },
-        } as any),
+        }),
       ),
     )
-    .post("/auth/login-attempts", (c) =>
-      auth(c).send(($) => $["login-attempts"].$post({} as any)),
-    )
+    .post("/auth/login-attempts", async (c) => {
+      const body = await c.req.json();
+      return auth(c).send(($) => $["login-attempts"].$post({ json: body }));
+    })
     .get("/auth/login-attempts/:id", (c) =>
       auth(c).send(($) =>
         $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } }),
       ),
     )
-    .post("/auth/login-attempts/redeem", (c) =>
-      auth(c).send(($) => $["login-attempts"].redeem.$post({} as any)),
-    )
-    .post("/auth/magic-link/complete", (c) =>
-      auth(c).send(($) => $["magic-link"].complete.$post({} as any)),
-    )
+    .post("/auth/login-attempts/redeem", async (c) => {
+      const body = await c.req.json();
+      return auth(c).send(($) => $["login-attempts"].redeem.$post({ json: body }));
+    })
+    .post("/auth/magic-link/complete", async (c) => {
+      const body = await c.req.json();
+      return auth(c).send(($) => $["magic-link"].complete.$post({ json: body }));
+    })
     .post("/auth/user/two-factor/enroll", (c) =>
-      auth(c).send(($) => $.user["two-factor"].enroll.$post({} as any)),
+      auth(c).send(($) => $.user["two-factor"].enroll.$post({ json: {} })),
     )
-    .post("/auth/user/two-factor/verify", (c) =>
-      auth(c).send(($) => $.user["two-factor"].verify.$post({} as any)),
-    )
-    .post("/auth/user/totp-login", (c) =>
-      auth(c).send(($) => $.user["totp-login"].$post({} as any)),
-    )
+    .post("/auth/user/two-factor/verify", async (c) => {
+      const body = await c.req.json();
+      return auth(c).send(($) => $.user["two-factor"].verify.$post({ json: body }));
+    })
+    .post("/auth/user/totp-login", async (c) => {
+      const body = await c.req.json();
+      return auth(c).send(($) => $.user["totp-login"].$post({ json: body }));
+    })
     .post("/auth/user/onboarding/complete", (c) =>
-      auth(c).send(($) => $.user.onboarding.complete.$post({} as any)),
+      auth(c).send(($) => $.user.onboarding.complete.$post({ json: {} })),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      const envelope = getEnvelope(c as any);
+      const envelope = getEnvelope(c);
       const hostedRepoReader =
         config.hostedRepoReader
         ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
@@ -226,7 +231,7 @@ export function createApp(config: BffConfig) {
           $.api.repos[":owner"][":repo"].tree.$get({
             param: { owner, repo: name },
             query: { ref: c.req.query("ref") },
-          } as any),
+          }),
         );
     })
     .get("/app/hosted-repo/file", (c) => {
@@ -242,7 +247,7 @@ export function createApp(config: BffConfig) {
           $.api.repos[":owner"][":repo"].file.$get({
             param: { owner, repo: name },
             query: { path, ref: c.req.query("ref") },
-          } as any),
+          }),
         );
     })
     .get("/app/hosted-repo/commits/:sha/diff", (c) => {
@@ -260,7 +265,7 @@ export function createApp(config: BffConfig) {
     })
     .get("/velocity", (c) =>
       api(c).send(($) =>
-        $.api.velocity.$get({ query: { hours: c.req.query("hours") } } as any),
+        $.api.velocity.$get({ query: { hours: c.req.query("hours") } }),
       ),
     )
     .get("/review", (c) => api(c).send(($) => $.api.review.$get()))
@@ -268,11 +273,11 @@ export function createApp(config: BffConfig) {
     .get("/repos", (c) => api(c).send(($) => $.api.repos.$get()))
     .post("/repos", async (c) => {
       const body = await c.req.json().catch(() => ({}));
-      return api(c).send(($) => $.api.repos.$post({ json: body } as any));
+      return api(c).send(($) => $.api.repos.$post({ json: body }));
     })
     .get("/branches", (c) =>
       api(c).send(($) =>
-        $.api.branches.$get({ query: { repo: c.req.query("repo") } } as any),
+        $.api.branches.$get({ query: { repo: c.req.query("repo") } }),
       ),
     )
     .get("/changes/:id", (c) =>
@@ -289,14 +294,14 @@ export function createApp(config: BffConfig) {
       api(c).send(($) =>
         $.api.changes[":id"]["regenerate-summary"].$post({
           param: { id: c.req.param("id") },
-        } as any),
+        }),
       ),
     )
     .post("/changes/:id/requeue-summary", (c) =>
       api(c).send(($) =>
         $.api.changes[":id"]["requeue-summary"].$post({
           param: { id: c.req.param("id") },
-        } as any),
+        }),
       ),
     )
     .get("/changes/:id/sessions", (c) =>
@@ -319,7 +324,7 @@ export function createApp(config: BffConfig) {
             after: c.req.query("after"),
             limit: c.req.query("limit"),
           },
-        } as any),
+        }),
       ),
     )
     // ── triage UI data: wide events + triage runs ───────────────────────────
@@ -331,7 +336,7 @@ export function createApp(config: BffConfig) {
         $.v1.daemons[":daemon"].memory.$get({
           param: { daemon: c.req.param("name") },
           query: { repo: c.req.query("repo") },
-        } as any),
+        }),
       ),
     )
     .get("/daemons/:name/runs", (c) =>
@@ -339,7 +344,7 @@ export function createApp(config: BffConfig) {
         $.v1.daemons[":daemon"].runs.$get({
           param: { daemon: c.req.param("name") },
           query: { repo: c.req.query("repo") },
-        } as any),
+        }),
       ),
     )
     .get("/rollups", (c) =>
@@ -351,14 +356,14 @@ export function createApp(config: BffConfig) {
             since: c.req.query("since"),
             limit: c.req.query("limit"),
           },
-        } as any),
+        }),
       ),
     )
     .get("/rollups/stream", (c) =>
       obs(c)
         .as("stream")
         .send(($) =>
-          ($ as any).v1.rollups.stream.$get({
+          $.v1.rollups.stream.$get({
             query: {
               service: c.req.query("service"),
               outcome: c.req.query("outcome"),
@@ -388,7 +393,7 @@ export function createApp(config: BffConfig) {
               status_code: c.req.query("status_code"),
               status_class: c.req.query("status_class"),
             },
-          } as any),
+          }),
         ),
     )
     .get("/logs/stream", (c) =>
@@ -396,7 +401,7 @@ export function createApp(config: BffConfig) {
         .auth("session")
         .as("stream")
         .send(($) =>
-          ($ as any).api.logs.stream.$get({
+          $.api.logs.stream.$get({
             query: {
               service: c.req.query("service"),
               level: c.req.query("level"),
@@ -420,11 +425,11 @@ export function createApp(config: BffConfig) {
   const app = new Hono()
     .use(
       "*",
-      obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
+      obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }),
     )
     .use("*", createHttpLogger({ service: "bff", app: "red" }))
     .get("/health", async (c) => {
-      const envelope = getEnvelope(c as any);
+      const envelope = getEnvelope(c);
       envelope.set({ route: { name: "health" } });
       const report = await collectHealthReport({
         service: "bff",

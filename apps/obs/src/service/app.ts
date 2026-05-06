@@ -4,6 +4,8 @@ import { stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Hono, createHttpLogger } from "@red/server";
 import { streamSSE } from "hono/streaming";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { stringify as stringifySuperjson } from "superjson";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
@@ -136,7 +138,18 @@ export function createApp(deps: CollectorDependencies) {
 			const health = buildHealth({ service: "obs" });
 			return c.json(health, statusHttpCode(health.status));
 		})
-		.get("/v1/rollups", async (c) => {
+		.get(
+			"/v1/rollups",
+			zValidator(
+				"query",
+				z.object({
+					service: z.string().optional(),
+					outcome: z.string().optional(),
+					since: z.string().optional(),
+					limit: z.string().optional(),
+				}),
+			),
+			async (c) => {
 		if (!query) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
@@ -162,9 +175,19 @@ export function createApp(deps: CollectorDependencies) {
 			limit,
 		});
 		return superjsonResponse(c, { rollups: records, count: records.length });
-	})
+		},
+	)
 
-		.get("/v1/rollups/stream", (c) => {
+		.get(
+			"/v1/rollups/stream",
+			zValidator(
+				"query",
+				z.object({
+					service: z.string().optional(),
+					outcome: z.string().optional(),
+				}),
+			),
+			(c) => {
 		if (!query) {
 			return c.json({ error: "rollup query engine not configured" }, 501);
 		}
@@ -237,7 +260,8 @@ export function createApp(deps: CollectorDependencies) {
 				unsubscribe();
 			}
 		});
-	})
+		},
+	)
 
 		.get("/v1/rollups/stats", async (c) => {
 		if (!query?.aggregateRollups) {
@@ -289,7 +313,10 @@ export function createApp(deps: CollectorDependencies) {
 		return c.json({ daemons: result.specs });
 	})
 
-		.get("/v1/daemons/:daemon/memory", async (c) => {
+		.get(
+			"/v1/daemons/:daemon/memory",
+			zValidator("query", z.object({ repo: z.string().optional() })),
+			async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
@@ -298,9 +325,13 @@ export function createApp(deps: CollectorDependencies) {
 		const memory = await deps.daemonQuery.getMemory(daemon, repo).catch(() => null);
 		if (!memory) return c.json({ error: "not found" }, 404);
 		return c.json(memory);
-	})
+		},
+	)
 
-		.get("/v1/daemons/:daemon/runs", async (c) => {
+		.get(
+			"/v1/daemons/:daemon/runs",
+			zValidator("query", z.object({ repo: z.string().optional() })),
+			async (c) => {
 		if (!deps.daemonQuery) {
 			return c.json({ error: "daemon query engine not configured" }, 501);
 		}
@@ -309,7 +340,8 @@ export function createApp(deps: CollectorDependencies) {
 		const runs = await deps.daemonQuery.listRuns(daemon, repo).catch(() => null);
 		if (!runs) return c.json({ error: "not found" }, 404);
 		return c.json({ runs, count: runs.length });
-	})
+		},
+	)
 
 		.get("/v1/daemons/:daemon/runs/:run_id", async (c) => {
 		if (!deps.daemonQuery) {

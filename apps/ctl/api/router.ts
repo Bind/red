@@ -5,6 +5,8 @@ import {
 } from "@red/obs";
 import { buildHealth, statusHttpCode } from "@red/health";
 import { streamSSE } from "hono/streaming";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import type {
   ChangeQueries,
   EventQueries,
@@ -102,11 +104,15 @@ export function makeApiRouter(deps: ApiDeps) {
       const health = buildHealth({ service: "ctl" });
       return c.json(health, statusHttpCode(health.status));
     })
-    .get("/api/velocity", (c) => {
-      const hours = parseInt(c.req.query("hours") ?? "24", 10);
-      const velocity = changes.mergeVelocity(hours);
-      return c.json(velocity);
-    })
+    .get(
+      "/api/velocity",
+      zValidator("query", z.object({ hours: z.string().optional() })),
+      (c) => {
+        const hours = parseInt(c.req.query("hours") ?? "24", 10);
+        const velocity = changes.mergeVelocity(hours);
+        return c.json(velocity);
+      },
+    )
     .get("/api/changes/:id", (c) => {
       const id = parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
@@ -151,7 +157,22 @@ export function makeApiRouter(deps: ApiDeps) {
         return c.json({ error: message }, 500);
       }
     })
-    .get("/api/logs", async (c) => {
+    .get(
+      "/api/logs",
+      zValidator(
+        "query",
+        z.object({
+          service: z.string().optional(),
+          level: z.string().optional(),
+          logger: z.string().optional(),
+          search: z.string().optional(),
+          window: z.string().optional(),
+          limit: z.string().optional(),
+          status_code: z.string().optional(),
+          status_class: z.string().optional(),
+        }),
+      ),
+      async (c) => {
       try {
         const statusCodeRaw = c.req.query("status_code");
         const limitRaw = c.req.query("limit");
@@ -176,8 +197,22 @@ export function makeApiRouter(deps: ApiDeps) {
         logger.error`log query failed: ${message}`;
         return c.json({ error: message }, 500);
       }
-    })
-    .get("/api/logs/stream", (c) => {
+      },
+    )
+    .get(
+      "/api/logs/stream",
+      zValidator(
+        "query",
+        z.object({
+          service: z.string().optional(),
+          level: z.string().optional(),
+          logger: z.string().optional(),
+          search: z.string().optional(),
+          status_class: z.string().optional(),
+          history_window: z.string().optional(),
+        }),
+      ),
+      (c) => {
       const statusClass: LogQueryInput["statusClass"] = (() => {
         const value = c.req.query("status_class");
         return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
@@ -240,7 +275,8 @@ export function makeApiRouter(deps: ApiDeps) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       });
-    })
+      },
+    )
     .post("/api/ingest/ref-update", async (c) => {
       const body = await c.req.json<{
         repo: string;
@@ -324,7 +360,10 @@ export function makeApiRouter(deps: ApiDeps) {
       c.header("Content-Type", contentType);
       return c.text(text);
     })
-    .post("/api/changes/:id/regenerate-summary", async (c) => {
+    .post(
+      "/api/changes/:id/regenerate-summary",
+      zValidator("json", z.object({}).optional()),
+      async (c) => {
       const id = parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
       if (!change) return c.json({ error: "Not found" }, 404);
@@ -347,8 +386,12 @@ export function makeApiRouter(deps: ApiDeps) {
       });
 
       return c.json({ ok: true });
-    })
-    .post("/api/changes/:id/requeue-summary", async (c) => {
+      },
+    )
+    .post(
+      "/api/changes/:id/requeue-summary",
+      zValidator("json", z.object({}).optional()),
+      async (c) => {
       const id = parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
       if (!change) return c.json({ error: "Not found" }, 404);
@@ -374,7 +417,8 @@ export function makeApiRouter(deps: ApiDeps) {
       });
 
       return c.json({ ok: true });
-    })
+      },
+    )
     .get("/api/repos", async (c) => {
       return c.json(repos.list().map((repo) => repo.full_name));
     })
@@ -385,7 +429,13 @@ export function makeApiRouter(deps: ApiDeps) {
       if (!record) return c.json({ error: "Not found" }, 404);
       return c.json(record);
     })
-    .get("/api/repos/:owner/:repo/file", async (c) => {
+    .get(
+      "/api/repos/:owner/:repo/file",
+      zValidator(
+        "query",
+        z.object({ path: z.string(), ref: z.string().optional() }),
+      ),
+      async (c) => {
       const owner = c.req.param("owner");
       const repo = c.req.param("repo");
       const path = c.req.query("path");
@@ -408,8 +458,12 @@ export function makeApiRouter(deps: ApiDeps) {
         requestId,
       );
       return c.json({ path, ref, content });
-    })
-    .get("/api/repos/:owner/:repo/tree", async (c) => {
+      },
+    )
+    .get(
+      "/api/repos/:owner/:repo/tree",
+      zValidator("query", z.object({ ref: z.string().optional() })),
+      async (c) => {
       const owner = c.req.param("owner");
       const repo = c.req.param("repo");
       const ref = c.req.query("ref");
@@ -474,7 +528,18 @@ export function makeApiRouter(deps: ApiDeps) {
       );
       return c.text(diff);
     })
-    .post("/api/repos", async (c) => {
+    .post(
+      "/api/repos",
+      zValidator(
+        "json",
+        z.object({
+          owner: z.string().optional(),
+          name: z.string().optional(),
+          default_branch: z.string().optional(),
+          visibility: z.enum(["private", "internal", "public"]).optional(),
+        }),
+      ),
+      async (c) => {
       if (config.repoBackend.kind !== "git_storage") {
         return c.json(
           { error: "Repository creation is not supported for the local git backend" },
@@ -514,8 +579,12 @@ export function makeApiRouter(deps: ApiDeps) {
         await repositoryProvider.getRepo(owner, name).catch(() => null);
       }
       return c.json(created, 201);
-    })
-    .get("/api/branches", async (c) => {
+      },
+    )
+    .get(
+      "/api/branches",
+      zValidator("query", z.object({ repo: z.string().optional() })),
+      async (c) => {
       const repo = c.req.query("repo");
       if (!repo || !repo.includes("/")) {
         return c.json({ error: "Missing or invalid repo query param (owner/repo)" }, 400);
@@ -543,21 +612,29 @@ export function makeApiRouter(deps: ApiDeps) {
         });
 
       return c.json(result);
-    })
+      },
+    )
     .get("/api/changes/:id/sessions", (c) => {
       const changeId = parseInt(c.req.param("id"), 10);
       const change = changes.getById(changeId);
       if (!change) return c.json({ error: "Not found" }, 404);
       return c.json(sessions.listByChangeId(changeId));
     })
-    .get("/api/sessions/:id/events", (c) => {
+    .get(
+      "/api/sessions/:id/events",
+      zValidator(
+        "query",
+        z.object({ after: z.string().optional(), limit: z.string().optional() }),
+      ),
+      (c) => {
       const sessionId = parseInt(c.req.param("id"), 10);
       const session = sessions.getById(sessionId);
       if (!session) return c.json({ error: "Not found" }, 404);
       const afterSeq = parseInt(c.req.query("after") ?? "0", 10);
       const limit = parseInt(c.req.query("limit") ?? "1000", 10);
       return c.json(sessions.getEventsAfter(sessionId, afterSeq, limit));
-    })
+      },
+    )
     .get("/api/changes/:id/agent-events", (c) => {
       const changeId = parseInt(c.req.param("id"), 10);
       const change = changes.getById(changeId);
