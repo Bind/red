@@ -125,77 +125,12 @@ async function probeHealthEndpoint(
 }
 
 export function createApp(config: BffConfig) {
-  const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
   const api = makeApi({ config, fetchImpl });
   const auth = makeAuth({ config, fetchImpl });
   const obs = makeObs({ config, fetchImpl });
   const triage = makeTriage({ config, fetchImpl });
-
-  app.use(
-    "*",
-    obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
-  );
-  app.use("*", createHttpLogger({ service: "bff", app: "red" }));
-
-  app.get("/health", async (c) => {
-    const envelope = getEnvelope(c as any);
-    envelope.set({
-      route: {
-        name: "health",
-      },
-    });
-    const report = await collectHealthReport({
-      service: "bff",
-      startedAtMs: startedAt,
-      checks: {
-        auth: async () => {
-          const response = await fetchImpl(joinUrl(config.authBaseUrl, "/health"), {
-            headers: {
-              "x-request-id": envelope.requestId,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`auth upstream unhealthy: ${response.status}`);
-          }
-          const body = (await response.json()) as { status?: string };
-          return {
-            upstream: config.authBaseUrl,
-            reported_status: body.status ?? "ok",
-          };
-        },
-        api: async () => {
-          const response = await fetchImpl(joinUrl(config.apiBaseUrl, "/health"), {
-            headers: {
-              "x-request-id": envelope.requestId,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`api upstream unhealthy: ${response.status}`);
-          }
-          const body = (await response.json()) as { status?: string };
-          return {
-            upstream: config.apiBaseUrl,
-            reported_status: body.status ?? "ok",
-          };
-        },
-      },
-    });
-    envelope.set({
-      health: {
-        status: report.status,
-        checks: report.checks as unknown as ObsFields,
-      },
-    });
-    c.header("x-request-id", envelope.requestId);
-    return c.json(report, report.status === "ok" ? 200 : 503);
-  });
-
-  app.all("/api/auth/*", (c) => {
-    const incoming = new URL(c.req.url);
-    return auth(c).path(incoming.pathname + incoming.search).send();
-  });
 
   const rpc = new Hono()
     .get("/status", async (c) => {
@@ -209,10 +144,7 @@ export function createApp(config: BffConfig) {
           http_status: 200,
           latency_ms: 0,
           checked_at: checkedAt,
-          body: {
-            service: "bff",
-            status: "ok",
-          },
+          body: { service: "bff", status: "ok" },
           error: null,
         }),
         probeHealthEndpoint(fetchImpl, "api", config.apiBaseUrl, envelope.requestId),
@@ -328,12 +260,10 @@ export function createApp(config: BffConfig) {
         .path(`/api/sessions/${c.req.param("id")}/events`)
         .query(["after", "limit"])
         .send(),
-    );
-
-  // ── triage UI data: wide events + triage runs ───────────────────────────
-  // These talk to obs + triage as internal services; auth("session") gates
-  // access without injecting a Bearer (and is a no-op when disableAuth is set).
-  rpc
+    )
+    // ── triage UI data: wide events + triage runs ───────────────────────────
+    // These talk to obs + triage as internal services; auth("session") gates
+    // access without injecting a Bearer (and is a no-op when disableAuth is set).
     .get("/daemons", (c) => obs(c).path("/v1/daemons").send())
     .get("/daemons/:name/memory", (c) => {
       const name = encodeURIComponent(c.req.param("name"));
@@ -387,8 +317,63 @@ export function createApp(config: BffConfig) {
         .send(),
     );
 
-  app.route("/rpc", rpc);
+  const app = new Hono()
+    .use(
+      "*",
+      obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
+    )
+    .use("*", createHttpLogger({ service: "bff", app: "red" }))
+    .get("/health", async (c) => {
+      const envelope = getEnvelope(c as any);
+      envelope.set({ route: { name: "health" } });
+      const report = await collectHealthReport({
+        service: "bff",
+        startedAtMs: startedAt,
+        checks: {
+          auth: async () => {
+            const response = await fetchImpl(joinUrl(config.authBaseUrl, "/health"), {
+              headers: { "x-request-id": envelope.requestId },
+            });
+            if (!response.ok) {
+              throw new Error(`auth upstream unhealthy: ${response.status}`);
+            }
+            const body = (await response.json()) as { status?: string };
+            return {
+              upstream: config.authBaseUrl,
+              reported_status: body.status ?? "ok",
+            };
+          },
+          api: async () => {
+            const response = await fetchImpl(joinUrl(config.apiBaseUrl, "/health"), {
+              headers: { "x-request-id": envelope.requestId },
+            });
+            if (!response.ok) {
+              throw new Error(`api upstream unhealthy: ${response.status}`);
+            }
+            const body = (await response.json()) as { status?: string };
+            return {
+              upstream: config.apiBaseUrl,
+              reported_status: body.status ?? "ok",
+            };
+          },
+        },
+      });
+      envelope.set({
+        health: {
+          status: report.status,
+          checks: report.checks as unknown as ObsFields,
+        },
+      });
+      c.header("x-request-id", envelope.requestId);
+      return c.json(report, report.status === "ok" ? 200 : 503);
+    })
+    .all("/api/auth/*", (c) => {
+      const incoming = new URL(c.req.url);
+      return auth(c).path(incoming.pathname + incoming.search).send();
+    })
+    .route("/rpc", rpc);
+
   return app;
 }
 
-export type AppType = ReturnType<typeof createApp>;
+export type AppRouter = ReturnType<typeof createApp>;

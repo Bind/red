@@ -94,8 +94,7 @@ visible.
 ### Migration status
 
 - [x] `apps/ctl`
-- [ ] `apps/bff` (currently exports `AppType` but the export is empty —
-  `app.route(...)` is a statement, the merged type is lost)
+- [x] `apps/bff`
 - [ ] `apps/auth`
 - [ ] `apps/obs`
 - [ ] `apps/triage`
