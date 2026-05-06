@@ -12,7 +12,7 @@ import {
   type HostedRepoConfig,
   type HostedRepoReader,
 } from "./hosted-repo";
-import { joinUrl, makeProxy, type ProxyConfig } from "./proxy";
+import { joinUrl, makeApi, makeAuth, makeObs, makeTriage, type ProxyConfig } from "./proxy";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -128,7 +128,10 @@ export function createApp(config: BffConfig) {
   const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
-  const proxy = makeProxy({ config, fetchImpl });
+  const api = makeApi({ config, fetchImpl });
+  const auth = makeAuth({ config, fetchImpl });
+  const obs = makeObs({ config, fetchImpl });
+  const triage = makeTriage({ config, fetchImpl });
 
   app.use(
     "*",
@@ -191,12 +194,7 @@ export function createApp(config: BffConfig) {
 
   app.all("/api/auth/*", (c) => {
     const incoming = new URL(c.req.url);
-    return proxy(c)
-      .to("auth")
-      .auth("cookie")
-      .as("stream")
-      .path(incoming.pathname + incoming.search)
-      .send();
+    return auth(c).path(incoming.pathname + incoming.search).send();
   });
 
   const rpc = new Hono()
@@ -231,46 +229,29 @@ export function createApp(config: BffConfig) {
       };
       return c.json(report, report.overall_status === "ok" ? 200 : 503);
     })
-    .get("/me", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/me").send(),
-    )
+    .get("/me", (c) => auth(c).path("/me").send())
     .get("/dev/magic-link", (c) =>
-      proxy(c)
-        .to("auth")
-        .auth("cookie")
-        .as("stream")
-        .path("/__test__/mailbox/latest")
-        .query(["email"])
-        .send(),
+      auth(c).path("/__test__/mailbox/latest").query(["email"]).send(),
     )
-    .post("/auth/login-attempts", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/login-attempts").send(),
-    )
+    .post("/auth/login-attempts", (c) => auth(c).path("/login-attempts").send())
     .get("/auth/login-attempts/:id", (c) =>
-      proxy(c)
-        .to("auth")
-        .auth("cookie")
-        .as("stream")
-        .path(`/login-attempts/${c.req.param("id")}`)
-        .send(),
+      auth(c).path(`/login-attempts/${c.req.param("id")}`).send(),
     )
     .post("/auth/login-attempts/redeem", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/login-attempts/redeem").send(),
+      auth(c).path("/login-attempts/redeem").send(),
     )
     .post("/auth/magic-link/complete", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/magic-link/complete").send(),
+      auth(c).path("/magic-link/complete").send(),
     )
     .post("/auth/user/two-factor/enroll", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/user/two-factor/enroll").send(),
+      auth(c).path("/user/two-factor/enroll").send(),
     )
     .post("/auth/user/two-factor/verify", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/user/two-factor/verify").send(),
+      auth(c).path("/user/two-factor/verify").send(),
     )
-    .post("/auth/user/totp-login", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/user/totp-login").send(),
-    )
+    .post("/auth/user/totp-login", (c) => auth(c).path("/user/totp-login").send())
     .post("/auth/user/onboarding/complete", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/user/onboarding/complete").send(),
+      auth(c).path("/user/onboarding/complete").send(),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -287,7 +268,7 @@ export function createApp(config: BffConfig) {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
       if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      return proxy(c)
+      return api(c)
         .auth("none")
         .as("stream")
         .path(`/api/repos/${owner}/${name}/tree`)
@@ -300,7 +281,7 @@ export function createApp(config: BffConfig) {
       const path = c.req.query("path");
       if (!path) return c.json({ error: "Missing path query parameter" }, 400);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      return proxy(c)
+      return api(c)
         .auth("none")
         .as("stream")
         .path(`/api/repos/${owner}/${name}/file`)
@@ -312,45 +293,38 @@ export function createApp(config: BffConfig) {
       if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
-      return proxy(c)
+      return api(c)
         .auth("none")
         .as("stream")
         .path(`/api/repos/${owner}/${name}/commits/${sha}/diff`)
         .send();
     })
-    .get("/velocity", (c) =>
-      proxy(c).path("/api/velocity").query(["hours"]).send(),
-    )
-    .get("/review", (c) => proxy(c).path("/api/review").send())
-    .get("/jobs/pending", (c) => proxy(c).path("/api/jobs/pending").send())
-    .get("/repos", (c) => proxy(c).path("/api/repos").send())
-    .post("/repos", (c) => proxy(c).path("/api/repos").send())
-    .get("/branches", (c) =>
-      proxy(c).path("/api/branches").query(["repo"]).send(),
-    )
+    .get("/velocity", (c) => api(c).path("/api/velocity").query(["hours"]).send())
+    .get("/review", (c) => api(c).path("/api/review").send())
+    .get("/jobs/pending", (c) => api(c).path("/api/jobs/pending").send())
+    .get("/repos", (c) => api(c).path("/api/repos").send())
+    .post("/repos", (c) => api(c).path("/api/repos").send())
+    .get("/branches", (c) => api(c).path("/api/branches").query(["repo"]).send())
     .get("/changes/:id", (c) =>
-      proxy(c).path(`/api/changes/${c.req.param("id")}`).send(),
+      api(c).path(`/api/changes/${c.req.param("id")}`).send(),
     )
     .get("/changes/:id/diff", (c) =>
-      proxy(c).path(`/api/changes/${c.req.param("id")}/diff`).as("text").send(),
+      api(c).path(`/api/changes/${c.req.param("id")}/diff`).as("text").send(),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      proxy(c).path(`/api/changes/${c.req.param("id")}/regenerate-summary`).send(),
+      api(c).path(`/api/changes/${c.req.param("id")}/regenerate-summary`).send(),
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      proxy(c).path(`/api/changes/${c.req.param("id")}/requeue-summary`).send(),
+      api(c).path(`/api/changes/${c.req.param("id")}/requeue-summary`).send(),
     )
     .get("/changes/:id/sessions", (c) =>
-      proxy(c).path(`/api/changes/${c.req.param("id")}/sessions`).send(),
+      api(c).path(`/api/changes/${c.req.param("id")}/sessions`).send(),
     )
     .get("/changes/:id/agent-events", (c) =>
-      proxy(c)
-        .path(`/api/changes/${c.req.param("id")}/agent-events`)
-        .as("stream")
-        .send(),
+      api(c).path(`/api/changes/${c.req.param("id")}/agent-events`).as("stream").send(),
     )
     .get("/sessions/:id/events", (c) =>
-      proxy(c)
+      api(c)
         .path(`/api/sessions/${c.req.param("id")}/events`)
         .query(["after", "limit"])
         .send(),
@@ -360,57 +334,43 @@ export function createApp(config: BffConfig) {
   // These talk to obs + triage as internal services; auth("session") gates
   // access without injecting a Bearer (and is a no-op when disableAuth is set).
   rpc
-    .get("/daemons", (c) =>
-      proxy(c).to("obs").auth("session").path("/v1/daemons").send(),
-    )
+    .get("/daemons", (c) => obs(c).path("/v1/daemons").send())
     .get("/daemons/:name/memory", (c) => {
       const name = encodeURIComponent(c.req.param("name"));
-      return proxy(c)
-        .to("obs")
-        .auth("session")
-        .path(`/v1/daemons/${name}/memory`)
-        .query(["repo"])
-        .send();
+      return obs(c).path(`/v1/daemons/${name}/memory`).query(["repo"]).send();
     })
     .get("/daemons/:name/runs", (c) => {
       const name = encodeURIComponent(c.req.param("name"));
-      return proxy(c)
-        .to("obs")
-        .auth("session")
-        .path(`/v1/daemons/${name}/runs`)
-        .query(["repo"])
-        .send();
+      return obs(c).path(`/v1/daemons/${name}/runs`).query(["repo"]).send();
     })
     .get("/rollups", (c) =>
-      proxy(c)
-        .to("obs")
-        .auth("session")
-        .path("/v1/rollups")
-        .query(["service", "outcome", "since", "limit"])
-        .send(),
+      obs(c).path("/v1/rollups").query(["service", "outcome", "since", "limit"]).send(),
     )
     .get("/rollups/stream", (c) =>
-      proxy(c)
-        .to("obs")
-        .auth("session")
-        .as("stream")
-        .path("/v1/rollups/stream")
-        .query(["service", "outcome"])
-        .send(),
+      obs(c).as("stream").path("/v1/rollups/stream").query(["service", "outcome"]).send(),
     )
     .get("/rollups/:request_id", (c) => {
       const id = encodeURIComponent(c.req.param("request_id"));
-      return proxy(c).to("obs").auth("session").path(`/v1/rollups/${id}`).send();
+      return obs(c).path(`/v1/rollups/${id}`).send();
     })
     .get("/logs", (c) =>
-      proxy(c)
+      api(c)
         .auth("session")
         .path("/api/logs")
-        .query(["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"])
+        .query([
+          "service",
+          "level",
+          "logger",
+          "search",
+          "window",
+          "limit",
+          "status_code",
+          "status_class",
+        ])
         .send(),
     )
     .get("/logs/stream", (c) =>
-      proxy(c)
+      api(c)
         .auth("session")
         .as("stream")
         .path("/api/logs/stream")
@@ -418,9 +378,7 @@ export function createApp(config: BffConfig) {
         .send(),
     )
     .get("/triage/runs", (c) =>
-      proxy(c)
-        .to("triage")
-        .auth("session")
+      triage(c)
         .path("/v1/runs")
         .onError((err) => {
           console.warn("[bff] triage runs unavailable, returning empty list", err);

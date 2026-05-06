@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
-import { makeProxy, type ProxyConfig } from "./proxy";
+import { makeApi, type ProxyConfig } from "./proxy";
 
 type Call = {
   url: string;
@@ -52,8 +52,8 @@ describe("proxy builder", () => {
       if (url.pathname === "/api/foo") return Response.json({ ok: true });
       return new Response("nf", { status: 404 });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) => proxy(c).path("/api/foo").send());
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => api(c).path("/api/foo").send());
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
@@ -79,8 +79,8 @@ describe("proxy builder", () => {
       }
       return new Response("nf", { status: 404 });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
-    const app = new Hono().get("/test", (c) => proxy(c).path("/api/foo").send());
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => api(c).path("/api/foo").send());
 
     const res = await app.request("/test");
 
@@ -97,9 +97,9 @@ describe("proxy builder", () => {
         },
       }),
     );
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).to("auth").auth("cookie").as("stream").path("/whoami").send(),
+      api(c).to("auth").auth("cookie").as("stream").path("/whoami").send(),
     );
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
@@ -120,9 +120,9 @@ describe("proxy builder", () => {
       if (url.pathname === "/v1/daemons") return Response.json([{ name: "d1" }]);
       return new Response("nf", { status: 404 });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).to("obs").auth("session").path("/v1/daemons").send(),
+      api(c).to("obs").auth("session").path("/v1/daemons").send(),
     );
 
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
@@ -138,9 +138,9 @@ describe("proxy builder", () => {
 
   test("session auth bypassed when disableAuth is true", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const proxy = makeProxy({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).to("obs").auth("session").path("/v1/daemons").send(),
+      api(c).to("obs").auth("session").path("/v1/daemons").send(),
     );
 
     const res = await app.request("/test");
@@ -151,9 +151,9 @@ describe("proxy builder", () => {
 
   test("none auth sends nothing extra and skips exchange", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).auth("none").path("/api/repos/x/y/tree").send(),
+      api(c).auth("none").path("/api/repos/x/y/tree").send(),
     );
 
     await app.request("/test");
@@ -164,9 +164,9 @@ describe("proxy builder", () => {
 
   test("503 when upstream is unconfigured, with shaped error body", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
-    const proxy = makeProxy({ config: baseConfig({ triageBaseUrl: undefined }), fetchImpl });
+    const api = makeApi({ config: baseConfig({ triageBaseUrl: undefined }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).to("triage").auth("none").path("/v1/runs").send(),
+      api(c).to("triage").auth("none").path("/v1/runs").send(),
     );
 
     const res = await app.request("/test");
@@ -178,9 +178,9 @@ describe("proxy builder", () => {
 
   test("query allowlist plucks present params and ignores absent ones", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const proxy = makeProxy({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c)
+      api(c)
         .to("obs")
         .auth("session")
         .path("/v1/rollups")
@@ -201,9 +201,9 @@ describe("proxy builder", () => {
 
   test("queryAdd merges explicit values", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json([]));
-    const proxy = makeProxy({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c)
+      api(c)
         .to("obs")
         .auth("session")
         .path("/v1/rollups")
@@ -226,9 +226,9 @@ describe("proxy builder", () => {
         headers: { "Content-Type": "text/x-diff; charset=utf-8" },
       });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).path("/api/changes/1/diff").as("text").send(),
+      api(c).path("/api/changes/1/diff").as("text").send(),
     );
 
     const res = await app.request("/test");
@@ -250,9 +250,9 @@ describe("proxy builder", () => {
         },
       });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c).path("/api/changes/1/agent-events").as("stream").send(),
+      api(c).path("/api/changes/1/agent-events").as("stream").send(),
     );
 
     const res = await app.request("/test");
@@ -271,9 +271,9 @@ describe("proxy builder", () => {
       if (url.pathname === "/session/exchange") return exchangeOk();
       throw new Error("connect ECONNREFUSED");
     };
-    const proxy = makeProxy({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const api = makeApi({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      proxy(c)
+      api(c)
         .to("triage")
         .auth("session")
         .path("/v1/runs")
@@ -293,8 +293,8 @@ describe("proxy builder", () => {
       if (url.pathname === "/session/exchange") return exchangeOk();
       return Response.json({ id: 1 }, { status: 201 });
     });
-    const proxy = makeProxy({ config: baseConfig(), fetchImpl });
-    const app = new Hono().post("/test", (c) => proxy(c).path("/api/repos").send());
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().post("/test", (c) => api(c).path("/api/repos").send());
 
     const payload = { owner: "red", name: "demo" };
     const res = await app.request("/test", {
