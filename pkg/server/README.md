@@ -98,5 +98,5 @@ visible.
 - [x] `apps/auth`
 - [x] `apps/obs`
 - [x] `apps/triage`
-- [ ] `apps/mcp`
+- [x] `apps/mcp`
 - [ ] `apps/grs` (TS surface only)

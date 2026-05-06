@@ -10,20 +10,19 @@ export interface McpAppDeps {
 	introspector?: OAuthIntrospector;
 }
 
-export function createApp(deps: McpAppDeps): Hono {
-	const app = new Hono();
+export function createApp(deps: McpAppDeps) {
 	const introspector = deps.introspector ?? new OAuthIntrospector(deps.config);
-	app.use("*", createHttpLogger({ service: "mcp", app: "red" }));
 
-	app.get("/health", (c) => {
-		const health = buildHealth({ service: "mcp" });
-		return c.json(health, statusHttpCode(health.status));
-	});
-
-	// /mcp is the single Streamable HTTP endpoint — POSTs carry JSON-RPC
-	// requests; SDK-side handles optional SSE upgrades.
-	app.use("/mcp", oauthMiddleware(deps.config, introspector));
-	app.all("/mcp", (c) => deps.mcp.handle(c.req.raw));
-
-	return app;
+	return new Hono()
+		.use("*", createHttpLogger({ service: "mcp", app: "red" }))
+		.get("/health", (c) => {
+			const health = buildHealth({ service: "mcp" });
+			return c.json(health, statusHttpCode(health.status));
+		})
+		// /mcp is the single Streamable HTTP endpoint — POSTs carry JSON-RPC
+		// requests; SDK-side handles optional SSE upgrades.
+		.use("/mcp", oauthMiddleware(deps.config, introspector))
+		.all("/mcp", (c) => deps.mcp.handle(c.req.raw));
 }
+
+export type AppRouter = ReturnType<typeof createApp>;
