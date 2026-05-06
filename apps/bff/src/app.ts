@@ -12,18 +12,12 @@ import {
   type HostedRepoConfig,
   type HostedRepoReader,
 } from "./hosted-repo";
+import { joinUrl, makeProxy, type ProxyConfig } from "./proxy";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface BffConfig {
+export interface BffConfig extends ProxyConfig {
   port: number;
-  apiBaseUrl: string;
-  authBaseUrl: string;
-  obsBaseUrl?: string;
-  triageBaseUrl?: string;
-  grsBaseUrl?: string;
-  mcpBaseUrl?: string;
-  disableAuth?: boolean;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
   hostedRepoReader?: HostedRepoReader;
@@ -63,62 +57,6 @@ interface StatusReport {
   services: ServiceProbeResult[];
 }
 
-function joinUrl(baseUrl: string, path: string, query?: URLSearchParams): string {
-  const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
-  if (query) {
-    url.search = query.toString();
-  }
-  return url.toString();
-}
-
-function copyResponseHeaders(headers: Headers): Headers {
-  const copied = new Headers();
-  const allowed = [
-    "cache-control",
-    "connection",
-    "content-type",
-    "set-cookie",
-    "www-authenticate",
-  ];
-  for (const [key, value] of headers.entries()) {
-    if (allowed.includes(key.toLowerCase())) {
-      copied.append(key, value);
-    }
-  }
-  return copied;
-}
-
-function buildForwardHeaders(request: Request): Headers {
-  const headers = new Headers();
-  const forwarded = [
-    "accept",
-    "authorization",
-    "content-type",
-    "cookie",
-    "last-event-id",
-    "origin",
-    "x-request-id",
-  ];
-  for (const key of forwarded) {
-    const value = request.headers.get(key);
-    if (value) headers.set(key, value);
-  }
-  return headers;
-}
-
-function addHeaders(base: Headers, extra: Record<string, string>): Headers {
-  const headers = new Headers(base);
-  for (const [key, value] of Object.entries(extra)) {
-    headers.set(key, value);
-  }
-  return headers;
-}
-
-async function readJsonBody(response: Response): Promise<unknown> {
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
-}
-
 async function readBestEffortBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text.trim()) return null;
@@ -127,125 +65,6 @@ async function readBestEffortBody(response: Response): Promise<unknown> {
   } catch {
     return text;
   }
-}
-
-async function readForwardBody(request: Request): Promise<ArrayBuffer | undefined> {
-  if (request.method === "GET" || request.method === "HEAD") {
-    return undefined;
-  }
-  return request.arrayBuffer();
-}
-
-async function proxyJson(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const json = await readJsonBody(upstream);
-  return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyMutation(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const json = await readJsonBody(upstream);
-  return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyText(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const text = await upstream.text();
-  c.header("Content-Type", upstream.headers.get("content-type") ?? "text/plain; charset=utf-8");
-  return c.text(text, upstream.status as 200 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyStream(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: copyResponseHeaders(upstream.headers),
-  });
-}
-
-async function proxyAuthRequest(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
-  const body =
-    c.req.method === "GET" || c.req.method === "HEAD" ? undefined : await c.req.raw.arrayBuffer();
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
-    body,
-    redirect: "manual",
-  });
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: copyResponseHeaders(upstream.headers),
-  });
-}
-
-async function fetchSessionExchangeToken(
-  request: Request,
-  fetchImpl: FetchImpl,
-  authBaseUrl: string,
-): Promise<{ accessToken: string } | Response> {
-  const upstream = await fetchImpl(joinUrl(authBaseUrl, "/session/exchange"), {
-    method: "POST",
-    headers: buildForwardHeaders(request),
-    redirect: "manual",
-  });
-
-  const text = await upstream.text();
-  if (!upstream.ok) {
-    return new Response(text, {
-      status: upstream.status,
-      headers: copyResponseHeaders(upstream.headers),
-    });
-  }
-
-  const payload = text ? (JSON.parse(text) as { access_token?: unknown }) : null;
-  if (!payload || typeof payload.access_token !== "string") {
-    return new Response(JSON.stringify({ error: "invalid_token_response" }), {
-      status: 502,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }
-
-  return { accessToken: payload.access_token };
 }
 
 async function probeHealthEndpoint(
@@ -309,6 +128,7 @@ export function createApp(config: BffConfig) {
   const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
+  const proxy = makeProxy({ config, fetchImpl });
 
   app.use(
     "*",
@@ -371,11 +191,12 @@ export function createApp(config: BffConfig) {
 
   app.all("/api/auth/*", (c) => {
     const incoming = new URL(c.req.url);
-    return proxyAuthRequest(
-      c,
-      fetchImpl,
-      joinUrl(config.authBaseUrl, incoming.pathname, incoming.searchParams),
-    );
+    return proxy(c)
+      .to("auth")
+      .auth("cookie")
+      .as("stream")
+      .path(incoming.pathname + incoming.search)
+      .send();
   });
 
   const rpc = new Hono()
@@ -410,44 +231,46 @@ export function createApp(config: BffConfig) {
       };
       return c.json(report, report.overall_status === "ok" ? 200 : 503);
     })
-    .get("/me", (c) => proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/me")))
-    .get("/dev/magic-link", (c) => {
-      const query = new URLSearchParams();
-      const email = c.req.query("email");
-      if (email) query.set("email", email);
-      return proxyAuthRequest(
-        c,
-        fetchImpl,
-        joinUrl(config.authBaseUrl, "/__test__/mailbox/latest", query),
-      );
-    })
+    .get("/me", (c) =>
+      proxy(c).to("auth").auth("cookie").as("stream").path("/me").send(),
+    )
+    .get("/dev/magic-link", (c) =>
+      proxy(c)
+        .to("auth")
+        .auth("cookie")
+        .as("stream")
+        .path("/__test__/mailbox/latest")
+        .query(["email"])
+        .send(),
+    )
     .post("/auth/login-attempts", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/login-attempts").send(),
     )
     .get("/auth/login-attempts/:id", (c) =>
-      proxyAuthRequest(
-        c,
-        fetchImpl,
-        joinUrl(config.authBaseUrl, `/login-attempts/${c.req.param("id")}`),
-      )
+      proxy(c)
+        .to("auth")
+        .auth("cookie")
+        .as("stream")
+        .path(`/login-attempts/${c.req.param("id")}`)
+        .send(),
     )
     .post("/auth/login-attempts/redeem", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts/redeem"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/login-attempts/redeem").send(),
     )
     .post("/auth/magic-link/complete", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/magic-link/complete"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/magic-link/complete").send(),
     )
     .post("/auth/user/two-factor/enroll", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/enroll"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/user/two-factor/enroll").send(),
     )
     .post("/auth/user/two-factor/verify", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/verify"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/user/two-factor/verify").send(),
     )
     .post("/auth/user/totp-login", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/totp-login"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/user/totp-login").send(),
     )
     .post("/auth/user/onboarding/complete", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
+      proxy(c).to("auth").auth("cookie").as("stream").path("/user/onboarding/complete").send(),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -460,309 +283,151 @@ export function createApp(config: BffConfig) {
       }
       return c.json(await hostedRepoReader.readSnapshot({ requestId: envelope.requestId }));
     })
-    .get("/app/hosted-repo/tree", async (c) => {
+    .get("/app/hosted-repo/tree", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
       if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
-      const ref = c.req.query("ref");
-      const envelope = getEnvelope(c as any);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const params = new URLSearchParams();
-      if (ref) params.set("ref", ref);
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/tree?${params}`, config.apiBaseUrl),
-        { headers: { "x-request-id": envelope.requestId } },
-      );
-      if (!response.ok) return c.text(await response.text().catch(() => "Unable to list tree"), response.status as any);
-      return c.json(await response.json());
+      return proxy(c)
+        .auth("none")
+        .as("stream")
+        .path(`/api/repos/${owner}/${name}/tree`)
+        .query(["ref"])
+        .send();
     })
-    .get("/app/hosted-repo/file", async (c) => {
+    .get("/app/hosted-repo/file", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      if (!hostedRepoConfig) {
-        return c.json({ error: "Hosted repo app is not configured" }, 404);
-      }
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const path = c.req.query("path");
-      if (!path) {
-        return c.json({ error: "Missing path query parameter" }, 400);
-      }
-      const ref = c.req.query("ref");
-      const envelope = getEnvelope(c as any);
+      if (!path) return c.json({ error: "Missing path query parameter" }, 400);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const params = new URLSearchParams({ path });
-      if (ref) params.set("ref", ref);
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/file?${params}`, config.apiBaseUrl),
-        { headers: { "x-request-id": envelope.requestId } },
-      );
-      if (!response.ok) {
-        return c.text(await response.text().catch(() => "Unable to load file"), response.status as any);
-      }
-      const body = await response.json() as { path: string; ref: string; content: string | null };
-      return c.json(body);
+      return proxy(c)
+        .auth("none")
+        .as("stream")
+        .path(`/api/repos/${owner}/${name}/file`)
+        .query(["path", "ref"])
+        .send();
     })
-    .get("/app/hosted-repo/commits/:sha/diff", async (c) => {
+    .get("/app/hosted-repo/commits/:sha/diff", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      if (!hostedRepoConfig) {
-        return c.json({ error: "Hosted repo app is not configured" }, 404);
-      }
-      const envelope = getEnvelope(c as any);
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
       const sha = encodeURIComponent(c.req.param("sha"));
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
-        {
-          headers: {
-            "x-request-id": envelope.requestId,
-          },
-        },
-      );
-      if (!response.ok) {
-        return c.text(await response.text().catch(() => "Unable to load commit diff"), response.status as any);
-      }
-      return new Response(response.body, {
-        status: response.status,
-        headers: new Headers({
-          "content-type": response.headers.get("content-type") ?? "text/plain; charset=utf-8",
-        }),
-      });
+      return proxy(c)
+        .auth("none")
+        .as("stream")
+        .path(`/api/repos/${owner}/${name}/commits/${sha}/diff`)
+        .send();
     })
-    .get("/velocity", (c) => {
-      const query = new URLSearchParams();
-      const hours = c.req.query("hours");
-      if (hours) query.set("hours", hours);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/velocity", query), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      });
-    })
-    .get("/review", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/review"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
+    .get("/velocity", (c) =>
+      proxy(c).path("/api/velocity").query(["hours"]).send(),
     )
-    .get("/jobs/pending", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/jobs/pending"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
+    .get("/review", (c) => proxy(c).path("/api/review").send())
+    .get("/jobs/pending", (c) => proxy(c).path("/api/jobs/pending").send())
+    .get("/repos", (c) => proxy(c).path("/api/repos").send())
+    .post("/repos", (c) => proxy(c).path("/api/repos").send())
+    .get("/branches", (c) =>
+      proxy(c).path("/api/branches").query(["repo"]).send(),
     )
-    .get("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
-    )
-    .post("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
-    )
-    .get("/branches", (c) => {
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/branches", query), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      });
-    })
     .get("/changes/:id", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}`), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
+      proxy(c).path(`/api/changes/${c.req.param("id")}`).send(),
     )
     .get("/changes/:id/diff", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyText(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/diff`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      proxy(c).path(`/api/changes/${c.req.param("id")}/diff`).as("text").send(),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/regenerate-summary`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      proxy(c).path(`/api/changes/${c.req.param("id")}/regenerate-summary`).send(),
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/requeue-summary`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      proxy(c).path(`/api/changes/${c.req.param("id")}/requeue-summary`).send(),
     )
     .get("/changes/:id/sessions", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/sessions`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      proxy(c).path(`/api/changes/${c.req.param("id")}/sessions`).send(),
     )
     .get("/changes/:id/agent-events", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyStream(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/agent-events`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      proxy(c)
+        .path(`/api/changes/${c.req.param("id")}/agent-events`)
+        .as("stream")
+        .send(),
     )
-    .get("/sessions/:id/events", (c) => {
-      const query = new URLSearchParams();
-      const after = c.req.query("after");
-      if (after) query.set("after", after);
-      const limit = c.req.query("limit");
-      if (limit) query.set("limit", limit);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/sessions/${c.req.param("id")}/events`, query),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      });
-    });
+    .get("/sessions/:id/events", (c) =>
+      proxy(c)
+        .path(`/api/sessions/${c.req.param("id")}/events`)
+        .query(["after", "limit"])
+        .send(),
+    );
 
   // ── triage UI data: wide events + triage runs ───────────────────────────
-  // These proxy directly to obs + triage which are internal services; no JWT
-  // handoff needed. Session check is gated by config.disableAuth (dev flag).
-  const requireSession = async (c: Parameters<typeof fetchSessionExchangeToken>[0] extends Request ? any : never) => {
-    if (config.disableAuth) return null;
-    const result = await fetchSessionExchangeToken(
-      c.req.raw,
-      fetchImpl,
-      config.authBaseUrl,
-    );
-    return result instanceof Response ? result : null;
-  };
-
+  // These talk to obs + triage as internal services; auth("session") gates
+  // access without injecting a Bearer (and is a no-op when disableAuth is set).
   rpc
-    .get("/daemons", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/daemons"));
-    })
-    .get("/daemons/:name/memory", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
+    .get("/daemons", (c) =>
+      proxy(c).to("obs").auth("session").path("/v1/daemons").send(),
+    )
+    .get("/daemons/:name/memory", (c) => {
       const name = encodeURIComponent(c.req.param("name"));
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/memory`, query));
+      return proxy(c)
+        .to("obs")
+        .auth("session")
+        .path(`/v1/daemons/${name}/memory`)
+        .query(["repo"])
+        .send();
     })
-    .get("/daemons/:name/runs", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
+    .get("/daemons/:name/runs", (c) => {
       const name = encodeURIComponent(c.req.param("name"));
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/runs`, query));
+      return proxy(c)
+        .to("obs")
+        .auth("session")
+        .path(`/v1/daemons/${name}/runs`)
+        .query(["repo"])
+        .send();
     })
-    .get("/rollups", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "outcome", "since", "limit"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups", query));
-    })
-    .get("/rollups/stream", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "outcome"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyStream(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups/stream", query));
-    })
-    .get("/rollups/:request_id", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
+    .get("/rollups", (c) =>
+      proxy(c)
+        .to("obs")
+        .auth("session")
+        .path("/v1/rollups")
+        .query(["service", "outcome", "since", "limit"])
+        .send(),
+    )
+    .get("/rollups/stream", (c) =>
+      proxy(c)
+        .to("obs")
+        .auth("session")
+        .as("stream")
+        .path("/v1/rollups/stream")
+        .query(["service", "outcome"])
+        .send(),
+    )
+    .get("/rollups/:request_id", (c) => {
       const id = encodeURIComponent(c.req.param("request_id"));
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/rollups/${id}`));
+      return proxy(c).to("obs").auth("session").path(`/v1/rollups/${id}`).send();
     })
-    .get("/logs", async (c) => {
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs", query));
-    })
-    .get("/logs/stream", async (c) => {
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "level", "logger", "search", "status_class", "history_window"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyStream(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs/stream", query));
-    })
-    .get("/triage/runs", async (c) => {
-      if (!config.triageBaseUrl)
-        return c.json({ error: "triage backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      try {
-        return await proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
-      } catch (error) {
-        console.warn("[bff] triage runs unavailable, returning empty list", error);
-        return c.json({ runs: [] });
-      }
-    });
+    .get("/logs", (c) =>
+      proxy(c)
+        .auth("session")
+        .path("/api/logs")
+        .query(["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"])
+        .send(),
+    )
+    .get("/logs/stream", (c) =>
+      proxy(c)
+        .auth("session")
+        .as("stream")
+        .path("/api/logs/stream")
+        .query(["service", "level", "logger", "search", "status_class", "history_window"])
+        .send(),
+    )
+    .get("/triage/runs", (c) =>
+      proxy(c)
+        .to("triage")
+        .auth("session")
+        .path("/v1/runs")
+        .onError((err) => {
+          console.warn("[bff] triage runs unavailable, returning empty list", err);
+          return c.json({ runs: [] });
+        })
+        .send(),
+    );
 
   app.route("/rpc", rpc);
   return app;
