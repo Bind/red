@@ -36,6 +36,12 @@ You are not responsible for:
 - low-level compose, Caddy, or gateway topology mismatches unless they indicate a layering boundary failure
 - bootstrap/deploy script hygiene issues that do not affect the `base` / `dev` / `preview` / `prod` / `platform` split
 - generic lint-, typecheck-, or unit-test-style enforcement
+- the number of functions or lines in `platform/utils.sh` or `platform/lib.sh` — utility consolidation depth is `infra-audit`'s concern, not this daemon's
+
+Established facts about platform shell helpers:
+
+- `platform/utils.sh` is the shared helper sourced by preview and prod deploy scripts; `teardown_preview_project` runs compose down then a best-effort `docker rm/volume rm/network rm` pass to keep the preview box tidy — the defensive cleanup block is intentional, not dead code
+- `platform/lib.sh` exists as a skeleton entry point for future shared logic; having no callers yet is expected and not a violation
 
 Flag:
 
