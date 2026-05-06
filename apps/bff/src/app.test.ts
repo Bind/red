@@ -301,6 +301,36 @@ describe("BFF app", () => {
     expect(response.headers.get("x-request-id")).toBe(forwardedRequestId);
   });
 
+  test("generates and forwards request ids for typed hosted-repo routes", async () => {
+    let forwardedRequestId: string | null = null;
+
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      fetchImpl: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname === "/api/repos/red/red/file") {
+          forwardedRequestId = request.headers.get("x-request-id");
+          return Response.json({ path: "README.md", ref: "main", content: "# red" });
+        }
+        return new Response("not found", { status: 404 });
+      },
+      hostedRepo: {
+        repoId: "red/red",
+        apiBaseUrl: "http://api.test",
+        readmePath: "README.md",
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/app/hosted-repo/file?path=README.md");
+
+    expect(response.status).toBe(200);
+    expect(forwardedRequestId).toBeTruthy();
+    expect(response.headers.get("x-request-id")).toBe(forwardedRequestId);
+  });
+
   test("exposes the latest dev mailbox magic link through /rpc/dev/magic-link", async () => {
     const app = createApp({
       port: 3001,
@@ -392,6 +422,38 @@ describe("BFF app", () => {
       status: "redeemed",
       attempt_id: "attempt-123",
     });
+  });
+
+  test("passes malformed JSON bodies through to auth validation", async () => {
+    let upstreamBody: string | null = null;
+
+    const app = createApp({
+      port: 3001,
+      apiBaseUrl: "http://api.test",
+      authBaseUrl: "http://auth.test",
+      fetchImpl: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname === "/login-attempts") {
+          upstreamBody = await request.text();
+          return new Response(JSON.stringify({ error: "invalid_request" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    const response = await app.request("http://bff.test/rpc/auth/login-attempts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+
+    expect(upstreamBody).toBe("");
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
   });
 
   test("proxies onboarding routes through auth and preserves cookies", async () => {

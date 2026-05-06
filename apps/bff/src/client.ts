@@ -1,6 +1,7 @@
 import { hc } from "hono/client";
 import type { Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { getEnvelope } from "@red/obs";
 
 // Hono's typed generics intentionally use `any` for un-pinned slots; this
 // alias is the single quarantined site so the rest of the file stays clean.
@@ -126,13 +127,15 @@ class RouteBuilder<TAppRouter extends HonoApp> {
       return this.c.json({ error: `${this.upstream} backend not configured` }, 503);
     }
 
-    const forwardHeaders = buildForwardHeaders(this.c.req.raw);
+    const requestId = requestIdFromContext(this.c);
+    const forwardHeaders = buildForwardHeaders(this.c.req.raw, requestId);
 
     if (this._auth === "jwt") {
       const exchanged = await fetchSessionExchangeToken(
         this.c.req.raw,
         this.fetchImpl,
         this.config.authBaseUrl,
+        requestId,
       );
       if (exchanged instanceof Response) return exchanged;
       forwardHeaders.set("authorization", `Bearer ${exchanged.accessToken}`);
@@ -141,6 +144,7 @@ class RouteBuilder<TAppRouter extends HonoApp> {
         this.c.req.raw,
         this.fetchImpl,
         this.config.authBaseUrl,
+        requestId,
       );
       if (gate instanceof Response) return gate;
     }
@@ -220,7 +224,7 @@ export async function forwardAuthRequest(
   pathAndSearch: string,
 ): Promise<Response> {
   const targetUrl = joinUrl(deps.config.authBaseUrl, pathAndSearch);
-  const headers = buildForwardHeaders(c.req.raw);
+  const headers = buildForwardHeaders(c.req.raw, requestIdFromContext(c));
   const body = await readForwardBody(c.req.raw);
   const upstream = await deps.fetchImpl(targetUrl, {
     method: c.req.method,
@@ -252,13 +256,25 @@ const FORWARD_REQUEST_HEADERS = [
   "x-request-id",
 ] as const;
 
-function buildForwardHeaders(request: Request): Headers {
+function buildForwardHeaders(request: Request, requestId?: string): Headers {
   const headers = new Headers();
   for (const key of FORWARD_REQUEST_HEADERS) {
     const value = request.headers.get(key);
     if (value) headers.set(key, value);
   }
+  if (!headers.has("x-request-id") && requestId) {
+    headers.set("x-request-id", requestId);
+  }
   return headers;
+}
+
+function requestIdFromContext(c: any): string | undefined {
+  try {
+    const requestId = getEnvelope(c).requestId;
+    return typeof requestId === "string" && requestId.length > 0 ? requestId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const COPY_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
@@ -290,10 +306,11 @@ async function fetchSessionExchangeToken(
   request: Request,
   fetchImpl: FetchImpl,
   authBaseUrl: string,
+  requestId?: string,
 ): Promise<{ accessToken: string } | Response> {
   const upstream = await fetchImpl(joinUrl(authBaseUrl, "/session/exchange"), {
     method: "POST",
-    headers: buildForwardHeaders(request),
+    headers: buildForwardHeaders(request, requestId),
     redirect: "manual",
   });
 

@@ -75,6 +75,10 @@ async function readBestEffortBody(response: Response): Promise<unknown> {
   }
 }
 
+async function readJsonOrNull(request: Request): Promise<unknown> {
+  return request.json().catch(() => null);
+}
+
 async function probeHealthEndpoint(
   fetchImpl: FetchImpl,
   service: string,
@@ -179,7 +183,7 @@ export function createApp(config: BffConfig) {
       ),
     )
     .post("/auth/login-attempts", async (c) => {
-      const body = await c.req.json();
+      const body = await readJsonOrNull(c.req.raw);
       return auth(c).send(($) => $["login-attempts"].$post({ json: body }));
     })
     .get("/auth/login-attempts/:id", (c) =>
@@ -188,22 +192,22 @@ export function createApp(config: BffConfig) {
       ),
     )
     .post("/auth/login-attempts/redeem", async (c) => {
-      const body = await c.req.json();
+      const body = await readJsonOrNull(c.req.raw);
       return auth(c).send(($) => $["login-attempts"].redeem.$post({ json: body }));
     })
     .post("/auth/magic-link/complete", async (c) => {
-      const body = await c.req.json();
+      const body = await readJsonOrNull(c.req.raw);
       return auth(c).send(($) => $["magic-link"].complete.$post({ json: body }));
     })
     .post("/auth/user/two-factor/enroll", (c) =>
       auth(c).send(($) => $.user["two-factor"].enroll.$post({ json: {} })),
     )
     .post("/auth/user/two-factor/verify", async (c) => {
-      const body = await c.req.json();
+      const body = await readJsonOrNull(c.req.raw);
       return auth(c).send(($) => $.user["two-factor"].verify.$post({ json: body }));
     })
     .post("/auth/user/totp-login", async (c) => {
-      const body = await c.req.json();
+      const body = await readJsonOrNull(c.req.raw);
       return auth(c).send(($) => $.user["totp-login"].$post({ json: body }));
     })
     .post("/auth/user/onboarding/complete", (c) =>
@@ -272,7 +276,7 @@ export function createApp(config: BffConfig) {
     .get("/jobs/pending", (c) => api(c).send(($) => $.api.jobs.pending.$get()))
     .get("/repos", (c) => api(c).send(($) => $.api.repos.$get()))
     .post("/repos", async (c) => {
-      const body = await c.req.json().catch(() => ({}));
+      const body = await readJsonOrNull(c.req.raw);
       return api(c).send(($) => $.api.repos.$post({ json: body }));
     })
     .get("/branches", (c) =>

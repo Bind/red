@@ -1,6 +1,31 @@
 name: red
 
 services:
+  gateway:
+    container_name: gateway
+    build:
+      context: ../platform/gateway
+    restart: unless-stopped
+    depends_on:
+      - ctl
+      - auth
+      - bff
+      - obs
+      - grs
+      - triage
+      - web
+    environment:
+      API_HOST: ctl
+      AUTH_HOST: auth
+      BFF_HOST: bff
+      OBS_HOST: obs
+      TRIAGE_HOST: triage
+      GRS_HOST: grs
+      WEB_HOST: web
+      MCP_HOST: mcp
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+
   loki:
     container_name: loki
     image: grafana/loki:3.1.1
@@ -190,10 +215,10 @@ services:
     environment:
       AUTH_LAB_HOST: 0.0.0.0
       AUTH_LAB_PORT: 4020
-      AUTH_LAB_ISSUER: ${AUTH_ISSUER:-http://localhost:4020}
+      AUTH_LAB_ISSUER: ${AUTH_ISSUER:-http://localhost:8080}
       AUTH_LAB_AUDIENCE: ${AUTH_AUDIENCE:-red-api}
-      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-red-web=http://localhost:5173}
-      AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-http://localhost:5173}
+      AUTH_LAB_WEB_CLIENTS: ${AUTH_WEB_CLIENTS:-red-web=http://localhost:8080}
+      AUTH_LAB_PASSKEY_ORIGINS: ${AUTH_PASSKEY_ORIGINS:-http://localhost:8080,http://localhost:5173}
       AUTH_LAB_PASSKEY_RP_IDS: ${AUTH_PASSKEY_RP_IDS:-localhost}
       AUTH_LAB_STEALTH_TOTP_EMAILS: ${AUTH_LAB_STEALTH_TOTP_EMAILS:-douglasjbinder@gmail.com}
       AUTH_LAB_STEALTH_TOTP_SEED_EMAIL: ${AUTH_LAB_STEALTH_TOTP_SEED_EMAIL:-douglasjbinder@gmail.com}
@@ -361,7 +386,7 @@ services:
       - bff
     working_dir: /app/apps/web
     environment:
-      VITE_API_PROXY_TARGET: http://bff:3001
+      VITE_API_PROXY_TARGET: http://gateway:8080
       VITE_DEV_AUTO_LOGIN_EMAIL: ${VITE_DEV_AUTO_LOGIN_EMAIL:-douglasjbinder@gmail.com}
       VITE_DEV_AUTO_LOGIN_CODE: ${VITE_DEV_AUTO_LOGIN_CODE:-000000}
     ports:
@@ -400,8 +425,6 @@ services:
       SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
       RED_API_BASE_URL: ${RED_API_BASE_URL:-http://ctl:3000}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    ports:
-      - "${TRIAGE_PORT:-7000}:7000"
     command: >
       sh -lc "apk add --no-cache ca-certificates &&
       cd /app/apps/triage &&
@@ -444,8 +467,6 @@ services:
       TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
       TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
       LOKI_URL: ${LOKI_URL:-http://loki:3100}
-    ports:
-      - "${SMITHERS_SERVER_PORT:-7331}:7331"
     command: >
       sh -lc "apk add --no-cache ca-certificates npm &&
       npm install -g @openai/codex@0.117.0 &&

@@ -31,13 +31,13 @@ playground-daemons:
     #!/usr/bin/env bash
     set -euo pipefail
     just down >/dev/null 2>&1 || true
-    docker rm -f loki s3 init obs grs db-auth auth ctl bff web >/dev/null 2>&1 || true
+    docker rm -f gateway loki s3 init obs grs db-auth auth ctl bff web triage triage-smithers >/dev/null 2>&1 || true
     just up
     until curl -fsS http://127.0.0.1:3000/health >/dev/null; do sleep 1; done
-    until curl -fsS http://127.0.0.1:5173 >/dev/null; do sleep 1; done
+    until curl -fsS http://127.0.0.1:8080 >/dev/null; do sleep 1; done
     echo
     echo "Daemon playground:"
-    echo "  http://127.0.0.1:5173/playground/daemons"
+    echo "  http://127.0.0.1:8080/playground/daemons"
 
 # Run the daemon review engine locally against a git diff
 daemon-review-local *args:

@@ -23,13 +23,14 @@ just typecheck
 
 Local dev keeps the core surfaces separate:
 
-- `web` on `http://localhost:5173`: primary UI for day-to-day frontend work.
+- `gateway` on `http://localhost:8080`: primary browser entrypoint; local Envoy edge.
+- `web` on `http://localhost:5173`: direct Vite dev server for debugging/HMR fallback.
 - `bff` on `http://localhost:3001`: browser-facing RPC layer (`/rpc/*`).
 - `ctl` on `http://localhost:3000`: control-plane API and job/daemon backend.
 - `obs` on `http://localhost:4090`: wide-events collector and rollup service.
 - `loki` on `http://localhost:3100`: log storage for cross-service log query and live tailing.
 
-Use `5173` as the main UI in dev. `3000` is not a web host; it is the `ctl` service. The web app talks to `bff`, and `bff` fans out to `ctl`, `obs`, `auth`, and other backends.
+Use `8080` as the main UI in dev. `3000` is not a web host; it is the `ctl` service. The browser talks to local Envoy, Envoy routes to `web` and `bff`, and `bff` fans out to `ctl`, `obs`, `auth`, and other backends.
 
 The default local bootstrap also does two opinionated dev-only setup steps:
 
