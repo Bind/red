@@ -25,22 +25,11 @@ PREVIEW_PUBLIC_URL="https://${SLUG}.preview.red.computer"
 PREVIEW_WEB_CLIENTS="red-web=${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_ORIGINS="${PREVIEW_PUBLIC_URL}"
 PREVIEW_PASSKEY_RP_IDS="preview.red.computer"
-PREVIEW_HOSTED_REPO_ID="red/red"
+PREVIEW_HOSTED_REPO_ID="bind/red"
 PREVIEW_REPO_OWNER="${PREVIEW_HOSTED_REPO_ID%%/*}"
 MIN_FREE_KB=$((16 * 1024 * 1024))
-SEED_TMP="$(mktemp -d)"
-BASE_EXPORT_DIR="${SEED_TMP}/base"
-HEAD_EXPORT_DIR="${SEED_TMP}/head"
 PREVIEW_UTILS_CONTENT="$(cat "$(dirname "$0")/../platform/utils.sh")"
-
-cleanup() {
-  rm -rf "${SEED_TMP}"
-}
-trap cleanup EXIT
-
-mkdir -p "${BASE_EXPORT_DIR}" "${HEAD_EXPORT_DIR}"
-git archive "${BASE_REF}" | tar -x -C "${BASE_EXPORT_DIR}"
-git archive "${GIT_COMMIT}" | tar -x -C "${HEAD_EXPORT_DIR}"
+GITHUB_TOKEN="${GITHUB_TOKEN:?GITHUB_TOKEN is required for seeding Bind/red into GRS}"
 
 echo "==> Ensuring remote dir ${REMOTE_DIR} exists"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
@@ -59,16 +48,6 @@ rsync -avz --delete \
   -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
   ./ "root@${HOST}:${REMOTE_DIR}/"
 
-echo "==> Syncing preview seed snapshots → ${HOST}:${REMOTE_DIR}/.preview-seed"
-ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
-  "mkdir -p ${REMOTE_DIR}/.preview-seed/base ${REMOTE_DIR}/.preview-seed/head"
-rsync -avz --delete \
-  -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
-  "${BASE_EXPORT_DIR}/" "root@${HOST}:${REMOTE_DIR}/.preview-seed/base/"
-rsync -avz --delete \
-  -e "ssh -p ${SSH_PORT} -o StrictHostKeyChecking=accept-new" \
-  "${HEAD_EXPORT_DIR}/" "root@${HOST}:${REMOTE_DIR}/.preview-seed/head/"
-
 echo "==> Decrypting .env.preview and pulling compose images (project=${PROJECT})"
 ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   IMAGE_TAG="${IMAGE_TAG}" GIT_COMMIT="${GIT_COMMIT}" \
@@ -81,6 +60,7 @@ ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "root@${HOST}" \
   BASE_BRANCH="${BASE_BRANCH}" \
   HEAD_BRANCH="${HEAD_BRANCH}" \
   PR_NUMBER="${PR_NUMBER}" \
+  GITHUB_TOKEN="${GITHUB_TOKEN}" \
   "bash -s" <<REMOTE
 set -euo pipefail
 

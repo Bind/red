@@ -11,7 +11,12 @@ FROM base AS release
 ARG GIT_COMMIT=unknown
 COPY --from=install /app/node_modules ./node_modules
 COPY --from=install /app/apps/ctl/node_modules ./apps/ctl/node_modules
+COPY --from=install /app/pkg/daemons/node_modules ./pkg/daemons/node_modules
+COPY --from=install /app/pkg/obs/node_modules ./pkg/obs/node_modules
+COPY --from=install /app/pkg/server/node_modules ./pkg/server/node_modules
 COPY apps/ctl ./apps/ctl
+COPY bureau ./bureau
+COPY pkg/daemons ./pkg/daemons
 COPY pkg/obs ./pkg/obs
 COPY pkg/health ./pkg/health
 COPY pkg/server ./pkg/server
