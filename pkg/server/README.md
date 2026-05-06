@@ -95,7 +95,7 @@ visible.
 
 - [x] `apps/ctl`
 - [x] `apps/bff`
-- [ ] `apps/auth`
+- [x] `apps/auth`
 - [ ] `apps/obs`
 - [ ] `apps/triage`
 - [ ] `apps/mcp`

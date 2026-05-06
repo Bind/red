@@ -54,6 +54,7 @@ export interface AuthServer {
   authority: Awaited<ReturnType<typeof createTokenAuthority>>;
   registry: ReturnType<typeof createMachineClientRegistry>;
   userRuntime: Awaited<ReturnType<typeof createUserAuthRuntime>>;
+  apiRouter: unknown;
 }
 
 type ResolvedSessionState = Awaited<ReturnType<BetterAuthAdapter["getSession"]>> & {
@@ -370,9 +371,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return c.json({ error: "Not found" }, 404);
   });
 
-  app.all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw));
-
-  app.get("/health", async (c) => {
+  const router = new Hono()
+    .all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw))
+    .get("/health", async (c) => {
     const envelope = getEnvelope(c);
     envelope.set({
       route: {
@@ -400,8 +401,8 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
 
     c.header("x-request-id", envelope.requestId);
     return c.json(report, report.status === "ok" ? 200 : 503);
-  });
-  app.get("/me", async (c) => {
+  })
+  .get("/me", async (c) => {
     const sessionResult = await resolveSessionState(c.req.raw);
     if (!sessionResult) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -417,11 +418,10 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
     return c.json(sessionResult.response);
-  });
+  })
 
-  app.get("/.well-known/jwks.json", (c) => c.json(authority.jwks));
-
-  app.get("/.well-known/openid-configuration", (c) =>
+    .get("/.well-known/jwks.json", (c) => c.json(authority.jwks))
+    .get("/.well-known/openid-configuration", (c) =>
     c.json({
       issuer: config.issuer,
       jwks_uri: `${config.issuer}/.well-known/jwks.json`,
@@ -433,9 +433,8 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
       scopes_supported: collectScopes(registry.list().flatMap((client) => client.allowedScopes)),
     }),
-  );
-
-  app.get("/__test__/mailbox/latest", (c) => {
+  )
+    .get("/__test__/mailbox/latest", (c) => {
     if (!config.exposeTestMailbox) {
       return c.json({ error: "Not found" }, 404);
     }
@@ -447,9 +446,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       return c.json({ error: "No mailbox entry found" }, 404);
     }
     return c.json(mail);
-  });
+  })
 
-  app.post("/user/two-factor/enroll", async (c) => {
+  .post("/user/two-factor/enroll", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -465,9 +464,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
     return c.json(await userLifecycle.enrollRecoveryFactor(session.id, user.email));
-  });
+  })
 
-  app.post("/user/two-factor/verify", async (c) => {
+  .post("/user/two-factor/verify", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -495,9 +494,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
         kind: kind === "backup_code" ? "backup_code" : "totp",
       }),
     );
-  });
+  })
 
-  app.post("/user/totp-login", async (c) => {
+  .post("/user/totp-login", async (c) => {
     const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
@@ -594,9 +593,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       session_id: session.id,
       email,
     });
-  });
+  })
 
-  app.post("/user/onboarding/complete", async (c) => {
+  .post("/user/onboarding/complete", async (c) => {
     const sessionResult = await authAdapter.getSession(c.req.raw);
     if (!sessionResult.response) {
       throw new AuthError("invalid_session", "A valid authenticated session is required", 401);
@@ -613,9 +612,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     });
     await userLifecycle.completeOnboarding(session.id, user.email);
     return c.json({ ok: true, sessionId: session.id, email: user.email });
-  });
+  })
 
-  app.post("/user/recovery/start", async (c) => {
+  .post("/user/recovery/start", async (c) => {
     const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
@@ -645,9 +644,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       }),
     });
     return authAdapter.handle(mailRequest);
-  });
+  })
 
-  app.post("/login-attempts", async (c) => {
+  .post("/login-attempts", async (c) => {
     const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const email = fields.email?.trim().toLowerCase();
@@ -734,9 +733,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       status: "pending",
       expires_at: attempt.expiresAt,
     });
-  });
+  })
 
-  app.get("/login-attempts/:id", async (c) => {
+  .get("/login-attempts/:id", async (c) => {
     getEnvelope(c).set({
       route: {
         name: "login_attempts.get",
@@ -776,9 +775,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     }
 
     return c.json(body);
-  });
+  })
 
-  app.post("/magic-link/complete", async (c) => {
+  .post("/magic-link/complete", async (c) => {
     const requestId = getEnvelope(c).requestId;
     const fields = await readBodyFields(c.req.raw);
     const attemptId = fields.attempt_id ?? fields.attemptId;
@@ -898,9 +897,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       session_id: sessionResult.response.session.id,
       client_id: client.clientId,
     });
-  });
+  })
 
-  app.post("/login-attempts/redeem", async (c) => {
+  .post("/login-attempts/redeem", async (c) => {
     const fields = await readBodyFields(c.req.raw);
     const attemptId = fields.attempt_id ?? fields.attemptId;
     const loginGrant = fields.login_grant ?? fields.loginGrant;
@@ -968,9 +967,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
         "set-cookie": setCookie,
       },
     );
-  });
+  })
 
-  app.post("/session/exchange", async (c) => {
+  .post("/session/exchange", async (c) => {
     const result = await sessionExchange.exchange(c.req.raw);
     getEnvelope(c).set({
       route: {
@@ -982,9 +981,9 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
     return c.json(result.body, 200, Object.fromEntries(result.headers.entries()));
-  });
+  })
 
-  app.post("/oauth/token", async (c) => {
+  .post("/oauth/token", async (c) => {
     const fields = await readBodyFields(c.req.raw.clone());
     const basic = parseBasicAuth(c.req.raw.headers);
     getEnvelope(c).set({
@@ -999,8 +998,8 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
     return c.json(await handleToken(c.req.raw));
-  });
-  app.post("/oauth/introspect", async (c) => {
+  })
+  .post("/oauth/introspect", async (c) => {
     const fields = await readBodyFields(c.req.raw.clone());
     const basic = parseBasicAuth(c.req.raw.headers);
     getEnvelope(c).set({
@@ -1013,8 +1012,8 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
       },
     });
     return c.json(await handleIntrospect(c.req.raw));
-  });
-  app.post("/oauth/revoke", async (c) => {
+  })
+  .post("/oauth/revoke", async (c) => {
     const fields = await readBodyFields(c.req.raw.clone());
     const basic = parseBasicAuth(c.req.raw.headers);
     getEnvelope(c).set({
@@ -1029,13 +1028,22 @@ export async function createAuthServer(config: AuthServerConfig): Promise<AuthSe
     return c.json(await handleRevoke(c.req.raw));
   });
 
+  app.route("/", router);
+
   return {
     authority,
     registry,
     userRuntime,
+    apiRouter: router,
     async fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response> {
       const request = input instanceof Request ? input : new Request(input, init);
       return app.fetch(request);
     },
   };
 }
+
+export type AppRouter = ReturnType<typeof createAuthServer> extends Promise<infer T>
+  ? T extends { apiRouter: infer R }
+    ? R
+    : never
+  : never;
