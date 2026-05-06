@@ -25,6 +25,8 @@ import {
   serializeRegistrationCredential,
 } from "@/lib/webauthn";
 
+const WEB_CLIENT_ID = "red-web";
+
 function parseApiMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;

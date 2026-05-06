@@ -13,7 +13,8 @@
   "dependencies": {
     "@red/ctl": "workspace:*",
     "@red/obs": "workspace:*",
-    "@red/server": "workspace:*"
+    "@red/server": "workspace:*",
+    "hono": "^4.12.12"
   },
   "devDependencies": {
     "@biomejs/biome": "latest"

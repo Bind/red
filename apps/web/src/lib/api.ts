@@ -297,14 +297,14 @@ export function createLoginAttempt(email: string, clientId: string): Promise<Log
 }
 
 export function fetchLatestMagicLink(email: string): Promise<MagicLinkPreview | null> {
-  try {
-    return requestJson<MagicLinkPreview>(`/rpc/dev/magic-link?email=${encodeURIComponent(email)}`);
-  } catch (error) {
+  return requestJson<MagicLinkPreview>(
+    `/rpc/dev/magic-link?email=${encodeURIComponent(email)}`,
+  ).catch((error) => {
     if (error instanceof ApiError && error.status === 404) {
       return null;
     }
     throw error;
-  }
+  });
 }
 
 export function fetchLoginAttempt(attemptId: string): Promise<LoginAttempt> {
@@ -425,19 +425,21 @@ export function fetchVelocity(hours?: number): Promise<Velocity> {
     .$get({
       query: hours ? { hours: String(hours) } : {},
     })
-    .then(rpcJson);
+    .then((response) => rpcJson<Velocity>(response));
 }
 
 export function fetchReviewQueue(): Promise<Change[]> {
-  return client.rpc.review.$get().then(rpcJson);
+  return client.rpc.review.$get().then((response) => rpcJson<Change[]>(response));
 }
 
 export function fetchChange(id: number): Promise<ChangeDetail> {
-  return client.rpc.changes[":id"].$get({ param: { id: String(id) } }).then(rpcJson);
+  return client.rpc.changes[":id"]
+    .$get({ param: { id: String(id) } })
+    .then((response) => rpcJson<ChangeDetail>(response));
 }
 
 export function fetchPendingJobs(): Promise<{ pending: number }> {
-  return client.rpc.jobs.pending.$get().then(rpcJson);
+  return client.rpc.jobs.pending.$get().then((response) => rpcJson<{ pending: number }>(response));
 }
 
 export async function fetchDiff(id: number): Promise<string> {
@@ -452,7 +454,11 @@ export async function regenerateSummary(id: number): Promise<void> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(body.error ?? `API error: ${res.status}`);
+    const message =
+      typeof body === "object" && body && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `API error: ${res.status}`;
+    throw new Error(message);
   }
 }
 
@@ -462,7 +468,11 @@ export async function requeueSummary(id: number): Promise<void> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(body.error ?? `API error: ${res.status}`);
+    const message =
+      typeof body === "object" && body && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `API error: ${res.status}`;
+    throw new Error(message);
   }
 }
 
@@ -551,7 +561,9 @@ export interface Branch {
 }
 
 export function fetchBranches(repo: string): Promise<Branch[]> {
-  return client.rpc.branches.$get({ query: { repo } }).then(rpcJson);
+  return client.rpc.branches
+    .$get({ query: { repo } })
+    .then((response) => rpcJson<Branch[]>(response));
 }
 
 export type AgentSessionStatus = "running" | "completed" | "failed";
@@ -587,19 +599,17 @@ export interface AgentSessionEvent {
 }
 
 export function fetchSessions(changeId: number): Promise<AgentSession[]> {
-  return client.rpc.changes[":id"].sessions.$get({ param: { id: String(changeId) } }).then(rpcJson);
+  return client.rpc.changes[":id"].sessions
+    .$get({ param: { id: String(changeId) } })
+    .then((response) => rpcJson<AgentSession[]>(response));
 }
 
 export function fetchSessionEvents(
   sessionId: number,
   afterSeq: number = 0,
 ): Promise<AgentSessionEvent[]> {
-  return client.rpc.sessions[":id"].events
-    .$get({
-      param: { id: String(sessionId) },
-      query: { after: String(afterSeq) },
-    })
-    .then(rpcJson);
+  const query = new URLSearchParams({ after: String(afterSeq) });
+  return requestJson<AgentSessionEvent[]>(`/rpc/sessions/${sessionId}/events?${query.toString()}`);
 }
 
 export function subscribeToAgentEvents(

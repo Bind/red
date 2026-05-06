@@ -29,7 +29,9 @@ const allowNetwork = process.env.SMITHERS_ALLOW_NETWORK?.toLowerCase() === "true
 mkdirSync(dirname(dbPath), { recursive: true });
 
 const sqlite = new Database(dbPath);
-const db: ServerOptions["db"] = drizzle(sqlite);
+// Smithers and this app currently see nominally distinct Drizzle types even
+// though the runtime Bun SQLite database instance is compatible.
+const db = drizzle(sqlite) as unknown as NonNullable<ServerOptions["db"]>;
 
 await configureServerLogging({ app: "red", lowestLevel: "info" });
 const logger = getServerLogger(["triage", "smithers"]);

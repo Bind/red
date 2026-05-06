@@ -34,6 +34,7 @@ import { GitServerHttpRepositoryProvider } from "./repo/git-server-http-provider
 import type { RepositoryProvider } from "./repo/repository-provider";
 
 export type { AppRouter } from "./api/router";
+export { repoCreateInputSchema } from "./api/router";
 
 export interface AppConfig {
   port: number;

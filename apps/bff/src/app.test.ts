@@ -454,7 +454,12 @@ describe("BFF app", () => {
       body: "{",
     });
 
-    expect(upstreamBody).toBe("");
+    if (upstreamBody === null) {
+      throw new Error("expected auth upstream to receive a body");
+    }
+    if (upstreamBody !== "{") {
+      throw new Error(`expected raw forwarded body, received ${JSON.stringify(upstreamBody)}`);
+    }
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid_request" });
   });

@@ -47,6 +47,13 @@ export interface ApiDeps {
   };
 }
 
+export const repoCreateInputSchema = z.object({
+  owner: z.string().optional(),
+  name: z.string().optional(),
+  default_branch: z.string().optional(),
+  visibility: z.enum(["private", "internal", "public"]).optional(),
+});
+
 interface RepoCreateInput {
   owner?: string;
   name?: string;
@@ -496,59 +503,47 @@ export function makeApiRouter(deps: ApiDeps) {
       );
       return c.text(diff);
     })
-    .post(
-      "/api/repos",
-      zValidator(
-        "json",
-        z.object({
-          owner: z.string().optional(),
-          name: z.string().optional(),
-          default_branch: z.string().optional(),
-          visibility: z.enum(["private", "internal", "public"]).optional(),
-        }),
-      ),
-      async (c) => {
-        if (config.repoBackend.kind !== "git_storage") {
-          return c.json(
-            { error: "Repository creation is not supported for the local git backend" },
-            501,
-          );
-        }
+    .post("/api/repos", zValidator("json", repoCreateInputSchema), async (c) => {
+      if (config.repoBackend.kind !== "git_storage") {
+        return c.json(
+          { error: "Repository creation is not supported for the local git backend" },
+          501,
+        );
+      }
 
-        const body = (await c.req.json().catch(() => null)) as RepoCreateInput | null;
-        const owner = body?.owner?.trim() || config.repoBackend.defaultOwner;
-        const name = body?.name?.trim();
-        if (!name) return c.json({ error: "Missing required field: name" }, 400);
-        if (!owner) return c.json({ error: "Missing required field: owner" }, 400);
-        if (name.includes("/")) {
-          return c.json({ error: "Repository name must not contain '/'" }, 400);
-        }
+      const body = (await c.req.json().catch(() => null)) as RepoCreateInput | null;
+      const owner = body?.owner?.trim() || config.repoBackend.defaultOwner;
+      const name = body?.name?.trim();
+      if (!name) return c.json({ error: "Missing required field: name" }, 400);
+      if (!owner) return c.json({ error: "Missing required field: owner" }, 400);
+      if (name.includes("/")) {
+        return c.json({ error: "Repository name must not contain '/'" }, 400);
+      }
 
-        const defaultBranch = body?.default_branch?.trim() || config.repoBackend.defaultBranch;
-        const visibility = body?.visibility ?? "private";
-        if (!["private", "internal", "public"].includes(visibility)) {
-          return c.json({ error: "Invalid visibility" }, 400);
-        }
+      const defaultBranch = body?.default_branch?.trim() || config.repoBackend.defaultBranch;
+      const visibility = body?.visibility ?? "private";
+      if (!["private", "internal", "public"].includes(visibility)) {
+        return c.json({ error: "Invalid visibility" }, 400);
+      }
 
-        const existing = repos.getByFullName(`${owner}/${name}`);
-        if (existing) {
-          return c.json({ error: "Repository already exists", repo: existing }, 409);
-        }
+      const existing = repos.getByFullName(`${owner}/${name}`);
+      if (existing) {
+        return c.json({ error: "Repository already exists", repo: existing }, 409);
+      }
 
-        const created = repos.create({
-          owner,
-          name,
-          default_branch: defaultBranch,
-          visibility,
-          created_by_subject: null,
-        });
+      const created = repos.create({
+        owner,
+        name,
+        default_branch: defaultBranch,
+        visibility,
+        created_by_subject: null,
+      });
 
-        if (repositoryProvider.getRepo) {
-          await repositoryProvider.getRepo(owner, name).catch(() => null);
-        }
-        return c.json(created, 201);
-      },
-    )
+      if (repositoryProvider.getRepo) {
+        await repositoryProvider.getRepo(owner, name).catch(() => null);
+      }
+      return c.json(created, 201);
+    })
     .get(
       "/api/branches",
       zValidator("query", z.object({ repo: z.string().optional() })),

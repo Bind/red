@@ -337,7 +337,7 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
       id: event.id,
       chunk: event.raw_json ?? event.data_json ?? event.text ?? null,
     }))
-    .filter((entry): entry is { id: string; chunk: string } => Boolean(entry.chunk));
+    .filter((entry): entry is { id: number; chunk: string } => typeof entry.chunk === "string");
   const artifactEvents = events.filter((event) => event.kind === "artifact");
 
   return (

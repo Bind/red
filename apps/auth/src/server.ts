@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
+  type EventEnvelope,
   getEnvelope,
   type ObsFields,
   obsMiddleware,
@@ -19,6 +20,12 @@ import { createSessionExchangeService } from "./service/session-exchange-service
 import { createUserAuthRuntime } from "./service/user-auth-runtime";
 import { createUserLifecycleService } from "./service/user-lifecycle";
 import { AuthError } from "./util/errors";
+
+type AuthAppEnv = {
+  Variables: {
+    envelope: EventEnvelope;
+  };
+};
 
 export interface AuthServerConfig {
   issuer: string;
@@ -212,7 +219,7 @@ export async function createAuthServer(config: AuthServerConfig) {
     },
   );
   const sessionExchange = createSessionExchangeService(authAdapter, authority);
-  const app = new Hono();
+  const app = new Hono<AuthAppEnv>();
   const logger = getServerLogger(["auth"]);
   const authSecret = config.userAuthSecret ?? "red-auth-lab-dev-secret";
   const startedAt = Date.now();
@@ -372,7 +379,7 @@ export async function createAuthServer(config: AuthServerConfig) {
     return c.json({ error: "Not found" }, 404);
   });
 
-  const router = new Hono()
+  const router = new Hono<AuthAppEnv>()
     .all("/api/auth/*", async (c) => authAdapter.handle(c.req.raw))
     .get("/health", async (c) => {
       const envelope = getEnvelope(c);
@@ -1098,7 +1105,7 @@ export async function createAuthServer(config: AuthServerConfig) {
     apiRouter: router,
     fetch(input: RequestInfo | URL | Request, init?: RequestInit): Promise<Response> {
       const request = input instanceof Request ? input : new Request(input, init);
-      return app.fetch(request);
+      return Promise.resolve(app.fetch(request));
     },
   };
 }

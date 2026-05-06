@@ -1,5 +1,4 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
 /**
  * Registers every MCP tool on the server. Boilerplate scope: a single `ping`
@@ -11,14 +10,13 @@ export function registerTools(server: McpServer): void {
     "ping",
     {
       title: "Ping",
-      description: "Connectivity probe. Echoes the received `msg` back.",
-      inputSchema: { msg: z.string().default("pong") },
+      description: "Connectivity probe. Returns a timestamped pong response.",
     },
-    async ({ msg }: { msg: string }) => ({
+    async () => ({
       content: [
         {
           type: "text",
-          text: `${msg} @ ${new Date().toISOString()}`,
+          text: `pong @ ${new Date().toISOString()}`,
         },
       ],
     }),

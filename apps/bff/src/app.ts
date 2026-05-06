@@ -1,6 +1,8 @@
+import { repoCreateInputSchema } from "@red/ctl";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
+  type EventEnvelope,
   getEnvelope,
   type ObsFields,
   obsMiddleware,
@@ -23,6 +25,12 @@ import {
 } from "./hosted-repo";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
+
+type BffAppEnv = {
+  Variables: {
+    envelope: EventEnvelope;
+  };
+};
 
 const logger = getServerLogger(["bff"]);
 
@@ -75,10 +83,6 @@ async function readBestEffortBody(response: Response): Promise<unknown> {
   } catch {
     return text;
   }
-}
-
-function readJsonOrNull(request: Request): Promise<unknown> {
-  return request.json().catch(() => null);
 }
 
 async function probeHealthEndpoint(
@@ -146,7 +150,7 @@ export function createApp(config: BffConfig) {
   const obs = makeObs(deps);
   const triage = makeTriage(deps);
 
-  const rpc = new Hono()
+  const rpc = new Hono<BffAppEnv>()
     .get("/status", async (c) => {
       const envelope = getEnvelope(c);
       const checkedAt = new Date().toISOString();
@@ -183,34 +187,23 @@ export function createApp(config: BffConfig) {
         }),
       ),
     )
-    .post("/auth/login-attempts", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return auth(c).send(($) => $["login-attempts"].$post({ json: body }));
-    })
+    .post("/auth/login-attempts", (c) => forwardAuthRequest(c, deps, "/login-attempts"))
     .get("/auth/login-attempts/:id", (c) =>
       auth(c).send(($) => $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } })),
     )
-    .post("/auth/login-attempts/redeem", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return auth(c).send(($) => $["login-attempts"].redeem.$post({ json: body }));
-    })
-    .post("/auth/magic-link/complete", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return auth(c).send(($) => $["magic-link"].complete.$post({ json: body }));
-    })
-    .post("/auth/user/two-factor/enroll", (c) =>
-      auth(c).send(($) => $.user["two-factor"].enroll.$post({ json: {} })),
+    .post("/auth/login-attempts/redeem", (c) =>
+      forwardAuthRequest(c, deps, "/login-attempts/redeem"),
     )
-    .post("/auth/user/two-factor/verify", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return auth(c).send(($) => $.user["two-factor"].verify.$post({ json: body }));
-    })
-    .post("/auth/user/totp-login", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return auth(c).send(($) => $.user["totp-login"].$post({ json: body }));
-    })
+    .post("/auth/magic-link/complete", (c) => forwardAuthRequest(c, deps, "/magic-link/complete"))
+    .post("/auth/user/two-factor/enroll", (c) =>
+      forwardAuthRequest(c, deps, "/user/two-factor/enroll"),
+    )
+    .post("/auth/user/two-factor/verify", (c) =>
+      forwardAuthRequest(c, deps, "/user/two-factor/verify"),
+    )
+    .post("/auth/user/totp-login", (c) => forwardAuthRequest(c, deps, "/user/totp-login"))
     .post("/auth/user/onboarding/complete", (c) =>
-      auth(c).send(($) => $.user.onboarding.complete.$post({ json: {} })),
+      forwardAuthRequest(c, deps, "/user/onboarding/complete"),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
@@ -273,8 +266,18 @@ export function createApp(config: BffConfig) {
     .get("/jobs/pending", (c) => api(c).send(($) => $.api.jobs.pending.$get()))
     .get("/repos", (c) => api(c).send(($) => $.api.repos.$get()))
     .post("/repos", async (c) => {
-      const body = await readJsonOrNull(c.req.raw);
-      return api(c).send(($) => $.api.repos.$post({ json: body }));
+      const payload = await c.req.json().catch(() => null);
+      const parsed = repoCreateInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: "Invalid repository create payload",
+            details: parsed.error.flatten(),
+          },
+          400,
+        );
+      }
+      return api(c).send(($) => $.api.repos.$post({ json: parsed.data }));
     })
     .get("/branches", (c) =>
       api(c).send(($) => $.api.branches.$get({ query: { repo: c.req.query("repo") } })),
@@ -419,7 +422,7 @@ export function createApp(config: BffConfig) {
         .send(($) => $.v1.runs.$get()),
     );
 
-  const app = new Hono()
+  const app = new Hono<BffAppEnv>()
     .use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }))
     .use("*", createHttpLogger({ service: "bff", app: "red" }))
     .get("/health", async (c) => {
