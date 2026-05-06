@@ -12,11 +12,11 @@ import {
   type HostedRepoConfig,
   type HostedRepoReader,
 } from "./hosted-repo";
-import { joinUrl, makeApi, makeAuth, makeObs, makeTriage, type ProxyConfig } from "./proxy";
+import { joinUrl, makeApi, makeAuth, makeObs, makeTriage, type ClientConfig } from "./client";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface BffConfig extends ProxyConfig {
+export interface BffConfig extends ClientConfig {
   port: number;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;

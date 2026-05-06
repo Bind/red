@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
-import { makeApi, type ProxyConfig } from "./proxy";
+import { makeApi, type ClientConfig } from "./client";
 
 type Call = {
   url: string;
@@ -30,7 +30,7 @@ function recorder(impl: (req: Request) => Promise<Response>) {
   return { calls, fetchImpl };
 }
 
-function baseConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
+function baseConfig(overrides: Partial<ClientConfig> = {}): ClientConfig {
   return {
     apiBaseUrl: "http://api.test",
     authBaseUrl: "http://auth.test",
@@ -44,7 +44,7 @@ function exchangeOk(token = "tok-1") {
   return Response.json({ access_token: token, token_type: "Bearer", expires_in: 600 });
 }
 
-describe("proxy builder", () => {
+describe("service client", () => {
   test("default jwt mode exchanges session and forwards Bearer to api", async () => {
     const { calls, fetchImpl } = recorder(async (req) => {
       const url = new URL(req.url);

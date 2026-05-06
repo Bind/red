@@ -4,7 +4,7 @@ export type Upstream = "api" | "auth" | "obs" | "triage" | "grs" | "mcp";
 export type AuthMode = "jwt" | "cookie" | "session" | "none";
 export type BodyMode = "json" | "text" | "stream";
 
-export interface ProxyConfig {
+export interface ClientConfig {
   apiBaseUrl: string;
   authBaseUrl: string;
   obsBaseUrl?: string;
@@ -14,34 +14,34 @@ export interface ProxyConfig {
   disableAuth?: boolean;
 }
 
-export interface ProxyDeps {
-  config: ProxyConfig;
+export interface ClientDeps {
+  config: ClientConfig;
   fetchImpl: FetchImpl;
 }
 
-export type ProxyFactory = (c: any) => RouteBuilder;
+export type ClientFactory = (c: any) => RouteBuilder;
 
 /**
- * Per-service proxy factories. Each preset bakes in the upstream + auth
+ * Per-service client factories. Each preset bakes in the upstream + auth
  * mode + body mode that match how that upstream is actually used today.
  * All presets remain overridable via the chain (e.g. `auth(c).auth("none")`).
  */
 
-export function makeApi(deps: ProxyDeps): ProxyFactory {
+export function makeApi(deps: ClientDeps): ClientFactory {
   return (c: any) => new RouteBuilder(c, deps.config, deps.fetchImpl);
 }
 
-export function makeAuth(deps: ProxyDeps): ProxyFactory {
+export function makeAuth(deps: ClientDeps): ClientFactory {
   return (c: any) =>
     new RouteBuilder(c, deps.config, deps.fetchImpl).to("auth").auth("cookie").as("stream");
 }
 
-export function makeObs(deps: ProxyDeps): ProxyFactory {
+export function makeObs(deps: ClientDeps): ClientFactory {
   return (c: any) =>
     new RouteBuilder(c, deps.config, deps.fetchImpl).to("obs").auth("session");
 }
 
-export function makeTriage(deps: ProxyDeps): ProxyFactory {
+export function makeTriage(deps: ClientDeps): ClientFactory {
   return (c: any) =>
     new RouteBuilder(c, deps.config, deps.fetchImpl).to("triage").auth("session");
 }
@@ -56,7 +56,7 @@ class RouteBuilder {
 
   constructor(
     private c: any,
-    private config: ProxyConfig,
+    private config: ClientConfig,
     private fetchImpl: FetchImpl,
   ) {}
 
