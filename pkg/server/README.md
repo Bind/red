@@ -97,6 +97,6 @@ visible.
 - [x] `apps/bff`
 - [x] `apps/auth`
 - [x] `apps/obs`
-- [ ] `apps/triage`
+- [x] `apps/triage`
 - [ ] `apps/mcp`
 - [ ] `apps/grs` (TS surface only)
