@@ -206,11 +206,14 @@ describe("BFF app", () => {
     expect(diff.status).toBe(200);
     expect(await diff.text()).toContain("diff --git");
 
-    const commitDiff = await app.request("http://bff.test/rpc/app/hosted-repo/commits/abc123/diff", {
-      headers: {
-        "x-request-id": "hosted-repo-commit-diff-1",
+    const commitDiff = await app.request(
+      "http://bff.test/rpc/app/hosted-repo/commits/abc123/diff",
+      {
+        headers: {
+          "x-request-id": "hosted-repo-commit-diff-1",
+        },
       },
-    });
+    );
     expect(commitDiff.status).toBe(200);
     expect(await commitDiff.text()).toContain("diff --git");
     expect(String(hostedRepoCommitDiffRequestId)).toBe("hosted-repo-commit-diff-1");
@@ -510,12 +513,17 @@ describe("BFF app", () => {
       body: JSON.stringify({ code: "123456" }),
     });
     expect(verifyResponse.status).toBe(200);
-    expect(verifyResponse.headers.get("set-cookie")).toContain("better-auth.session_token=verified");
+    expect(verifyResponse.headers.get("set-cookie")).toContain(
+      "better-auth.session_token=verified",
+    );
 
-    const completeResponse = await app.request("http://bff.test/rpc/auth/user/onboarding/complete", {
-      method: "POST",
-      headers: { Cookie: "better-auth.session_token=verified" },
-    });
+    const completeResponse = await app.request(
+      "http://bff.test/rpc/auth/user/onboarding/complete",
+      {
+        method: "POST",
+        headers: { Cookie: "better-auth.session_token=verified" },
+      },
+    );
     expect(completeResponse.status).toBe(200);
     expect(await completeResponse.json()).toEqual({ ok: true });
   });

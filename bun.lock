@@ -11,6 +11,7 @@
         "yaml": "^2.7.0",
       },
       "devDependencies": {
+        "@biomejs/biome": "latest",
         "@types/bun": "latest",
         "sst": "^3",
         "turbo": "^2.5.4",

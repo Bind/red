@@ -1,16 +1,16 @@
-import { hc } from "hono/client";
-import type { Context, Hono } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { AppRouter as CtlAppRouter } from "@red/ctl";
 import { getEnvelope } from "@red/obs";
+import type { Context, Hono } from "hono";
+import { hc } from "hono/client";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
+import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
+import type { AppRouter as TriageAppRouter } from "../../triage/src/app";
 
 // Hono's typed generics intentionally use `any` for un-pinned slots; this
 // alias is the single quarantined site so the rest of the file stays clean.
 // biome-ignore lint/suspicious/noExplicitAny: hono internal generics
 type HonoApp = Hono<any, any, any>;
-import type { AppRouter as CtlAppRouter } from "@red/ctl";
-import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
-import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
-import type { AppRouter as TriageAppRouter } from "../../triage/src/app";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -150,7 +150,7 @@ class RouteBuilder<TAppRouter extends HonoApp> {
     }
 
     const isCookie = this._auth === "cookie";
-    const customFetch: FetchImpl = async (input, init) => {
+    const customFetch: FetchImpl = (input, init) => {
       const merged = new Headers(init?.headers);
       forwardHeaders.forEach((value, key) => {
         merged.set(key, value);
@@ -268,7 +268,7 @@ function buildForwardHeaders(request: Request, requestId?: string): Headers {
   return headers;
 }
 
-function requestIdFromContext(c: any): string | undefined {
+function requestIdFromContext(c: Context): string | undefined {
   try {
     const requestId = getEnvelope(c).requestId;
     return typeof requestId === "string" && requestId.length > 0 ? requestId : undefined;
@@ -295,9 +295,9 @@ function copyResponseHeaders(headers: Headers): Headers {
   return copied;
 }
 
-async function readForwardBody(request: Request): Promise<ArrayBuffer | undefined> {
+function readForwardBody(request: Request): Promise<ArrayBuffer | undefined> {
   if (request.method === "GET" || request.method === "HEAD") {
-    return undefined;
+    return Promise.resolve(undefined);
   }
   return request.arrayBuffer();
 }

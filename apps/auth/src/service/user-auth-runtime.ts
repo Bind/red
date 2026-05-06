@@ -196,8 +196,8 @@ export async function createUserAuthRuntime(
     databaseHooks: {
       user: {
         create: {
-          async before(user) {
-            return {
+          before(user) {
+            return Promise.resolve({
               data: {
                 ...user,
                 onboardingState: (user.onboardingState as string | undefined) ?? "pending_passkey",
@@ -206,14 +206,14 @@ export async function createUserAuthRuntime(
                   (user.recoveryChallengePending as boolean | undefined) ?? false,
                 authAssurance: (user.authAssurance as string | undefined) ?? "bootstrap",
               },
-            };
+            });
           },
         },
       },
     },
     plugins: [
       magicLink({
-        sendMagicLink: async ({ email, url, token, metadata }) => {
+        sendMagicLink: ({ email, url, token, metadata }) => {
           mailbox.push({
             email,
             url,
@@ -223,6 +223,7 @@ export async function createUserAuthRuntime(
                 ? (metadata.purpose as MagicLinkMail["purpose"])
                 : "unknown",
           });
+          return Promise.resolve();
         },
       }),
       passkey({

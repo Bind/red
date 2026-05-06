@@ -77,6 +77,7 @@ class BunSqliteConnection {
 
   async *streamQuery() {
     yield undefined as never;
+    await Promise.resolve();
     throw new Error("Streaming query is not supported by the Bun SQLite driver.");
   }
 }
@@ -137,12 +138,14 @@ class BunSqliteDriver {
     await connection.executeQuery(CompiledQuery.raw("rollback"));
   }
 
-  async releaseConnection() {
+  releaseConnection() {
     this.#connectionMutex.unlock();
+    return Promise.resolve();
   }
 
-  async destroy() {
+  destroy() {
     this.#db?.close();
+    return Promise.resolve();
   }
 }
 
@@ -153,8 +156,8 @@ class BunSqliteIntrospector {
     this.#db = db;
   }
 
-  async getSchemas() {
-    return [];
+  getSchemas() {
+    return Promise.resolve([]);
   }
 
   async getTables(options = { withInternalKyselyTables: false }) {

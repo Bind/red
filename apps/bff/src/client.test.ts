@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
 import {
+  type ClientConfig,
   forwardAuthRequest,
   makeApi,
   makeAuth,
   makeObs,
   makeTriage,
-  type ClientConfig,
 } from "./client";
 
 type Call = {
@@ -65,10 +65,7 @@ describe("service client", () => {
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
     expect(res.status).toBe(200);
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      "/session/exchange",
-      "/api/review",
-    ]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/session/exchange", "/api/review"]);
     expect(calls[0]?.cookie).toBe("session=abc");
     expect(calls[1]?.authorization).toBe("Bearer tok-1");
     expect(calls[1]?.cookie).toBe("session=abc");
@@ -95,13 +92,14 @@ describe("service client", () => {
   });
 
   test("cookie auth uses redirect:manual and copies set-cookie", async () => {
-    const { calls, fetchImpl } = recorder(async () =>
-      new Response(JSON.stringify({ ok: true }), {
-        headers: {
-          "content-type": "application/json",
-          "set-cookie": "session=new; Path=/; HttpOnly",
-        },
-      }),
+    const { calls, fetchImpl } = recorder(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "session=new; Path=/; HttpOnly",
+          },
+        }),
     );
     const auth = makeAuth({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) => auth(c).send(($) => $.me.$get()));
@@ -130,10 +128,7 @@ describe("service client", () => {
     const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
 
     expect(res.status).toBe(200);
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      "/session/exchange",
-      "/v1/daemons",
-    ]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/session/exchange", "/v1/daemons"]);
     expect(calls[1]?.authorization).toBeNull();
   });
 
@@ -148,7 +143,7 @@ describe("service client", () => {
     expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/v1/daemons"]);
   });
 
-  test("auth(\"none\") skips session exchange entirely", async () => {
+  test('auth("none") skips session exchange entirely', async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json({ files: [] }));
     const api = makeApi({ config: baseConfig(), fetchImpl });
     const app = new Hono().get("/test", (c) =>
@@ -164,9 +159,7 @@ describe("service client", () => {
 
     await app.request("/test");
 
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      "/api/repos/x/y/tree",
-    ]);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/api/repos/x/y/tree"]);
     expect(calls[0]?.authorization).toBeNull();
   });
 
@@ -197,9 +190,7 @@ describe("service client", () => {
     const app = new Hono().get("/test", (c) =>
       api(c)
         .as("text")
-        .send(($) =>
-          $.api.changes[":id"].diff.$get({ param: { id: "1" } }),
-        ),
+        .send(($) => $.api.changes[":id"].diff.$get({ param: { id: "1" } })),
     );
 
     const res = await app.request("/test");
@@ -225,9 +216,7 @@ describe("service client", () => {
     const app = new Hono().get("/test", (c) =>
       api(c)
         .as("stream")
-        .send(($) =>
-          $.api.changes[":id"]["agent-events"].$get({ param: { id: "1" } }),
-        ),
+        .send(($) => $.api.changes[":id"]["agent-events"].$get({ param: { id: "1" } })),
     );
 
     const res = await app.request("/test");
@@ -326,11 +315,7 @@ describe("service client", () => {
     const config = baseConfig();
     const app = new Hono().all("/api/auth/*", async (c) => {
       const incoming = new URL(c.req.url);
-      return forwardAuthRequest(
-        c,
-        { config, fetchImpl },
-        incoming.pathname + incoming.search,
-      );
+      return forwardAuthRequest(c, { config, fetchImpl }, incoming.pathname + incoming.search);
     });
 
     const res = await app.request("/api/auth/sign-in?cb=/", {

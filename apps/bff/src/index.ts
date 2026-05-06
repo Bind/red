@@ -1,11 +1,11 @@
 import { configureServerLogging, getServerLogger } from "@red/server";
-import { createApp, type BffConfig } from "./app";
+import { type BffConfig, createApp } from "./app";
 
 function loadConfig(): BffConfig {
   const hostedRepoId = process.env.BFF_HOSTED_REPO_ID?.trim();
 
   return {
-    port: parseInt(process.env.BFF_PORT ?? "3001", 10),
+    port: Number.parseInt(process.env.BFF_PORT ?? "3001", 10),
     apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
     authBaseUrl: process.env.AUTH_BASE_URL ?? "http://localhost:4020",
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
@@ -13,14 +13,13 @@ function loadConfig(): BffConfig {
     grsBaseUrl: process.env.GRS_BASE_URL ?? "http://grs:8080",
     mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",
-    hostedRepo:
-      hostedRepoId
-        ? {
-            repoId: hostedRepoId,
-            apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
-            readmePath: process.env.BFF_HOSTED_REPO_README_PATH ?? "README.md",
-          }
-        : undefined,
+    hostedRepo: hostedRepoId
+      ? {
+          repoId: hostedRepoId,
+          apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
+          readmePath: process.env.BFF_HOSTED_REPO_README_PATH ?? "README.md",
+        }
+      : undefined,
   };
 }
 

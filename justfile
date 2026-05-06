@@ -126,12 +126,11 @@ typecheck:
 
 # Run repository formatters
 fmt:
-    just auth-format
+    bun run format
 
 # Run repository linters
 lint:
-    just auth-lint
-    just bff-lint
+    bun run lint
 
 # Lint the bff service (biome; enforces no-explicit-any)
 bff-lint:

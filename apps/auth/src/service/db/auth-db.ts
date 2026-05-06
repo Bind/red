@@ -142,7 +142,7 @@ async function getPostgresTables(db: Kysely<AuthDatabaseSchema>): Promise<TableM
   return metadata;
 }
 
-export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<AuthDatabase> {
+export function createAuthDatabase(config: AuthDatabaseConfig): Promise<AuthDatabase> {
   if (config.kind === "sqlite") {
     const database = new Database(config.sqlitePath ?? ":memory:");
     const kysely = new Kysely<AuthDatabaseSchema>({
@@ -155,23 +155,24 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
 
     Object.defineProperty(kysely, "introspection", {
       value: {
-        async getTables() {
+        getTables() {
           return getSqliteTables(kysely);
         },
       },
     });
 
-    return {
+    return Promise.resolve({
       kind: "sqlite",
       kysely,
       async ping() {
         await sql`SELECT 1 AS ok`.execute(kysely);
       },
-      async close() {
+      close() {
         kysely.destroy();
         database.close();
+        return Promise.resolve();
       },
-    };
+    });
   }
 
   const pool = new Pool({
@@ -187,13 +188,13 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
 
   Object.defineProperty(kysely, "introspection", {
     value: {
-      async getTables() {
+      getTables() {
         return getPostgresTables(kysely);
       },
     },
   });
 
-  return {
+  return Promise.resolve({
     kind: "postgres",
     kysely,
     async ping() {
@@ -203,7 +204,7 @@ export async function createAuthDatabase(config: AuthDatabaseConfig): Promise<Au
       kysely.destroy();
       await pool.end();
     },
-  };
+  });
 }
 
 export async function patchDatabaseRow(

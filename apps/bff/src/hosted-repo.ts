@@ -131,7 +131,10 @@ export function createHostedRepoReader(
   const { owner, name } = splitHostedRepoId(config.repoId);
   const repoUrl = new URL(`/api/repos/${owner}/${name}`, config.apiBaseUrl).toString();
   const branchesUrl = new URL(`/api/repos/${owner}/${name}/branches`, config.apiBaseUrl).toString();
-  const commitsUrl = new URL(`/api/repos/${owner}/${name}/commits?limit=20`, config.apiBaseUrl).toString();
+  const commitsUrl = new URL(
+    `/api/repos/${owner}/${name}/commits?limit=20`,
+    config.apiBaseUrl,
+  ).toString();
   const readmeUrl = new URL(
     `/api/repos/${owner}/${name}/file?path=${encodeURIComponent(config.readmePath)}`,
     config.apiBaseUrl,
@@ -175,9 +178,15 @@ export function createHostedRepoReader(
             : null;
 
         const partialFailures = [
-          branchesResult.status === "rejected" ? `branches: ${toErrorMessage(branchesResult.reason)}` : null,
-          commitsResult.status === "rejected" ? `commits: ${toErrorMessage(commitsResult.reason)}` : null,
-          readmeResult.status === "rejected" ? `readme: ${toErrorMessage(readmeResult.reason)}` : null,
+          branchesResult.status === "rejected"
+            ? `branches: ${toErrorMessage(branchesResult.reason)}`
+            : null,
+          commitsResult.status === "rejected"
+            ? `commits: ${toErrorMessage(commitsResult.reason)}`
+            : null,
+          readmeResult.status === "rejected"
+            ? `readme: ${toErrorMessage(readmeResult.reason)}`
+            : null,
         ].filter((value): value is string => Boolean(value));
 
         return {

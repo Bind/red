@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { getServerLogger } from "@red/server";
+
+const logger = getServerLogger(["obs"]);
 
 export type ObsPrimitive = string | number | boolean | null;
 export interface ObsArray extends Array<ObsValue> {}
@@ -47,7 +50,10 @@ export interface HealthCheckResult {
 export interface HealthReporterOptions {
   service: string;
   startedAtMs: number;
-  checks: Record<string, () => Promise<HealthCheckResult | void> | HealthCheckResult | void>;
+  checks: Record<
+    string,
+    () => Promise<HealthCheckResult | undefined> | HealthCheckResult | undefined
+  >;
 }
 
 export interface HealthReport {
@@ -159,7 +165,7 @@ export function createEventEnvelope(
 
 export class ConsoleJsonSink implements EventSink {
   emit(event: ObsEvent): void {
-    console.info(JSON.stringify(event));
+    logger.info("{event}", { event });
   }
 }
 
@@ -171,9 +177,7 @@ export class MemorySink implements EventSink {
   }
 }
 
-export async function collectHealthReport(
-  options: HealthReporterOptions,
-): Promise<HealthReport> {
+export async function collectHealthReport(options: HealthReporterOptions): Promise<HealthReport> {
   const checks: Record<string, HealthCheckResult> = {};
   let status: "ok" | "error" = "ok";
 

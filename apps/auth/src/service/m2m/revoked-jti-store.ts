@@ -7,12 +7,13 @@ export function createInMemoryRevokedJtiStore(): RevokedJtiStore {
   const revoked = new Set<string>();
 
   return {
-    async has(jti: string): Promise<boolean> {
-      return revoked.has(jti);
+    has(jti: string): Promise<boolean> {
+      return Promise.resolve(revoked.has(jti));
     },
 
-    async add(jti: string): Promise<void> {
+    add(jti: string): Promise<void> {
       revoked.add(jti);
+      return Promise.resolve();
     },
   };
 }

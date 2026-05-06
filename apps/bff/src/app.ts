@@ -1,4 +1,3 @@
-import { Hono, createHttpLogger } from "@red/server";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
@@ -6,23 +5,26 @@ import {
   type ObsFields,
   obsMiddleware,
 } from "@red/obs";
+import { createHttpLogger, getServerLogger, Hono } from "@red/server";
 import {
-  createHostedRepoReader,
-  splitHostedRepoId,
-  type HostedRepoConfig,
-  type HostedRepoReader,
-} from "./hosted-repo";
-import {
+  type ClientConfig,
   forwardAuthRequest,
   joinUrl,
   makeApi,
   makeAuth,
   makeObs,
   makeTriage,
-  type ClientConfig,
 } from "./client";
+import {
+  createHostedRepoReader,
+  type HostedRepoConfig,
+  type HostedRepoReader,
+  splitHostedRepoId,
+} from "./hosted-repo";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const logger = getServerLogger(["bff"]);
 
 export interface BffConfig extends ClientConfig {
   port: number;
@@ -75,7 +77,7 @@ async function readBestEffortBody(response: Response): Promise<unknown> {
   }
 }
 
-async function readJsonOrNull(request: Request): Promise<unknown> {
+function readJsonOrNull(request: Request): Promise<unknown> {
   return request.json().catch(() => null);
 }
 
@@ -115,12 +117,11 @@ async function probeHealthEndpoint(
       latency_ms: Math.round(performance.now() - startedAt),
       checked_at: checkedAt,
       body,
-      error:
-        response.ok
-          ? null
-          : typeof body === "object" && body && "error" in body && typeof body.error === "string"
-            ? body.error
-            : `healthcheck returned ${response.status}`,
+      error: response.ok
+        ? null
+        : typeof body === "object" && body && "error" in body && typeof body.error === "string"
+          ? body.error
+          : `healthcheck returned ${response.status}`,
     };
   } catch (error) {
     return {
@@ -187,9 +188,7 @@ export function createApp(config: BffConfig) {
       return auth(c).send(($) => $["login-attempts"].$post({ json: body }));
     })
     .get("/auth/login-attempts/:id", (c) =>
-      auth(c).send(($) =>
-        $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } }),
-      ),
+      auth(c).send(($) => $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } })),
     )
     .post("/auth/login-attempts/redeem", async (c) => {
       const body = await readJsonOrNull(c.req.raw);
@@ -217,8 +216,8 @@ export function createApp(config: BffConfig) {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
       const envelope = getEnvelope(c);
       const hostedRepoReader =
-        config.hostedRepoReader
-        ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
+        config.hostedRepoReader ??
+        (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
       if (!hostedRepoReader) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
@@ -268,9 +267,7 @@ export function createApp(config: BffConfig) {
         );
     })
     .get("/velocity", (c) =>
-      api(c).send(($) =>
-        $.api.velocity.$get({ query: { hours: c.req.query("hours") } }),
-      ),
+      api(c).send(($) => $.api.velocity.$get({ query: { hours: c.req.query("hours") } })),
     )
     .get("/review", (c) => api(c).send(($) => $.api.review.$get()))
     .get("/jobs/pending", (c) => api(c).send(($) => $.api.jobs.pending.$get()))
@@ -280,9 +277,7 @@ export function createApp(config: BffConfig) {
       return api(c).send(($) => $.api.repos.$post({ json: body }));
     })
     .get("/branches", (c) =>
-      api(c).send(($) =>
-        $.api.branches.$get({ query: { repo: c.req.query("repo") } }),
-      ),
+      api(c).send(($) => $.api.branches.$get({ query: { repo: c.req.query("repo") } })),
     )
     .get("/changes/:id", (c) =>
       api(c).send(($) => $.api.changes[":id"].$get({ param: { id: c.req.param("id") } })),
@@ -290,9 +285,7 @@ export function createApp(config: BffConfig) {
     .get("/changes/:id/diff", (c) =>
       api(c)
         .as("text")
-        .send(($) =>
-          $.api.changes[":id"].diff.$get({ param: { id: c.req.param("id") } }),
-        ),
+        .send(($) => $.api.changes[":id"].diff.$get({ param: { id: c.req.param("id") } })),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
       api(c).send(($) =>
@@ -309,9 +302,7 @@ export function createApp(config: BffConfig) {
       ),
     )
     .get("/changes/:id/sessions", (c) =>
-      api(c).send(($) =>
-        $.api.changes[":id"].sessions.$get({ param: { id: c.req.param("id") } }),
-      ),
+      api(c).send(($) => $.api.changes[":id"].sessions.$get({ param: { id: c.req.param("id") } })),
     )
     .get("/changes/:id/agent-events", (c) =>
       api(c)
@@ -420,17 +411,16 @@ export function createApp(config: BffConfig) {
     .get("/triage/runs", (c) =>
       triage(c)
         .onError((err) => {
-          console.warn("[bff] triage runs unavailable, returning empty list", err);
+          logger.warn("triage runs unavailable, returning empty list", {
+            error: err instanceof Error ? err.message : String(err),
+          });
           return c.json({ runs: [] });
         })
         .send(($) => $.v1.runs.$get()),
     );
 
   const app = new Hono()
-    .use(
-      "*",
-      obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }),
-    )
+    .use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }))
     .use("*", createHttpLogger({ service: "bff", app: "red" }))
     .get("/health", async (c) => {
       const envelope = getEnvelope(c);
