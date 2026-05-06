@@ -1,9 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
-import { startDevGitServer, runCommand, runCommandWithRetry } from "../core/dev-stack";
+import { runCommand, runCommandWithRetry, startDevGitServer } from "../core/dev-stack";
 import { basicAuthHeader, buildRemoteUrl, fetchJson } from "./http-test-helpers";
 
 describe("native HTTP auth integration", () => {
@@ -16,8 +16,20 @@ describe("native HTTP auth integration", () => {
       const repoName = `auth-http-${runId}`;
       const repoId = `red/${repoName}`;
       const otherRepoName = `auth-http-other-${runId}`;
-      const readRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-http-reader", "read");
-      const writeRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-http-writer", "write");
+      const readRemote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "auth-http-reader",
+        "read",
+      );
+      const writeRemote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "auth-http-writer",
+        "write",
+      );
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "auth http seed"], { cwd: repoDir });
@@ -27,12 +39,20 @@ describe("native HTTP auth integration", () => {
       await runCommand("git", ["commit", "-m", "seed auth http repo"], { cwd: repoDir });
       await runCommand("git", ["branch", "-M", "main"], { cwd: repoDir });
       await runCommand("git", ["remote", "add", "origin", writeRemote.pushUrl], { cwd: repoDir });
-      await runCommandWithRetry("git", ["push", "origin", "HEAD:refs/heads/main"], { cwd: repoDir });
+      await runCommandWithRetry("git", ["push", "origin", "HEAD:refs/heads/main"], {
+        cwd: repoDir,
+      });
 
       const controlUrl = new URL(`/api/repos/red/${repoName}`, server.publicUrl);
       const otherControlUrl = new URL(`/api/repos/red/${otherRepoName}`, server.publicUrl);
-      const receivePackInfoRefs = new URL(`/red/${repoName}.git/info/refs?service=git-receive-pack`, server.publicUrl);
-      const uploadPackInfoRefs = new URL(`/red/${repoName}.git/info/refs?service=git-upload-pack`, server.publicUrl);
+      const receivePackInfoRefs = new URL(
+        `/red/${repoName}.git/info/refs?service=git-receive-pack`,
+        server.publicUrl,
+      );
+      const uploadPackInfoRefs = new URL(
+        `/red/${repoName}.git/info/refs?service=git-upload-pack`,
+        server.publicUrl,
+      );
 
       const noAuth = await fetch(controlUrl);
       expect(noAuth.status).toBe(401);
@@ -91,7 +111,9 @@ describe("native HTTP auth integration", () => {
         },
       });
       expect(adminUploadPack.status).toBe(200);
-      expect(adminUploadPack.headers.get("content-type")).toContain("application/x-git-upload-pack-advertisement");
+      expect(adminUploadPack.headers.get("content-type")).toContain(
+        "application/x-git-upload-pack-advertisement",
+      );
     } finally {
       await rm(repoDir, { recursive: true, force: true });
       await server.stop();

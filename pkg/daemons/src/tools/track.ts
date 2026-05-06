@@ -1,5 +1,5 @@
-import { Type, type Static } from "@mariozechner/pi-ai";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { type Static, Type } from "@mariozechner/pi-ai";
 import type { DaemonMemoryStore, TrackEntry } from "../memory";
 
 export const TRACK_TOOL_NAME = "track";
@@ -13,7 +13,9 @@ const TrackParams = Type.Object(
       Type.Literal("invalidate"),
     ]),
     subject: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-    subjects: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 100 })),
+    subjects: Type.Optional(
+      Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 100 }),
+    ),
     fingerprint: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
     fact: Type.Optional(Type.Any()),
     depends_on: Type.Optional(
@@ -102,7 +104,11 @@ function normalizeSubjects(subject?: string, subjects?: string[]): string[] | un
   return undefined;
 }
 
-function requireSubjects(subject: string | undefined, subjects: string[] | undefined, action: string): string[] {
+function requireSubjects(
+  subject: string | undefined,
+  subjects: string[] | undefined,
+  action: string,
+): string[] {
   const normalized = normalizeSubjects(subject, subjects);
   if (!normalized || normalized.length === 0) {
     throw new Error(`track.${action} requires subject or subjects`);

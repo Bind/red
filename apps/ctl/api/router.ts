@@ -1,43 +1,32 @@
-import { Hono } from "@red/server";
-import {
-  getEnvelope,
-  type EventEnvelope,
-} from "@red/obs";
-import { buildHealth, statusHttpCode } from "@red/health";
-import { streamSSE } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
+import { buildHealth, statusHttpCode } from "@red/health";
+import { type EventEnvelope, getEnvelope } from "@red/obs";
+import { Hono } from "@red/server";
+import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import {
+  DEFAULT_PLAYGROUND_PROFILES,
+  type PlaygroundProfile,
+  runDaemonPlayground,
+} from "../../../bureau/workflows/daemon-review/src/playground";
+import type { LocalClawArtifactStore, MinioClawArtifactStore, SqliteClawRunTracker } from "../claw";
+import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "../claw/actions";
 import type {
   ChangeQueries,
+  DeliveryQueries,
   EventQueries,
   JobQueries,
-  DeliveryQueries,
   RepoQueries,
   SessionQueries,
 } from "../db/queries";
-import type { RepositoryProvider } from "../repo/repository-provider";
-import type { ChangeStateMachine } from "../engine/state-machine";
 import type { EventBus } from "../engine/event-bus";
-import type {
-  SqliteClawRunTracker,
-  LocalClawArtifactStore,
-  MinioClawArtifactStore,
-} from "../claw";
-import {
-  getClawActionMetadata,
-  getClawActionPrompt,
-  listClawActions,
-} from "../claw/actions";
-import { ingestRefUpdate } from "../ingest/ref-updates";
-import type { RepoVisibility } from "../types";
-import {
-  DEFAULT_PLAYGROUND_PROFILES,
-  runDaemonPlayground,
-  type PlaygroundProfile,
-} from "../../../bureau/workflows/daemon-review/src/playground";
-import { queryLokiLogEvents, queryLokiLogs } from "../logs/loki";
-import type { LogQueryInput } from "../logs/loki";
+import type { ChangeStateMachine } from "../engine/state-machine";
 import type { AppConfig } from "../index";
+import { ingestRefUpdate } from "../ingest/ref-updates";
+import type { LogQueryInput } from "../logs/loki";
+import { queryLokiLogEvents, queryLokiLogs } from "../logs/loki";
+import type { RepositoryProvider } from "../repo/repository-provider";
+import type { RepoVisibility } from "../types";
 
 export interface ApiDeps {
   config: AppConfig;
@@ -104,24 +93,20 @@ export function makeApiRouter(deps: ApiDeps) {
       const health = buildHealth({ service: "ctl" });
       return c.json(health, statusHttpCode(health.status));
     })
-    .get(
-      "/api/velocity",
-      zValidator("query", z.object({ hours: z.string().optional() })),
-      (c) => {
-        const hours = parseInt(c.req.query("hours") ?? "24", 10);
-        const velocity = changes.mergeVelocity(hours);
-        return c.json(velocity);
-      },
-    )
+    .get("/api/velocity", zValidator("query", z.object({ hours: z.string().optional() })), (c) => {
+      const hours = Number.parseInt(c.req.query("hours") ?? "24", 10);
+      const velocity = changes.mergeVelocity(hours);
+      return c.json(velocity);
+    })
     .get("/api/changes/:id", (c) => {
-      const id = parseInt(c.req.param("id"), 10);
+      const id = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
       if (!change) return c.json({ error: "Not found" }, 404);
       const changeEvents = events.listByChangeId(id);
       return c.json({ ...change, events: changeEvents });
     })
     .get("/api/changes/:id/diff", async (c) => {
-      const id = parseInt(c.req.param("id"), 10);
+      const id = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
       if (!change) return c.json({ error: "Not found" }, 404);
       const [owner, repo] = change.repo.split("/");
@@ -173,30 +158,30 @@ export function makeApiRouter(deps: ApiDeps) {
         }),
       ),
       async (c) => {
-      try {
-        const statusCodeRaw = c.req.query("status_code");
-        const limitRaw = c.req.query("limit");
-        const result = await queryLokiLogs({
-          service: c.req.query("service") ?? undefined,
-          level: c.req.query("level") ?? undefined,
-          logger: c.req.query("logger") === "http" ? "http" : "all",
-          search: c.req.query("search") ?? undefined,
-          window: c.req.query("window") ?? undefined,
-          statusClass: (() => {
-            const value = c.req.query("status_class");
-            return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
-              ? value
-              : undefined;
-          })(),
-          statusCode: statusCodeRaw ? Number.parseInt(statusCodeRaw, 10) : undefined,
-          limit: limitRaw ? Number.parseInt(limitRaw, 10) : undefined,
-        });
-        return c.json(result);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Log query failed";
-        logger.error`log query failed: ${message}`;
-        return c.json({ error: message }, 500);
-      }
+        try {
+          const statusCodeRaw = c.req.query("status_code");
+          const limitRaw = c.req.query("limit");
+          const result = await queryLokiLogs({
+            service: c.req.query("service") ?? undefined,
+            level: c.req.query("level") ?? undefined,
+            logger: c.req.query("logger") === "http" ? "http" : "all",
+            search: c.req.query("search") ?? undefined,
+            window: c.req.query("window") ?? undefined,
+            statusClass: (() => {
+              const value = c.req.query("status_class");
+              return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
+                ? value
+                : undefined;
+            })(),
+            statusCode: statusCodeRaw ? Number.parseInt(statusCodeRaw, 10) : undefined,
+            limit: limitRaw ? Number.parseInt(limitRaw, 10) : undefined,
+          });
+          return c.json(result);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Log query failed";
+          logger.error`log query failed: ${message}`;
+          return c.json({ error: message }, 500);
+        }
       },
     )
     .get(
@@ -213,68 +198,68 @@ export function makeApiRouter(deps: ApiDeps) {
         }),
       ),
       (c) => {
-      const statusClass: LogQueryInput["statusClass"] = (() => {
-        const value = c.req.query("status_class");
-        return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
-          ? value
-          : undefined;
-      })();
-      const query: LogQueryInput = {
-        service: c.req.query("service") ?? undefined,
-        level: c.req.query("level") ?? undefined,
-        logger: c.req.query("logger") === "http" ? ("http" as const) : ("all" as const),
-        search: c.req.query("search") ?? undefined,
-        statusClass,
-      };
-      const historyWindowRaw = c.req.query("history_window");
-      const historyWindowMs = (() => {
-        const raw = historyWindowRaw?.trim() ?? "15s";
-        const match = raw.match(/^(\d+)([smh])$/);
-        if (!match) return 15_000;
-        const amount = Number.parseInt(match[1], 10);
-        const unit = match[2];
-        if (unit === "s") return amount * 1000;
-        if (unit === "m") return amount * 60_000;
-        return amount * 60 * 60_000;
-      })();
+        const statusClass: LogQueryInput["statusClass"] = (() => {
+          const value = c.req.query("status_class");
+          return value === "2xx" || value === "3xx" || value === "4xx" || value === "5xx"
+            ? value
+            : undefined;
+        })();
+        const query: LogQueryInput = {
+          service: c.req.query("service") ?? undefined,
+          level: c.req.query("level") ?? undefined,
+          logger: c.req.query("logger") === "http" ? ("http" as const) : ("all" as const),
+          search: c.req.query("search") ?? undefined,
+          statusClass,
+        };
+        const historyWindowRaw = c.req.query("history_window");
+        const historyWindowMs = (() => {
+          const raw = historyWindowRaw?.trim() ?? "15s";
+          const match = raw.match(/^(\d+)([smh])$/);
+          if (!match) return 15_000;
+          const amount = Number.parseInt(match[1], 10);
+          const unit = match[2];
+          if (unit === "s") return amount * 1000;
+          if (unit === "m") return amount * 60_000;
+          return amount * 60 * 60_000;
+        })();
 
-      return streamSSE(c, async (stream) => {
-        let closed = false;
-        let cursorNs = `${BigInt(Date.now() - historyWindowMs) * 1000000n}`;
-        const seenIds = new Set<string>();
-        stream.onAbort(() => {
-          closed = true;
-        });
+        return streamSSE(c, async (stream) => {
+          let closed = false;
+          let cursorNs = `${BigInt(Date.now() - historyWindowMs) * 1000000n}`;
+          const seenIds = new Set<string>();
+          stream.onAbort(() => {
+            closed = true;
+          });
 
-        while (!closed) {
-          try {
-            const events = await queryLokiLogEvents(query, {
-              startNs: cursorNs,
-              endNs: `${BigInt(Date.now()) * 1000000n}`,
-              limit: 5000,
-              direction: "FORWARD",
-            });
-            for (const event of events) {
-              if (seenIds.has(event.id)) continue;
-              seenIds.add(event.id);
-              cursorNs = event.timestampNs;
+          while (!closed) {
+            try {
+              const events = await queryLokiLogEvents(query, {
+                startNs: cursorNs,
+                endNs: `${BigInt(Date.now()) * 1000000n}`,
+                limit: 5000,
+                direction: "FORWARD",
+              });
+              for (const event of events) {
+                if (seenIds.has(event.id)) continue;
+                seenIds.add(event.id);
+                cursorNs = event.timestampNs;
+                await stream.writeSSE({
+                  event: "log",
+                  id: event.id,
+                  data: JSON.stringify(event.entry),
+                });
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Log stream failed";
+              logger.error`log stream failed: ${message}`;
               await stream.writeSSE({
-                event: "log",
-                id: event.id,
-                data: JSON.stringify(event.entry),
+                event: "stream-error",
+                data: JSON.stringify({ error: message }),
               });
             }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Log stream failed";
-            logger.error`log stream failed: ${message}`;
-            await stream.writeSSE({
-              event: "stream-error",
-              data: JSON.stringify({ error: message }),
-            });
+            await new Promise((resolve) => setTimeout(resolve, 1000));
           }
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      });
+        });
       },
     )
     .post("/api/ingest/ref-update", async (c) => {
@@ -329,7 +314,7 @@ export function makeApiRouter(deps: ApiDeps) {
       return c.json(prompt);
     })
     .get("/api/claw/runs", (c) => {
-      const limit = parseInt(c.req.query("limit") ?? "20", 10);
+      const limit = Number.parseInt(c.req.query("limit") ?? "20", 10);
       return c.json(clawTracker.listRecent(limit));
     })
     .get("/api/claw/runs/:runId", (c) => {
@@ -363,43 +348,37 @@ export function makeApiRouter(deps: ApiDeps) {
     .post(
       "/api/changes/:id/regenerate-summary",
       zValidator("json", z.object({}).optional()),
-      async (c) => {
-      const id = parseInt(c.req.param("id"), 10);
-      const change = changes.getById(id);
-      if (!change) return c.json({ error: "Not found" }, 404);
-      if (change.status !== "ready_for_review") {
-        return c.json({ error: `Cannot regenerate from status: ${change.status}` }, 400);
-      }
+      (c) => {
+        const id = Number.parseInt(c.req.param("id"), 10);
+        const change = changes.getById(id);
+        if (!change) return c.json({ error: "Not found" }, 404);
+        if (change.status !== "ready_for_review") {
+          return c.json({ error: `Cannot regenerate from status: ${change.status}` }, 400);
+        }
 
-      const diffStats = change.diff_stats
-        ? JSON.parse(change.diff_stats as unknown as string)
-        : null;
-      if (!diffStats) {
-        return c.json({ error: "No diff stats available for this change" }, 400);
-      }
+        const diffStats = change.diff_stats
+          ? JSON.parse(change.diff_stats as unknown as string)
+          : null;
+        if (!diffStats) {
+          return c.json({ error: "No diff stats available for this change" }, 400);
+        }
 
-      stateMachine.transition(id, "summarizing");
-      jobs.enqueue({
-        org_id: change.org_id,
-        type: "generate_summary",
-        payload: JSON.stringify({ change_id: id, diff_stats: diffStats }),
-      });
+        stateMachine.transition(id, "summarizing");
+        jobs.enqueue({
+          org_id: change.org_id,
+          type: "generate_summary",
+          payload: JSON.stringify({ change_id: id, diff_stats: diffStats }),
+        });
 
-      return c.json({ ok: true });
+        return c.json({ ok: true });
       },
     )
-    .post(
-      "/api/changes/:id/requeue-summary",
-      zValidator("json", z.object({}).optional()),
-      async (c) => {
-      const id = parseInt(c.req.param("id"), 10);
+    .post("/api/changes/:id/requeue-summary", zValidator("json", z.object({}).optional()), (c) => {
+      const id = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(id);
       if (!change) return c.json({ error: "Not found" }, 404);
       if (change.status !== "scored") {
-        return c.json(
-          { error: `Cannot requeue summary from status: ${change.status}` },
-          400,
-        );
+        return c.json({ error: `Cannot requeue summary from status: ${change.status}` }, 400);
       }
 
       const diffStats = change.diff_stats
@@ -417,9 +396,8 @@ export function makeApiRouter(deps: ApiDeps) {
       });
 
       return c.json({ ok: true });
-      },
-    )
-    .get("/api/repos", async (c) => {
+    })
+    .get("/api/repos", (c) => {
       return c.json(repos.list().map((repo) => repo.full_name));
     })
     .get("/api/repos/:owner/:repo", (c) => {
@@ -431,51 +409,41 @@ export function makeApiRouter(deps: ApiDeps) {
     })
     .get(
       "/api/repos/:owner/:repo/file",
-      zValidator(
-        "query",
-        z.object({ path: z.string(), ref: z.string().optional() }),
-      ),
+      zValidator("query", z.object({ path: z.string(), ref: z.string().optional() })),
       async (c) => {
-      const owner = c.req.param("owner");
-      const repo = c.req.param("repo");
-      const path = c.req.query("path");
-      const ref =
-        c.req.query("ref") ??
-        repos.getByFullName(`${owner}/${repo}`)?.default_branch ??
-        "main";
-      const requestId = getEnvelope(c).requestId;
+        const owner = c.req.param("owner");
+        const repo = c.req.param("repo");
+        const path = c.req.query("path");
+        const ref =
+          c.req.query("ref") ?? repos.getByFullName(`${owner}/${repo}`)?.default_branch ?? "main";
+        const requestId = getEnvelope(c).requestId;
 
-      if (!path) return c.json({ error: "Missing required query param: path" }, 400);
+        if (!path) return c.json({ error: "Missing required query param: path" }, 400);
 
-      const record = repos.getByFullName(`${owner}/${repo}`);
-      if (!record) return c.json({ error: "Not found" }, 404);
+        const record = repos.getByFullName(`${owner}/${repo}`);
+        if (!record) return c.json({ error: "Not found" }, 404);
 
-      const content = await repositoryProvider.getFileContent(
-        owner,
-        repo,
-        path,
-        ref,
-        requestId,
-      );
-      return c.json({ path, ref, content });
+        const content = await repositoryProvider.getFileContent(owner, repo, path, ref, requestId);
+        return c.json({ path, ref, content });
       },
     )
     .get(
       "/api/repos/:owner/:repo/tree",
       zValidator("query", z.object({ ref: z.string().optional() })),
       async (c) => {
-      const owner = c.req.param("owner");
-      const repo = c.req.param("repo");
-      const ref = c.req.query("ref");
-      const requestId = getEnvelope(c).requestId;
-      const record = repos.getByFullName(`${owner}/${repo}`);
-      if (!record) return c.json({ error: "Not found" }, 404);
-      if (!(repositoryProvider as any).listTree) {
-        return c.json({ error: "Repo provider does not support tree listing" }, 501);
-      }
-      const files = await (repositoryProvider as any).listTree(owner, repo, ref, requestId);
-      return c.json({ files });
-    })
+        const owner = c.req.param("owner");
+        const repo = c.req.param("repo");
+        const ref = c.req.query("ref");
+        const requestId = getEnvelope(c).requestId;
+        const record = repos.getByFullName(`${owner}/${repo}`);
+        if (!record) return c.json({ error: "Not found" }, 404);
+        if (!repositoryProvider.listTree) {
+          return c.json({ error: "Repo provider does not support tree listing" }, 501);
+        }
+        const files = await repositoryProvider.listTree(owner, repo, ref, requestId);
+        return c.json({ files });
+      },
+    )
     .get("/api/repos/:owner/:repo/branches", async (c) => {
       const owner = c.req.param("owner");
       const repo = c.req.param("repo");
@@ -506,7 +474,7 @@ export function makeApiRouter(deps: ApiDeps) {
       }
 
       const ref = c.req.query("ref") ?? record.default_branch;
-      const limit = parseInt(c.req.query("limit") ?? "20", 10);
+      const limit = Number.parseInt(c.req.query("limit") ?? "20", 10);
       const commits = await repositoryProvider.listCommits(owner, repo, ref, limit, requestId);
       return c.json(commits);
     })
@@ -540,103 +508,100 @@ export function makeApiRouter(deps: ApiDeps) {
         }),
       ),
       async (c) => {
-      if (config.repoBackend.kind !== "git_storage") {
-        return c.json(
-          { error: "Repository creation is not supported for the local git backend" },
-          501,
-        );
-      }
+        if (config.repoBackend.kind !== "git_storage") {
+          return c.json(
+            { error: "Repository creation is not supported for the local git backend" },
+            501,
+          );
+        }
 
-      const body = (await c.req.json().catch(() => null)) as RepoCreateInput | null;
-      const owner = body?.owner?.trim() || config.repoBackend.defaultOwner;
-      const name = body?.name?.trim();
-      if (!name) return c.json({ error: "Missing required field: name" }, 400);
-      if (!owner) return c.json({ error: "Missing required field: owner" }, 400);
-      if (name.includes("/")) {
-        return c.json({ error: "Repository name must not contain '/'" }, 400);
-      }
+        const body = (await c.req.json().catch(() => null)) as RepoCreateInput | null;
+        const owner = body?.owner?.trim() || config.repoBackend.defaultOwner;
+        const name = body?.name?.trim();
+        if (!name) return c.json({ error: "Missing required field: name" }, 400);
+        if (!owner) return c.json({ error: "Missing required field: owner" }, 400);
+        if (name.includes("/")) {
+          return c.json({ error: "Repository name must not contain '/'" }, 400);
+        }
 
-      const defaultBranch = body?.default_branch?.trim() || config.repoBackend.defaultBranch;
-      const visibility = body?.visibility ?? "private";
-      if (!["private", "internal", "public"].includes(visibility)) {
-        return c.json({ error: "Invalid visibility" }, 400);
-      }
+        const defaultBranch = body?.default_branch?.trim() || config.repoBackend.defaultBranch;
+        const visibility = body?.visibility ?? "private";
+        if (!["private", "internal", "public"].includes(visibility)) {
+          return c.json({ error: "Invalid visibility" }, 400);
+        }
 
-      const existing = repos.getByFullName(`${owner}/${name}`);
-      if (existing) {
-        return c.json({ error: "Repository already exists", repo: existing }, 409);
-      }
+        const existing = repos.getByFullName(`${owner}/${name}`);
+        if (existing) {
+          return c.json({ error: "Repository already exists", repo: existing }, 409);
+        }
 
-      const created = repos.create({
-        owner,
-        name,
-        default_branch: defaultBranch,
-        visibility,
-        created_by_subject: null,
-      });
+        const created = repos.create({
+          owner,
+          name,
+          default_branch: defaultBranch,
+          visibility,
+          created_by_subject: null,
+        });
 
-      if (repositoryProvider.getRepo) {
-        await repositoryProvider.getRepo(owner, name).catch(() => null);
-      }
-      return c.json(created, 201);
+        if (repositoryProvider.getRepo) {
+          await repositoryProvider.getRepo(owner, name).catch(() => null);
+        }
+        return c.json(created, 201);
       },
     )
     .get(
       "/api/branches",
       zValidator("query", z.object({ repo: z.string().optional() })),
       async (c) => {
-      const repo = c.req.query("repo");
-      if (!repo || !repo.includes("/")) {
-        return c.json({ error: "Missing or invalid repo query param (owner/repo)" }, 400);
-      }
-      const [owner, repoName] = repo.split("/");
+        const repo = c.req.query("repo");
+        if (!repo?.includes("/")) {
+          return c.json({ error: "Missing or invalid repo query param (owner/repo)" }, 400);
+        }
+        const [owner, repoName] = repo.split("/");
 
-      if (!repositoryProvider.getRepo || !repositoryProvider.listBranches) {
-        return c.json({ error: "Repo provider does not support branch listing" }, 501);
-      }
+        if (!repositoryProvider.getRepo || !repositoryProvider.listBranches) {
+          return c.json({ error: "Repo provider does not support branch listing" }, 501);
+        }
 
-      const [repoInfo, branches] = await Promise.all([
-        repositoryProvider.getRepo(owner, repoName),
-        repositoryProvider.listBranches(owner, repoName),
-      ]);
+        const [repoInfo, branches] = await Promise.all([
+          repositoryProvider.getRepo(owner, repoName),
+          repositoryProvider.listBranches(owner, repoName),
+        ]);
 
-      const result = branches
-        .filter((b) => b.name !== repoInfo.default_branch)
-        .map((b) => {
-          const activeChange = changes.getActiveByRepoBranch(repo, b.name);
-          return {
-            name: b.name,
-            commit: b.commit,
-            change: activeChange ? { id: activeChange.id, status: activeChange.status } : null,
-          };
-        });
+        const result = branches
+          .filter((b) => b.name !== repoInfo.default_branch)
+          .map((b) => {
+            const activeChange = changes.getActiveByRepoBranch(repo, b.name);
+            return {
+              name: b.name,
+              commit: b.commit,
+              change: activeChange ? { id: activeChange.id, status: activeChange.status } : null,
+            };
+          });
 
-      return c.json(result);
+        return c.json(result);
       },
     )
     .get("/api/changes/:id/sessions", (c) => {
-      const changeId = parseInt(c.req.param("id"), 10);
+      const changeId = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(changeId);
       if (!change) return c.json({ error: "Not found" }, 404);
       return c.json(sessions.listByChangeId(changeId));
     })
     .get(
       "/api/sessions/:id/events",
-      zValidator(
-        "query",
-        z.object({ after: z.string().optional(), limit: z.string().optional() }),
-      ),
+      zValidator("query", z.object({ after: z.string().optional(), limit: z.string().optional() })),
       (c) => {
-      const sessionId = parseInt(c.req.param("id"), 10);
-      const session = sessions.getById(sessionId);
-      if (!session) return c.json({ error: "Not found" }, 404);
-      const afterSeq = parseInt(c.req.query("after") ?? "0", 10);
-      const limit = parseInt(c.req.query("limit") ?? "1000", 10);
-      return c.json(sessions.getEventsAfter(sessionId, afterSeq, limit));
+        const sessionId = Number.parseInt(c.req.param("id"), 10);
+        const session = sessions.getById(sessionId);
+        if (!session) return c.json({ error: "Not found" }, 404);
+        const afterSeq = Number.parseInt(c.req.query("after") ?? "0", 10);
+        const limit = Number.parseInt(c.req.query("limit") ?? "1000", 10);
+        return c.json(sessions.getEventsAfter(sessionId, afterSeq, limit));
       },
     )
     .get("/api/changes/:id/agent-events", (c) => {
-      const changeId = parseInt(c.req.param("id"), 10);
+      const changeId = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(changeId);
       if (!change) return c.json({ error: "Not found" }, 404);
 
@@ -721,7 +686,7 @@ export function makeApiRouter(deps: ApiDeps) {
       });
     })
     .get("/api/changes/:id/logs", (c) => {
-      const changeId = parseInt(c.req.param("id"), 10);
+      const changeId = Number.parseInt(c.req.param("id"), 10);
       const change = changes.getById(changeId);
       if (!change) return c.json({ error: "Not found" }, 404);
 

@@ -1,9 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
-import { startDevGitServer, runCommand } from "../core/dev-stack";
+import { runCommand, startDevGitServer } from "../core/dev-stack";
 import { buildRemoteUrl } from "./http-test-helpers";
 
 interface CompareResponse {
@@ -29,7 +29,13 @@ describe("git server compare integration", () => {
     try {
       const repoName = `compare-repo-${runId}`;
       const repoId = `red/${repoName}`;
-      const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "compare-test", "write");
+      const remote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "compare-test",
+        "write",
+      );
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "compare test"], { cwd: repoDir });
@@ -50,7 +56,9 @@ describe("git server compare integration", () => {
       await Bun.write(join(repoDir, "docs", "guide.md"), "# nested doc\n");
       await runCommand("git", ["add", "src/feature.ts", "docs/guide.md"], { cwd: repoDir });
       await runCommand("git", ["commit", "-m", "add nested files"], { cwd: repoDir });
-      await runCommand("git", ["push", "origin", "HEAD:refs/heads/feature/nested-diff"], { cwd: repoDir });
+      await runCommand("git", ["push", "origin", "HEAD:refs/heads/feature/nested-diff"], {
+        cwd: repoDir,
+      });
 
       const featureRef = (await runCommand("git", ["-C", repoDir, "rev-parse", "HEAD"])).stdout;
 
@@ -65,7 +73,7 @@ describe("git server compare integration", () => {
       });
       expect(response.ok).toBe(true);
 
-      const result = await response.json() as CompareResponse;
+      const result = (await response.json()) as CompareResponse;
       const filenames = result.files.map((file) => file.filename).sort();
 
       expect(result.base).toBe(mainRef);

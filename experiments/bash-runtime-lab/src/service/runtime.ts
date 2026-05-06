@@ -1,7 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parse, serialize } from "just-bash";
-import { instrumentScript } from "./instrumentation";
 import type {
   BashRuntimeConfig,
   CommandJournalEvent,
@@ -11,6 +10,7 @@ import type {
   RunResult,
   RunStore,
 } from "../util/types";
+import { instrumentScript } from "./instrumentation";
 
 type HookState = {
   journal: CommandJournalEvent[];
@@ -20,7 +20,7 @@ type HookState = {
 };
 
 function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 async function writeJson(path: string, value: unknown) {
@@ -172,7 +172,7 @@ export class BashRuntimeService {
     return result;
   }
 
-  async getRun(runId: string): Promise<RunRecord | null> {
+  getRun(runId: string): Promise<RunRecord | null> {
     return this.store.getRun(runId);
   }
 }

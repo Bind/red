@@ -1,4 +1,4 @@
-import type { PolicyConfig, PolicyRule, ConfidenceLevel, DiffStats } from "../types";
+import type { ConfidenceLevel, DiffStats, PolicyConfig, PolicyRule } from "../types";
 import { matchGlob } from "./review";
 
 /**
@@ -10,14 +10,15 @@ import { matchGlob } from "./review";
 export function ruleMatches(
   rule: PolicyRule,
   diff: DiffStats,
-  confidence: ConfidenceLevel
+  confidence: ConfidenceLevel,
 ): boolean {
   if (rule.match.confidence && rule.match.confidence !== confidence) {
     return false;
   }
   if (rule.match.files && rule.match.files.length > 0) {
+    const files = rule.match.files;
     const hasFileMatch = diff.files.some((f) =>
-      rule.match.files!.some((pattern) => matchGlob(pattern, f.filename))
+      files.some((pattern) => matchGlob(pattern, f.filename)),
     );
     if (!hasFileMatch) return false;
   }
@@ -27,10 +28,14 @@ export function ruleMatches(
 /** Priority ordering: block > require-review > auto-approve */
 export function actionPriority(action: string): number {
   switch (action) {
-    case "auto-approve": return 0;
-    case "require-review": return 1;
-    case "block": return 2;
-    default: return 1;
+    case "auto-approve":
+      return 0;
+    case "require-review":
+      return 1;
+    case "block":
+      return 2;
+    default:
+      return 1;
   }
 }
 
@@ -60,17 +65,25 @@ export function validatePolicy(raw: unknown): PolicyConfig {
 
   const rules: PolicyRule[] = rawRules
     .filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
-    .map((r) => ({
-      name: String(r.name ?? "unnamed"),
-      match: {
-        files: Array.isArray((r.match as any)?.files)
-          ? (r.match as any).files.map(String)
-          : undefined,
-        confidence: validConfidence((r.match as any)?.confidence),
-      },
-      action: validAction(r.action),
-      reviewers: Array.isArray(r.reviewers) ? r.reviewers.map(String) : undefined,
-    }));
+    .map((r) => {
+      const match = asRecord(r.match);
+      return {
+        name: String(r.name ?? "unnamed"),
+        match: {
+          files: Array.isArray(match.files) ? match.files.map(String) : undefined,
+          confidence: validConfidence(match.confidence),
+        },
+        action: validAction(r.action),
+        reviewers: Array.isArray(r.reviewers) ? r.reviewers.map(String) : undefined,
+      };
+    });
 
   return { rules };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }

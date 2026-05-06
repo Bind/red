@@ -1,10 +1,11 @@
 import { hc } from "hono/client";
+import type { SuperJSONResult } from "superjson";
 import superjson from "superjson";
-import type { AppRouter } from "../../../bff/src/app";
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@/lib/webauthn";
+import type { AppRouter } from "../../../bff/src/app";
 
 export type ChangeStatus =
   | "pushed"
@@ -169,18 +170,14 @@ export interface CreateRepoInput {
   visibility?: RepoVisibility;
 }
 
-const client = hc<AppRouter>("/") as any;
+const client = hc<AppRouter>("/");
 
 function decodeResponseBody<T>(text: string): T {
   const trimmed = text.trim();
   if (!trimmed) return null as T;
   const raw = JSON.parse(trimmed) as unknown;
-  if (
-    raw
-    && typeof raw === "object"
-    && "json" in (raw as Record<string, unknown>)
-  ) {
-    return superjson.deserialize(raw as any) as T;
+  if (raw && typeof raw === "object" && "json" in (raw as Record<string, unknown>)) {
+    return superjson.deserialize(raw as SuperJSONResult) as T;
   }
   return raw as T;
 }
@@ -226,13 +223,13 @@ function normalizeRepoSummary(repo: unknown): RepoSummary | null {
     typeof value.owner === "string"
       ? value.owner
       : fullName.includes("/")
-        ? fullName.split("/")[0] ?? ""
+        ? (fullName.split("/")[0] ?? "")
         : "";
   const name =
     typeof value.name === "string"
       ? value.name
       : fullName.includes("/")
-        ? fullName.split("/", 2)[1] ?? ""
+        ? (fullName.split("/", 2)[1] ?? "")
         : "";
   const defaultBranch =
     typeof value.default_branch === "string"
@@ -250,7 +247,9 @@ function normalizeRepoSummary(repo: unknown): RepoSummary | null {
     full_name: fullName || `${owner}/${name}`,
     default_branch: defaultBranch,
     visibility:
-      value.visibility === "private" || value.visibility === "internal" || value.visibility === "public"
+      value.visibility === "private" ||
+      value.visibility === "internal" ||
+      value.visibility === "public"
         ? value.visibility
         : undefined,
     created_at: typeof value.created_at === "string" ? value.created_at : undefined,
@@ -284,7 +283,7 @@ export async function fetchMe(): Promise<AuthMeResponse> {
   }
 }
 
-export async function createLoginAttempt(email: string, clientId: string): Promise<LoginAttempt> {
+export function createLoginAttempt(email: string, clientId: string): Promise<LoginAttempt> {
   return requestJson<LoginAttempt>("/rpc/auth/login-attempts", {
     method: "POST",
     headers: {
@@ -297,11 +296,9 @@ export async function createLoginAttempt(email: string, clientId: string): Promi
   });
 }
 
-export async function fetchLatestMagicLink(email: string): Promise<MagicLinkPreview | null> {
+export function fetchLatestMagicLink(email: string): Promise<MagicLinkPreview | null> {
   try {
-    return await requestJson<MagicLinkPreview>(
-      `/rpc/dev/magic-link?email=${encodeURIComponent(email)}`,
-    );
+    return requestJson<MagicLinkPreview>(`/rpc/dev/magic-link?email=${encodeURIComponent(email)}`);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       return null;
@@ -310,11 +307,11 @@ export async function fetchLatestMagicLink(email: string): Promise<MagicLinkPrev
   }
 }
 
-export async function fetchLoginAttempt(attemptId: string): Promise<LoginAttempt> {
+export function fetchLoginAttempt(attemptId: string): Promise<LoginAttempt> {
   return requestJson<LoginAttempt>(`/rpc/auth/login-attempts/${encodeURIComponent(attemptId)}`);
 }
 
-export async function completeMagicLink(input: {
+export function completeMagicLink(input: {
   attemptId: string;
   token: string;
   clientId: string;
@@ -332,7 +329,7 @@ export async function completeMagicLink(input: {
   });
 }
 
-export async function redeemLoginAttempt(input: {
+export function redeemLoginAttempt(input: {
   attemptId: string;
   loginGrant: string;
 }): Promise<{ ok: boolean; status: string; attempt_id: string; session_id?: string | null }> {
@@ -348,13 +345,13 @@ export async function redeemLoginAttempt(input: {
   });
 }
 
-export async function fetchPasskeyRegisterOptions(): Promise<PublicKeyCredentialCreationOptionsJSON> {
+export function fetchPasskeyRegisterOptions(): Promise<PublicKeyCredentialCreationOptionsJSON> {
   return requestJson("/api/auth/passkey/generate-register-options", {
     method: "GET",
   });
 }
 
-export async function verifyPasskeyRegistration(response: Record<string, unknown>, name: string) {
+export function verifyPasskeyRegistration(response: Record<string, unknown>, name: string) {
   return requestJson<{ credentialID?: string }>("/api/auth/passkey/verify-registration", {
     method: "POST",
     headers: {
@@ -367,13 +364,13 @@ export async function verifyPasskeyRegistration(response: Record<string, unknown
   });
 }
 
-export async function fetchPasskeyAuthenticateOptions(): Promise<PublicKeyCredentialRequestOptionsJSON> {
+export function fetchPasskeyAuthenticateOptions(): Promise<PublicKeyCredentialRequestOptionsJSON> {
   return requestJson("/api/auth/passkey/generate-authenticate-options", {
     method: "GET",
   });
 }
 
-export async function verifyPasskeyAuthentication(response: Record<string, unknown>) {
+export function verifyPasskeyAuthentication(response: Record<string, unknown>) {
   return requestJson("/api/auth/passkey/verify-authentication", {
     method: "POST",
     headers: {
@@ -385,13 +382,13 @@ export async function verifyPasskeyAuthentication(response: Record<string, unkno
   });
 }
 
-export async function enrollTotp(): Promise<TotpEnrollment> {
+export function enrollTotp(): Promise<TotpEnrollment> {
   return requestJson("/rpc/auth/user/two-factor/enroll", {
     method: "POST",
   });
 }
 
-export async function verifyTotp(code: string, kind: "totp" | "backup_code" = "totp") {
+export function verifyTotp(code: string, kind: "totp" | "backup_code" = "totp") {
   return requestJson("/rpc/auth/user/two-factor/verify", {
     method: "POST",
     headers: {
@@ -404,7 +401,7 @@ export async function verifyTotp(code: string, kind: "totp" | "backup_code" = "t
   });
 }
 
-export async function loginWithTotp(email: string, code: string) {
+export function loginWithTotp(email: string, code: string) {
   return requestJson("/rpc/auth/user/totp-login", {
     method: "POST",
     headers: {
@@ -417,16 +414,18 @@ export async function loginWithTotp(email: string, code: string) {
   });
 }
 
-export async function completeOnboarding() {
+export function completeOnboarding() {
   return requestJson("/rpc/auth/user/onboarding/complete", {
     method: "POST",
   });
 }
 
 export function fetchVelocity(hours?: number): Promise<Velocity> {
-  return client.rpc.velocity.$get({
+  return client.rpc.velocity
+    .$get({
       query: hours ? { hours: String(hours) } : {},
-    }).then(rpcJson);
+    })
+    .then(rpcJson);
 }
 
 export function fetchReviewQueue(): Promise<Change[]> {
@@ -513,7 +512,7 @@ export async function fetchHostedRepoFile(
   if (repoId) params.set("repo", repoId);
   const res = await fetch(`/rpc/app/hosted-repo/file?${params}`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
-  const body = await res.json() as { content: string | null };
+  const body = (await res.json()) as { content: string | null };
   return body.content;
 }
 
@@ -591,11 +590,16 @@ export function fetchSessions(changeId: number): Promise<AgentSession[]> {
   return client.rpc.changes[":id"].sessions.$get({ param: { id: String(changeId) } }).then(rpcJson);
 }
 
-export function fetchSessionEvents(sessionId: number, afterSeq: number = 0): Promise<AgentSessionEvent[]> {
-  return client.rpc.sessions[":id"].events.$get({
+export function fetchSessionEvents(
+  sessionId: number,
+  afterSeq: number = 0,
+): Promise<AgentSessionEvent[]> {
+  return client.rpc.sessions[":id"].events
+    .$get({
       param: { id: String(sessionId) },
       query: { after: String(afterSeq) },
-    }).then(rpcJson);
+    })
+    .then(rpcJson);
 }
 
 export function subscribeToAgentEvents(
@@ -672,7 +676,7 @@ export interface RollupListQuery {
   limit?: number;
 }
 
-export async function fetchRollups(query: RollupListQuery = {}): Promise<{
+export function fetchRollups(query: RollupListQuery = {}): Promise<{
   rollups: WideRollup[];
   count: number;
 }> {
@@ -685,7 +689,7 @@ export async function fetchRollups(query: RollupListQuery = {}): Promise<{
   return requestJson<{ rollups: WideRollup[]; count: number }>(`/rpc/rollups${suffix}`);
 }
 
-export async function fetchRollupDetail(requestId: string): Promise<WideRollup> {
+export function fetchRollupDetail(requestId: string): Promise<WideRollup> {
   return requestJson<WideRollup>(`/rpc/rollups/${encodeURIComponent(requestId)}`);
 }
 
@@ -702,16 +706,13 @@ export interface TriageRunSummary {
     | "failed";
   created_at: string;
   updated_at: string;
-  rollup: Pick<
-    WideRollup,
-    "request_id" | "entry_service" | "route_names" | "primary_error"
-  >;
+  rollup: Pick<WideRollup, "request_id" | "entry_service" | "route_names" | "primary_error">;
   plan?: { hypothesis: string; confidence: string };
   proposal?: { repo_id: string; branch: string; pr_url?: string };
   error?: string;
 }
 
-export async function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
+export function fetchTriageRuns(): Promise<{ runs: TriageRunSummary[] }> {
   return requestJson<{ runs: TriageRunSummary[] }>(`/rpc/triage/runs`);
 }
 
@@ -843,7 +844,7 @@ export async function fetchStatusReport(): Promise<ServiceStatusReport> {
   return body;
 }
 
-export async function fetchLogs(query: LogQueryInput = {}): Promise<LogQueryResult> {
+export function fetchLogs(query: LogQueryInput = {}): Promise<LogQueryResult> {
   const params = new URLSearchParams();
   if (query.service) params.set("service", query.service);
   if (query.level) params.set("level", query.level);
@@ -950,29 +951,35 @@ export async function fetchDaemons(): Promise<DaemonSpec[]> {
   return res.daemons;
 }
 
-export async function fetchDaemonMemory(name: string, repoId?: string): Promise<DaemonMemory | null> {
+export async function fetchDaemonMemory(
+  name: string,
+  repoId?: string,
+): Promise<DaemonMemory | null> {
   try {
     const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
-    return await requestJson<DaemonMemory>(`/rpc/daemons/${encodeURIComponent(name)}/memory${query}`);
+    return await requestJson<DaemonMemory>(
+      `/rpc/daemons/${encodeURIComponent(name)}/memory${query}`,
+    );
   } catch {
     return null;
   }
 }
 
-export async function fetchDaemonRuns(name: string, repoId?: string): Promise<DaemonRunIndexEntry[]> {
+export async function fetchDaemonRuns(
+  name: string,
+  repoId?: string,
+): Promise<DaemonRunIndexEntry[]> {
   const query = repoId ? `?repo=${encodeURIComponent(repoId)}` : "";
-  const res = await requestJson<{ runs: DaemonRunIndexEntry[] }>(`/rpc/daemons/${encodeURIComponent(name)}/runs${query}`);
+  const res = await requestJson<{ runs: DaemonRunIndexEntry[] }>(
+    `/rpc/daemons/${encodeURIComponent(name)}/runs${query}`,
+  );
   return res.runs;
 }
 
 export type DaemonPlaygroundProfile = {
   id: string;
   name: string;
-  mode:
-    | "memory_only"
-    | "embedding_only"
-    | "memory_embedding"
-    | "memory_embedding_librarian";
+  mode: "memory_only" | "embedding_only" | "memory_embedding" | "memory_embedding_librarian";
   routerProvider?: "local" | "openrouter";
   routerModel?: string;
   librarianModel?: string;
@@ -1017,7 +1024,7 @@ export type DaemonPlaygroundRunResult = {
   }>;
 };
 
-export async function fetchDaemonPlayground(
+export function fetchDaemonPlayground(
   profiles?: DaemonPlaygroundProfile[],
 ): Promise<DaemonPlaygroundRunResult> {
   return requestJson("/api/daemon-review/playground", {

@@ -2,18 +2,20 @@ import { expect, test } from "bun:test";
 import { summarizeRunnerLine } from "./runtime-adapter";
 
 test("summarizeRunnerLine turns tool_use into readable lifecycle activity", () => {
-  const event = summarizeRunnerLine(JSON.stringify({
-    type: "tool_use",
-    sessionID: "ses_123",
-    part: {
-      tool: "read",
-      state: {
-        status: "completed",
-        input: { filePath: "/work/repo/test-file.txt" },
-        output: "file contents here",
+  const event = summarizeRunnerLine(
+    JSON.stringify({
+      type: "tool_use",
+      sessionID: "ses_123",
+      part: {
+        tool: "read",
+        state: {
+          status: "completed",
+          input: { filePath: "/work/repo/test-file.txt" },
+          output: "file contents here",
+        },
       },
-    },
-  }));
+    }),
+  );
 
   expect(event.kind).toBe("lifecycle");
   expect(event.type).toBe("tool.used");
@@ -32,14 +34,16 @@ test("summarizeRunnerLine keeps stderr/plain text as system messages", () => {
 });
 
 test("summarizeRunnerLine annotates step completions with reason and token count", () => {
-  const event = summarizeRunnerLine(JSON.stringify({
-    type: "step_finish",
-    sessionID: "ses_123",
-    part: {
-      reason: "tool-calls",
-      tokens: { total: 6720 },
-    },
-  }));
+  const event = summarizeRunnerLine(
+    JSON.stringify({
+      type: "step_finish",
+      sessionID: "ses_123",
+      part: {
+        reason: "tool-calls",
+        tokens: { total: 6720 },
+      },
+    }),
+  );
 
   expect(event.kind).toBe("lifecycle");
   expect(event.type).toBe("step.completed");

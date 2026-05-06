@@ -1,20 +1,36 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PatchDiff } from "@pierre/diffs/react";
+import type { GitStatusEntry } from "@pierre/trees";
+import { FileTree } from "@pierre/trees/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router";
+import { useHeaderContent } from "@/components/layout";
+import { StateMachine } from "@/components/state-machine";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { StateMachine } from "@/components/state-machine";
-import { PatchDiff } from "@pierre/diffs/react";
-import { FileTree } from "@pierre/trees/react";
-import type { GitStatusEntry } from "@pierre/trees";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useHeaderContent } from "@/components/layout";
-import { fetchChange, fetchDiff, regenerateSummary, requeueSummary, subscribeToAgentEvents, fetchSessions, type ChangeDetail, type ChangeStatus, type ChangeEvent, type AgentSession, type AgentSessionEvent } from "@/lib/api";
+import {
+  type AgentSession,
+  type AgentSessionEvent,
+  type ChangeDetail,
+  type ChangeEvent,
+  fetchChange,
+  fetchDiff,
+  fetchSessions,
+  regenerateSummary,
+  requeueSummary,
+  subscribeToAgentEvents,
+} from "@/lib/api";
 
 interface SummaryGeneratorMetadata {
   action_id?: string;
@@ -44,10 +60,13 @@ function Timeline({ events }: { events: ChangeEvent[] }) {
               <span className="text-foreground">{event.event_type}</span>
               {event.from_status && event.to_status && (
                 <span className="text-muted-foreground">
-                  {" "}{event.from_status} &rarr; {event.to_status}
+                  {" "}
+                  {event.from_status} &rarr; {event.to_status}
                 </span>
               )}
-              <span className="ml-2 text-xs text-muted-foreground">{timeAgo(event.created_at)}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                {timeAgo(event.created_at)}
+              </span>
             </div>
           </div>
         ))}
@@ -128,9 +147,9 @@ function parseDiffFiles(diff: string): { files: string[]; gitStatus: GitStatusEn
 
 function timeAgo(dateStr: string): string {
   // SQLite datetime('now') returns UTC without Z suffix — append it
-  const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : dateStr + "Z";
+  const normalized = dateStr.includes("T") || dateStr.includes("Z") ? dateStr : `${dateStr}Z`;
   const seconds = Math.floor((Date.now() - new Date(normalized).getTime()) / 1000);
-  if (isNaN(seconds) || seconds < 0) return "just now";
+  if (Number.isNaN(seconds) || seconds < 0) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -140,35 +159,37 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-const FORWARD_STATES: ChangeStatus[] = [
-  "pushed", "scoring", "scored", "summarizing",
-  "ready_for_review",
-];
-
-function timelineDotColor(toStatus: ChangeStatus | null): string {
-  if (!toStatus) return "bg-muted-foreground";
-  if (toStatus === "superseded") return "bg-muted-foreground";
-  if (FORWARD_STATES.includes(toStatus)) return "bg-primary";
-  return "bg-muted-foreground";
-}
-
 function scrollToDiffFile(filename: string) {
   const el = document.querySelector(`[data-diff-file="${filename}"]`);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function AnnotatedSummary({ text, annotations }: { text: string; annotations?: SummaryAnnotation[] }) {
+function scrollLogToBottom(element: HTMLDivElement | null) {
+  const viewport = element?.closest("[data-slot='scroll-area-viewport']");
+  if (!(viewport instanceof HTMLElement)) return;
+  viewport.scrollTo({
+    top: viewport.scrollHeight,
+    behavior: "smooth",
+  });
+}
+
+function AnnotatedSummary({
+  text,
+  annotations,
+}: {
+  text: string;
+  annotations?: SummaryAnnotation[];
+}) {
   if (!annotations || annotations.length === 0) {
     return <p className="text-sm">{text}</p>;
   }
 
   // Build segments: try to match annotation text within the summary
   const segments: { content: string; annotation?: SummaryAnnotation }[] = [];
-  let remaining = text;
 
   // Sort annotations by their position in the text
   const sorted = [...annotations]
-    .map((a) => ({ annotation: a, index: remaining.indexOf(a.text) }))
+    .map((a) => ({ annotation: a, index: text.indexOf(a.text) }))
     .filter((a) => a.index !== -1)
     .sort((a, b) => a.index - b.index);
 
@@ -194,28 +215,36 @@ function AnnotatedSummary({ text, annotations }: { text: string; annotations?: S
   return (
     <p className="text-sm">
       <TooltipProvider>
-        {segments.map((seg, i) => {
+        {segments.map((seg) => {
+          const segmentKey = seg.annotation
+            ? `${seg.annotation.type}:${seg.annotation.text}:${seg.annotation.files.join("|")}`
+            : `text:${seg.content}`;
           if (!seg.annotation) {
-            return <span key={i}>{seg.content}</span>;
+            return <span key={segmentKey}>{seg.content}</span>;
           }
           const ann = seg.annotation;
           return (
-            <Tooltip key={i}>
+            <Tooltip key={segmentKey}>
               <TooltipTrigger asChild>
-                <span
+                <button
+                  type="button"
                   className="underline decoration-dotted decoration-muted-foreground/50 underline-offset-4 cursor-pointer hover:decoration-foreground transition-colors"
                   onClick={() => ann.files[0] && scrollToDiffFile(ann.files[0])}
                 >
                   {seg.content}
-                </span>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="flex flex-col gap-1.5 max-w-sm">
-                <span className={`inline-flex w-fit px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${annotationTypeColor[ann.type]}`}>
+                <span
+                  className={`inline-flex w-fit px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${annotationTypeColor[ann.type]}`}
+                >
                   {annotationTypeLabel[ann.type]}
                 </span>
                 <div className="flex flex-col gap-0.5">
                   {ann.files.map((f) => (
-                    <span key={f} className="font-mono text-[11px]">{f}</span>
+                    <span key={f} className="font-mono text-[11px]">
+                      {f}
+                    </span>
                   ))}
                 </div>
               </TooltipContent>
@@ -255,12 +284,14 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
 
   // Fetch sessions on mount
   useEffect(() => {
-    fetchSessions(changeId).then((s) => {
-      setSessions(s);
-      if (s.length > 0 && s[0].duration_ms) {
-        setDurationMs(s[0].duration_ms);
-      }
-    }).catch(() => setSessions([]));
+    fetchSessions(changeId)
+      .then((s) => {
+        setSessions(s);
+        if (s.length > 0 && s[0].duration_ms) {
+          setDurationMs(s[0].duration_ms);
+        }
+      })
+      .catch(() => setSessions([]));
   }, [changeId]);
 
   // If summarizing: connect to SSE (server handles replay + live)
@@ -277,6 +308,9 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
       changeId,
       (event) => {
         setEvents((prev) => [...prev, event]);
+        window.requestAnimationFrame(() => {
+          scrollLogToBottom(bottomRef.current);
+        });
       },
       (doneData) => {
         setDone(true);
@@ -291,15 +325,6 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
     return cleanup;
   }, [changeId, sessions, isSummarizing]);
 
-  useEffect(() => {
-    const viewport = bottomRef.current?.closest("[data-slot='scroll-area-viewport']");
-    if (!(viewport instanceof HTMLElement)) return;
-    viewport.scrollTo({
-      top: viewport.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [events]);
-
   // Don't render anything if there are no sessions and we're not summarizing
   if (sessions !== null && sessions.length === 0 && !isSummarizing) return null;
   // Still loading sessions
@@ -308,8 +333,11 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
   const latestSession = sessions[0] ?? null;
   const transcriptEvents = events.filter((event) => shouldRenderTranscriptEvent(event));
   const rawStream = events
-    .map((event) => event.raw_json ?? event.data_json ?? event.text ?? null)
-    .filter((value): value is string => Boolean(value));
+    .map((event) => ({
+      id: event.id,
+      chunk: event.raw_json ?? event.data_json ?? event.text ?? null,
+    }))
+    .filter((entry): entry is { id: string; chunk: string } => Boolean(entry.chunk));
   const artifactEvents = events.filter((event) => event.kind === "artifact");
 
   return (
@@ -324,16 +352,17 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
                 </span>
               )}
-              <CardTitle className="text-base">
-                {done ? "Agent Run" : "Agent Session"}
-              </CardTitle>
+              <CardTitle className="text-base">{done ? "Agent Run" : "Agent Session"}</CardTitle>
             </div>
             <div className="flex flex-wrap gap-1.5">
               <Badge variant="outline" className="font-mono text-[11px]">
                 {latestSession?.runtime ?? "agent"}
               </Badge>
-              <Badge variant={done && latestSession?.status === "failed" ? "destructive" : "secondary"} className="text-[11px]">
-                {done ? latestSession?.status ?? "completed" : "running"}
+              <Badge
+                variant={done && latestSession?.status === "failed" ? "destructive" : "secondary"}
+                className="text-[11px]"
+              >
+                {done ? (latestSession?.status ?? "completed") : "running"}
               </Badge>
               {latestSession?.runtime_session_id && (
                 <Badge variant="outline" className="font-mono text-[11px]">
@@ -392,7 +421,9 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
             <div className="rounded-xl border border-border bg-muted/20 p-4">
               <div className="space-y-3">
                 {events.length === 0 && !done && (
-                  <p className="text-sm text-muted-foreground">Waiting for the first session event...</p>
+                  <p className="text-sm text-muted-foreground">
+                    Waiting for the first session event...
+                  </p>
                 )}
                 {events.map((event) => (
                   <TimelineEventRow key={event.id} event={event} />
@@ -408,9 +439,9 @@ function LogViewer({ changeId, isSummarizing }: { changeId: number; isSummarizin
                   {rawStream.length === 0 && !done && (
                     <span className="text-muted-foreground">Waiting for raw events...</span>
                   )}
-                  {rawStream.map((chunk, i) => (
-                    <div key={i} className="pb-3 last:pb-0">
-                      {chunk}
+                  {rawStream.map((entry) => (
+                    <div key={entry.id} className="pb-3 last:pb-0">
+                      {entry.chunk}
                     </div>
                   ))}
                 </pre>
@@ -438,17 +469,15 @@ function TranscriptEventRow({ event }: { event: AgentSessionEvent }) {
         <div className="rounded-xl border border-border bg-background shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[11px]">assistant</Badge>
+              <Badge variant="secondary" className="text-[11px]">
+                assistant
+              </Badge>
               <span className="text-sm font-medium">Structured response</span>
             </div>
             <span className="text-xs text-muted-foreground">{timeAgo(event.created_at)}</span>
           </div>
           <div className="px-4 py-3">
-            {preview && (
-              <p className="text-sm text-muted-foreground">
-                {preview}
-              </p>
-            )}
+            {preview && <p className="text-sm text-muted-foreground">{preview}</p>}
             <Accordion type="single" collapsible className="mt-2 w-full">
               <AccordionItem value="structured-output" className="border-b-0">
                 <AccordionTrigger className="py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:no-underline">
@@ -461,9 +490,7 @@ function TranscriptEventRow({ event }: { event: AgentSessionEvent }) {
                         <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                           {formatKeyLabel(key)}
                         </dt>
-                        <dd className="text-sm text-foreground">
-                          {renderStructuredValue(value)}
-                        </dd>
+                        <dd className="text-sm text-foreground">{renderStructuredValue(value)}</dd>
                       </div>
                     ))}
                   </dl>
@@ -493,7 +520,9 @@ function TranscriptEventRow({ event }: { event: AgentSessionEvent }) {
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-4 py-3">
-      <div className={`mt-1 h-2.5 w-2.5 rounded-full ${event.status === "failed" ? "bg-destructive" : event.status === "completed" ? "bg-emerald-500" : "bg-primary"}`} />
+      <div
+        className={`mt-1 h-2.5 w-2.5 rounded-full ${event.status === "failed" ? "bg-destructive" : event.status === "completed" ? "bg-emerald-500" : "bg-primary"}`}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-foreground">{formatEventLabel(event)}</p>
@@ -513,7 +542,9 @@ function TimelineEventRow({ event }: { event: AgentSessionEvent }) {
   return (
     <div className="flex items-start gap-3">
       <div className="flex flex-col items-center">
-        <div className={`mt-1 h-2.5 w-2.5 rounded-full ${event.status === "failed" ? "bg-destructive" : event.status === "completed" ? "bg-emerald-500" : "bg-primary/80"}`} />
+        <div
+          className={`mt-1 h-2.5 w-2.5 rounded-full ${event.status === "failed" ? "bg-destructive" : event.status === "completed" ? "bg-emerald-500" : "bg-primary/80"}`}
+        />
         <div className="mt-1 w-px flex-1 bg-border" />
       </div>
       <div className="min-w-0 flex-1 pb-3">
@@ -543,9 +574,8 @@ function TimelineEventRow({ event }: { event: AgentSessionEvent }) {
 
 function ArtifactBadge({ event }: { event: AgentSessionEvent }) {
   const data = tryParseJson(event.data_json);
-  const label = isRecord(data) && typeof data.artifactKind === "string"
-    ? data.artifactKind
-    : "artifact";
+  const label =
+    isRecord(data) && typeof data.artifactKind === "string" ? data.artifactKind : "artifact";
 
   return (
     <Badge variant="outline" className="gap-1 font-mono text-[11px]">
@@ -591,9 +621,7 @@ function buildStructuredPreview(value: Record<string, unknown>): string | null {
   const whatChanged = typeof value.what_changed === "string" ? value.what_changed : null;
   const risk = typeof value.risk_assessment === "string" ? value.risk_assessment : null;
 
-  return [title, whatChanged, risk]
-    .filter((entry): entry is string => Boolean(entry))
-    .join(" ");
+  return [title, whatChanged, risk].filter((entry): entry is string => Boolean(entry)).join(" ");
 }
 
 function renderStructuredValue(value: unknown) {
@@ -662,27 +690,27 @@ export function ChangeDetailPage() {
             <dd>{timeAgo(change.created_at)}</dd>
           </div>
         </dl>
-      </div>
+      </div>,
     );
     return () => setHeaderContent(null);
   }, [change, setHeaderContent]);
 
-  const loadChange = () => {
+  const loadChange = useCallback(() => {
     if (!id) return;
-    fetchChange(parseInt(id, 10))
+    fetchChange(Number.parseInt(id, 10))
       .then(setChange)
       .catch((err) => setError(err.message));
-  };
+  }, [id]);
 
   useEffect(() => {
     loadChange();
     const interval = setInterval(loadChange, 3000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [loadChange]);
 
   useEffect(() => {
     if (!id) return;
-    fetchDiff(parseInt(id, 10))
+    fetchDiff(Number.parseInt(id, 10))
       .then(setDiff)
       .catch(() => {}); // diff is optional — don't block the page
   }, [id]);
@@ -750,121 +778,127 @@ export function ChangeDetailPage() {
         </div>
       )}
 
-      {change.summary && (() => {
-        try {
-          const summary = JSON.parse(change.summary) as {
-            title?: string;
-            what_changed: string;
-            risk_assessment: string;
-            affected_modules: string[];
-            recommended_action: string;
-            annotations?: SummaryAnnotation[];
-          };
-          return (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">
-                    {summary.title || "Summary"}
-                  </CardTitle>
-                  {change.status === "ready_for_review" && (
-                    <Button variant="outline" size="sm" onClick={handleRegenerateSummary} disabled={regenerating}>
-                      {regenerating ? "Regenerating..." : "Regenerate Summary"}
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <AnnotatedSummary text={summary.what_changed} annotations={summary.annotations} />
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Risk</dt>
-                  <dd className="text-sm">{summary.risk_assessment}</dd>
-                </div>
-                {summary.affected_modules.length > 0 && (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Modules</dt>
-                    <dd className="flex flex-wrap gap-1 mt-1">
-                      {summary.affected_modules.map((mod) => (
-                        <Badge key={mod} variant="outline" className="font-mono text-xs">
-                          {mod}
-                        </Badge>
-                      ))}
-                    </dd>
+      {change.summary &&
+        (() => {
+          try {
+            const summary = JSON.parse(change.summary) as {
+              title?: string;
+              what_changed: string;
+              risk_assessment: string;
+              affected_modules: string[];
+              recommended_action: string;
+              annotations?: SummaryAnnotation[];
+            };
+            return (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">{summary.title || "Summary"}</CardTitle>
+                    {change.status === "ready_for_review" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRegenerateSummary}
+                        disabled={regenerating}
+                      >
+                        {regenerating ? "Regenerating..." : "Regenerate Summary"}
+                      </Button>
+                    )}
                   </div>
-                )}
-                {summaryGenerated?.generator && (
+                </CardHeader>
+                <CardContent className="space-y-3">
                   <div>
-                    <dt className="text-xs text-muted-foreground">Generated By</dt>
-                    <dd className="mt-1 space-y-2">
-                      <div className="flex flex-wrap gap-1">
-                        {summaryGenerated.generator.action_id && (
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {summaryGenerated.generator.action_id}
-                          </Badge>
-                        )}
-                        {summaryGenerated.generator.prompt_name && (
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {summaryGenerated.generator.prompt_name}
-                          </Badge>
-                        )}
-                        {summaryGenerated.generator.surfaces?.map((surface) => (
-                          <Badge key={surface} variant="secondary" className="text-xs">
-                            {surface}
+                    <AnnotatedSummary
+                      text={summary.what_changed}
+                      annotations={summary.annotations}
+                    />
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Risk</dt>
+                    <dd className="text-sm">{summary.risk_assessment}</dd>
+                  </div>
+                  {summary.affected_modules.length > 0 && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Modules</dt>
+                      <dd className="flex flex-wrap gap-1 mt-1">
+                        {summary.affected_modules.map((mod) => (
+                          <Badge key={mod} variant="outline" className="font-mono text-xs">
+                            {mod}
                           </Badge>
                         ))}
-                      </div>
-                      {summaryGenerated.generator.prompt_hash && (
-                        <p className="text-xs text-muted-foreground font-mono break-all">
-                          prompt hash: {summaryGenerated.generator.prompt_hash}
-                        </p>
-                      )}
-                    </dd>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        } catch {
+                      </dd>
+                    </div>
+                  )}
+                  {summaryGenerated?.generator && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Generated By</dt>
+                      <dd className="mt-1 space-y-2">
+                        <div className="flex flex-wrap gap-1">
+                          {summaryGenerated.generator.action_id && (
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {summaryGenerated.generator.action_id}
+                            </Badge>
+                          )}
+                          {summaryGenerated.generator.prompt_name && (
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {summaryGenerated.generator.prompt_name}
+                            </Badge>
+                          )}
+                          {summaryGenerated.generator.surfaces?.map((surface) => (
+                            <Badge key={surface} variant="secondary" className="text-xs">
+                              {surface}
+                            </Badge>
+                          ))}
+                        </div>
+                        {summaryGenerated.generator.prompt_hash && (
+                          <p className="text-xs text-muted-foreground font-mono break-all">
+                            prompt hash: {summaryGenerated.generator.prompt_hash}
+                          </p>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          } catch {
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {change.summary}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          }
+        })()}
+
+      {diff &&
+        (() => {
+          const patches = diff.split(/(?=^diff --git )/m).filter(Boolean);
+          const { files, gitStatus } = parseDiffFiles(diff);
           return (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {change.summary}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="flex gap-4 items-start">
+              <div className="w-64 shrink-0 sticky top-4 rounded border border-border overflow-hidden">
+                <FileTree options={treeOptions} files={files} gitStatus={gitStatus} />
+              </div>
+              <div className="flex-1 min-w-0 space-y-3">
+                {patches.map((filePatch, i) => {
+                  const filePath = files[i] ?? `patch:${filePatch.slice(0, 32)}`;
+                  return (
+                    <div key={filePath} data-diff-file={filePath}>
+                      <PatchDiff patch={filePatch} options={diffOptions} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           );
-        }
-      })()}
-
-      {diff && (() => {
-        const patches = diff.split(/(?=^diff --git )/m).filter(Boolean);
-        const { files, gitStatus } = parseDiffFiles(diff);
-        return (
-          <div className="flex gap-4 items-start">
-            <div className="w-64 shrink-0 sticky top-4 rounded border border-border overflow-hidden">
-              <FileTree
-                options={treeOptions}
-                files={files}
-                gitStatus={gitStatus}
-              />
-            </div>
-            <div className="flex-1 min-w-0 space-y-3">
-              {patches.map((filePatch, i) => (
-                <div key={i} data-diff-file={files[i]}>
-                  <PatchDiff patch={filePatch} options={diffOptions} />
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
+        })()}
 
       {change.events.length > 0 && <Timeline events={change.events} />}
     </div>

@@ -1,4 +1,4 @@
-import { signAccessToken, type RepoAccess } from "../core/auth";
+import { type RepoAccess, signAccessToken } from "../core/auth";
 
 export function basicAuthHeader(username: string, password: string) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -45,7 +45,10 @@ export function buildRemoteUrl(
   };
 }
 
-export async function fetchJson<T>(url: URL | string, auth?: { username: string; password: string }) {
+export async function fetchJson<T>(
+  url: URL | string,
+  auth?: { username: string; password: string },
+) {
   const response = await fetch(url, {
     headers: auth
       ? {
@@ -58,6 +61,6 @@ export async function fetchJson<T>(url: URL | string, auth?: { username: string;
   return {
     response,
     body,
-    json: body ? JSON.parse(body) as T : null,
+    json: body ? (JSON.parse(body) as T) : null,
   };
 }

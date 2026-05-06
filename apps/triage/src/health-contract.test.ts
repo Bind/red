@@ -5,13 +5,13 @@ import { InMemoryRunStore } from "./runs/store";
 import { StubTriageWorkflowRunner } from "./workflows/runner";
 
 describeHealthContract({
-	serviceName: "triage",
-	loadApp: () => {
-		const store = new InMemoryRunStore();
-		const orchestrator = new TriageOrchestrator({
-			store,
-			runner: new StubTriageWorkflowRunner(),
-		});
-		return createApp({ store, orchestrator });
-	},
+  serviceName: "triage",
+  loadApp: () => {
+    const store = new InMemoryRunStore();
+    const orchestrator = new TriageOrchestrator({
+      store,
+      runner: new StubTriageWorkflowRunner(),
+    });
+    return createApp({ store, orchestrator });
+  },
 });

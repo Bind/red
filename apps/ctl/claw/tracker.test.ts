@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SqliteClawRunTracker } from "./tracker";
 import type { ClawRunRecord } from "./types";
 
@@ -42,7 +42,7 @@ test("tracker maps sqlite rows back to camelCase records", () => {
   tracker.attachRollout(
     "run-1",
     "019d-run-session",
-    "/root/.codex/sessions/2026/04/01/rollout-2026-04-01T01-00-01-019d-run-session.jsonl"
+    "/root/.codex/sessions/2026/04/01/rollout-2026-04-01T01-00-01-019d-run-session.jsonl",
   );
   tracker.finish("run-1", {
     status: "failed",
@@ -68,7 +68,8 @@ test("tracker maps sqlite rows back to camelCase records", () => {
     containerName: "red-generate-summary-run-1",
     containerId: "container-1",
     codexSessionId: "019d-run-session",
-    rolloutPath: "/root/.codex/sessions/2026/04/01/rollout-2026-04-01T01-00-01-019d-run-session.jsonl",
+    rolloutPath:
+      "/root/.codex/sessions/2026/04/01/rollout-2026-04-01T01-00-01-019d-run-session.jsonl",
     status: "failed",
     createdAt: "2026-04-01T01:00:00.000Z",
     startedAt: "2026-04-01T01:00:01.000Z",

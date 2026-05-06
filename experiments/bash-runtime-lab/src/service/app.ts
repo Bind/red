@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import type { BashRuntimeService } from "./runtime";
 import type { BashRuntimeConfig, ExecuteRunRequest } from "../util/types";
+import type { BashRuntimeService } from "./runtime";
 
 function normalizeEnv(input: unknown): Record<string, string> {
   if (input === undefined) {

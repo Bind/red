@@ -112,7 +112,9 @@ describe("GitServerHttpRepositoryProvider", () => {
       expect(await provider.getDiff("red", "red", "main", "feature/demo")).toContain("diff --git");
 
       expect(calls.length).toBeGreaterThan(0);
-      expect(calls.every((call) => typeof call.auth === "string" && call.auth.startsWith("Basic "))).toBe(true);
+      expect(
+        calls.every((call) => typeof call.auth === "string" && call.auth.startsWith("Basic ")),
+      ).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
     }

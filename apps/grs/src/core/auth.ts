@@ -28,15 +28,17 @@ export interface GitRequestAuthorizer {
     input: {
       repoId: string;
       requiredAccess: RepoAccess;
-    }
-  ): {
-    ok: true;
-    subject: string;
-    access: RepoAccess | "admin";
-  } | {
-    ok: false;
-    reason: string;
-  };
+    },
+  ):
+    | {
+        ok: true;
+        subject: string;
+        access: RepoAccess | "admin";
+      }
+    | {
+        ok: false;
+        reason: string;
+      };
 }
 
 export interface SharedSecretGitAuthOptions {
@@ -75,7 +77,7 @@ export class SharedSecretGitAuth implements GitCredentialIssuer, GitRequestAutho
     input: {
       repoId: string;
       requiredAccess: RepoAccess;
-    }
+    },
   ) {
     if (!this.options.adminUsername && !this.options.tokenSecret) {
       return {
@@ -154,7 +156,9 @@ export function verifyAccessToken(token: string, secret?: string): RepoAccessTok
 
   let payload: RepoAccessTokenClaims;
   try {
-    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as RepoAccessTokenClaims;
+    payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as RepoAccessTokenClaims;
   } catch {
     return null;
   }
@@ -167,7 +171,7 @@ export function verifyAccessToken(token: string, secret?: string): RepoAccessTok
     if (
       !timingSafeEqual(
         Buffer.from(encodedSignature, "base64url"),
-        Buffer.from(expectedSignature, "base64url")
+        Buffer.from(expectedSignature, "base64url"),
       )
     ) {
       return null;

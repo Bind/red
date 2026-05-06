@@ -10,377 +10,340 @@ import { FileRollupStore } from "../store/rollup-store";
 let tempDir: string | null = null;
 
 afterEach(() => {
-	if (tempDir) {
-		rmSync(tempDir, { recursive: true, force: true });
-		tempDir = null;
-	}
+  if (tempDir) {
+    rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  }
 });
 
 function createFixtureApp(extraDeps: Partial<Parameters<typeof createApp>[0]> = {}) {
-	tempDir = mkdtempSync(join(tmpdir(), "wide-events-collector-"));
-	const rawEventsDir = join(tempDir, "raw");
-	const rollupDir = join(tempDir, "rollup");
-	return {
-		app: createApp({
-			rawEventStore: new FileRawEventStore(rawEventsDir),
-			rollupStore: new FileRollupStore(rollupDir),
-			activeRequests: new InMemoryActiveRequestAggregator({
-				incompleteGraceMs: 50,
-				now: () => new Date("2026-04-08T14:00:00.000Z"),
-			}),
-			...extraDeps,
-		}),
-		rawEventsDir,
-		rollupDir,
-	};
+  tempDir = mkdtempSync(join(tmpdir(), "wide-events-collector-"));
+  const rawEventsDir = join(tempDir, "raw");
+  const rollupDir = join(tempDir, "rollup");
+  return {
+    app: createApp({
+      rawEventStore: new FileRawEventStore(rawEventsDir),
+      rollupStore: new FileRollupStore(rollupDir),
+      activeRequests: new InMemoryActiveRequestAggregator({
+        incompleteGraceMs: 50,
+        now: () => new Date("2026-04-08T14:00:00.000Z"),
+      }),
+      ...extraDeps,
+    }),
+    rawEventsDir,
+    rollupDir,
+  };
 }
 
 describe("wide-events collector app", () => {
-	test("reports health", async () => {
-		const { app } = createFixtureApp();
-		const response = await app.fetch(
-			new Request("http://collector.local/health"),
-		);
+  test("reports health", async () => {
+    const { app } = createFixtureApp();
+    const response = await app.fetch(new Request("http://collector.local/health"));
 
-		expect(response.status).toBe(200);
-		const body = (await response.json()) as {
-			service: string;
-			status: string;
-			commit: string;
-		};
-		expect(body.service).toBe("obs");
-		expect(body.status).toBe("ok");
-		expect(typeof body.commit).toBe("string");
-	});
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      service: string;
+      status: string;
+      commit: string;
+    };
+    expect(body.service).toBe("obs");
+    expect(body.status).toBe("ok");
+    expect(typeof body.commit).toBe("string");
+  });
 
-	test("accepts valid batches, stores raw events, and rolls up terminal requests", async () => {
-		const { app, rawEventsDir, rollupDir } = createFixtureApp();
-		const response = await app.fetch(
-			new Request("http://collector.local/v1/events", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-				},
-				body: JSON.stringify({
-					sent_at: "2026-04-08T14:00:00.000Z",
-					source: {
-						service: "bff",
-						instance_id: "bff-1",
-					},
-					events: [
-						{
-							event_id: "evt-1",
-							request_id: "req-123",
-							is_request_root: true,
-							service: "bff",
-							kind: "request.received",
-							ts: "2026-04-08T14:00:00.100Z",
-							data: {
-								request: {
-									method: "POST",
-									path: "/session/exchange",
-								},
-							},
-						},
-						{
-							event_id: "evt-2",
-							request_id: "req-123",
-							is_request_root: false,
-							service: "auth",
-							kind: "request.completed",
-							ts: "2026-04-08T14:00:00.180Z",
-							outcome: "error",
-							status_code: 500,
-							data: {
-								error: {
-									name: "AuthError",
-									message: "boom",
-								},
-							},
-						},
-						{
-							event_id: "evt-3",
-							request_id: "req-123",
-							is_request_root: true,
-							service: "bff",
-							kind: "request.completed",
-							ts: "2026-04-08T14:00:00.200Z",
-							ended_at: "2026-04-08T14:00:00.220Z",
-							duration_ms: 120,
-							outcome: "error",
-							status_code: 500,
-							data: {
-								response: {
-									content_type: "application/json",
-								},
-							},
-						},
-					],
-				}),
-			}),
-		);
+  test("accepts valid batches, stores raw events, and rolls up terminal requests", async () => {
+    const { app, rawEventsDir, rollupDir } = createFixtureApp();
+    const response = await app.fetch(
+      new Request("http://collector.local/v1/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sent_at: "2026-04-08T14:00:00.000Z",
+          source: {
+            service: "bff",
+            instance_id: "bff-1",
+          },
+          events: [
+            {
+              event_id: "evt-1",
+              request_id: "req-123",
+              is_request_root: true,
+              service: "bff",
+              kind: "request.received",
+              ts: "2026-04-08T14:00:00.100Z",
+              data: {
+                request: {
+                  method: "POST",
+                  path: "/session/exchange",
+                },
+              },
+            },
+            {
+              event_id: "evt-2",
+              request_id: "req-123",
+              is_request_root: false,
+              service: "auth",
+              kind: "request.completed",
+              ts: "2026-04-08T14:00:00.180Z",
+              outcome: "error",
+              status_code: 500,
+              data: {
+                error: {
+                  name: "AuthError",
+                  message: "boom",
+                },
+              },
+            },
+            {
+              event_id: "evt-3",
+              request_id: "req-123",
+              is_request_root: true,
+              service: "bff",
+              kind: "request.completed",
+              ts: "2026-04-08T14:00:00.200Z",
+              ended_at: "2026-04-08T14:00:00.220Z",
+              duration_ms: 120,
+              outcome: "error",
+              status_code: 500,
+              data: {
+                response: {
+                  content_type: "application/json",
+                },
+              },
+            },
+          ],
+        }),
+      }),
+    );
 
-		expect(response.status).toBe(202);
-		expect(await response.json()).toEqual({
-			accepted: 3,
-			rejected: 0,
-			request_ids: ["req-123"],
-		});
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      accepted: 3,
+      rejected: 0,
+      request_ids: ["req-123"],
+    });
 
-		const bffPath = join(
-			rawEventsDir,
-			"date=2026-04-08",
-			"service=bff",
-			"events.ndjson",
-		);
-		const authPath = join(
-			rawEventsDir,
-			"date=2026-04-08",
-			"service=auth",
-			"events.ndjson",
-		);
-		const rollupPath = join(
-			rollupDir,
-			"date=2026-04-08",
-			"hour=14",
-			"rollups.ndjson",
-		);
-		expect(existsSync(bffPath)).toBe(true);
-		expect(existsSync(authPath)).toBe(true);
-		expect(readFileSync(bffPath, "utf8")).toContain('"event_id":"evt-1"');
-		expect(readFileSync(authPath, "utf8")).toContain('"event_id":"evt-2"');
-		expect(readFileSync(rollupPath, "utf8")).toContain(
-			'"request_id":"req-123"',
-		);
-		expect(readFileSync(rollupPath, "utf8")).toContain(
-			'"rollup_reason":"terminal_event"',
-		);
-	});
+    const bffPath = join(rawEventsDir, "date=2026-04-08", "service=bff", "events.ndjson");
+    const authPath = join(rawEventsDir, "date=2026-04-08", "service=auth", "events.ndjson");
+    const rollupPath = join(rollupDir, "date=2026-04-08", "hour=14", "rollups.ndjson");
+    expect(existsSync(bffPath)).toBe(true);
+    expect(existsSync(authPath)).toBe(true);
+    expect(readFileSync(bffPath, "utf8")).toContain('"event_id":"evt-1"');
+    expect(readFileSync(authPath, "utf8")).toContain('"event_id":"evt-2"');
+    expect(readFileSync(rollupPath, "utf8")).toContain('"request_id":"req-123"');
+    expect(readFileSync(rollupPath, "utf8")).toContain('"rollup_reason":"terminal_event"');
+  });
 
-	test("returns partial acceptance for invalid events", async () => {
-		const { app, rawEventsDir } = createFixtureApp();
-		const response = await app.fetch(
-			new Request("http://collector.local/v1/events", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-				},
-				body: JSON.stringify({
-					sent_at: "2026-04-08T14:00:00.000Z",
-					source: {
-						service: "api",
-					},
-					events: [
-						{
-							event_id: "evt-ok",
-							request_id: "req-ok",
-							is_request_root: true,
-							service: "api",
-							kind: "request.completed",
-							ts: "2026-04-08T14:00:00.100Z",
-							data: {},
-						},
-						{
-							event_id: "evt-bad",
-							service: "api",
-							kind: "request.completed",
-							ts: "2026-04-08T14:00:00.100Z",
-							data: {},
-						},
-					],
-				}),
-			}),
-		);
+  test("returns partial acceptance for invalid events", async () => {
+    const { app, rawEventsDir } = createFixtureApp();
+    const response = await app.fetch(
+      new Request("http://collector.local/v1/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sent_at: "2026-04-08T14:00:00.000Z",
+          source: {
+            service: "api",
+          },
+          events: [
+            {
+              event_id: "evt-ok",
+              request_id: "req-ok",
+              is_request_root: true,
+              service: "api",
+              kind: "request.completed",
+              ts: "2026-04-08T14:00:00.100Z",
+              data: {},
+            },
+            {
+              event_id: "evt-bad",
+              service: "api",
+              kind: "request.completed",
+              ts: "2026-04-08T14:00:00.100Z",
+              data: {},
+            },
+          ],
+        }),
+      }),
+    );
 
-		expect(response.status).toBe(207);
-		expect(await response.json()).toEqual({
-			accepted: 1,
-			rejected: 1,
-			request_ids: ["req-ok"],
-			errors: [
-				{
-					event_id: "evt-bad",
-					reason: "request_id is required",
-				},
-			],
-		});
+    expect(response.status).toBe(207);
+    expect(await response.json()).toEqual({
+      accepted: 1,
+      rejected: 1,
+      request_ids: ["req-ok"],
+      errors: [
+        {
+          event_id: "evt-bad",
+          reason: "request_id is required",
+        },
+      ],
+    });
 
-		const storedPath = join(
-			rawEventsDir,
-			"date=2026-04-08",
-			"service=api",
-			"events.ndjson",
-		);
-		expect(readFileSync(storedPath, "utf8")).toContain('"event_id":"evt-ok"');
-		expect(readFileSync(storedPath, "utf8")).not.toContain(
-			'"event_id":"evt-bad"',
-		);
-	});
+    const storedPath = join(rawEventsDir, "date=2026-04-08", "service=api", "events.ndjson");
+    expect(readFileSync(storedPath, "utf8")).toContain('"event_id":"evt-ok"');
+    expect(readFileSync(storedPath, "utf8")).not.toContain('"event_id":"evt-bad"');
+  });
 
-	test("flushes stale requests as incomplete rollups", async () => {
-		tempDir = mkdtempSync(join(tmpdir(), "wide-events-collector-timeout-"));
-		const rawEventsDir = join(tempDir, "raw");
-		const rollupDir = join(tempDir, "rollup");
-		let now = new Date("2026-04-08T14:00:00.000Z");
-		const app = createApp({
-			rawEventStore: new FileRawEventStore(rawEventsDir),
-			rollupStore: new FileRollupStore(rollupDir),
-			activeRequests: new InMemoryActiveRequestAggregator({
-				incompleteGraceMs: 50,
-				now: () => now,
-			}),
-		});
+  test("flushes stale requests as incomplete rollups", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "wide-events-collector-timeout-"));
+    const rawEventsDir = join(tempDir, "raw");
+    const rollupDir = join(tempDir, "rollup");
+    let now = new Date("2026-04-08T14:00:00.000Z");
+    const app = createApp({
+      rawEventStore: new FileRawEventStore(rawEventsDir),
+      rollupStore: new FileRollupStore(rollupDir),
+      activeRequests: new InMemoryActiveRequestAggregator({
+        incompleteGraceMs: 50,
+        now: () => now,
+      }),
+    });
 
-		const response = await app.fetch(
-			new Request("http://collector.local/v1/events", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-				},
-				body: JSON.stringify({
-					sent_at: "2026-04-08T14:00:00.000Z",
-					source: { service: "api" },
-					events: [
-						{
-							event_id: "evt-open",
-							request_id: "req-open",
-							is_request_root: true,
-							service: "api",
-							kind: "request.received",
-							ts: "2026-04-08T14:00:00.000Z",
-							data: {
-								request: { method: "GET", path: "/changes" },
-							},
-						},
-					],
-				}),
-			}),
-		);
-		expect(response.status).toBe(202);
+    const response = await app.fetch(
+      new Request("http://collector.local/v1/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sent_at: "2026-04-08T14:00:00.000Z",
+          source: { service: "api" },
+          events: [
+            {
+              event_id: "evt-open",
+              request_id: "req-open",
+              is_request_root: true,
+              service: "api",
+              kind: "request.received",
+              ts: "2026-04-08T14:00:00.000Z",
+              data: {
+                request: { method: "GET", path: "/changes" },
+              },
+            },
+          ],
+        }),
+      }),
+    );
+    expect(response.status).toBe(202);
 
-		now = new Date("2026-04-08T14:00:00.200Z");
-		const flushed = await app.flushExpired(now);
-		expect(flushed).toBe(1);
+    now = new Date("2026-04-08T14:00:00.200Z");
+    const flushed = await app.flushExpired(now);
+    expect(flushed).toBe(1);
 
-		const rollupPath = join(
-			rollupDir,
-			"date=2026-04-08",
-			"hour=14",
-			"rollups.ndjson",
-		);
-		expect(readFileSync(rollupPath, "utf8")).toContain(
-			'"request_state":"incomplete"',
-		);
-		expect(readFileSync(rollupPath, "utf8")).toContain(
-			'"rollup_reason":"timeout"',
-		);
-	});
+    const rollupPath = join(rollupDir, "date=2026-04-08", "hour=14", "rollups.ndjson");
+    expect(readFileSync(rollupPath, "utf8")).toContain('"request_state":"incomplete"');
+    expect(readFileSync(rollupPath, "utf8")).toContain('"rollup_reason":"timeout"');
+  });
 
-	test("exposes daemon memory and run history endpoints", async () => {
-		const { app } = createFixtureApp({
-			daemonQuery: {
-				async getMemory() {
-					return {
-						version: 3,
-						daemonContractVersion: 1,
-						daemon: "docs-command-surface",
-						scopeRoot: "/repo",
-						repoRoot: "/repo",
-						repoId: "Bind/red",
-						commit: "abc123",
-						baseCommit: null,
-						updatedAt: "2026-04-24T22:00:00.000Z",
-						tracked: {
-							readme_surface: {
-								subject: "readme_surface",
-								fingerprint: "fp",
-								fact: { command: "just verify" },
-								depends_on: ["README.md"],
-								checked_at: "2026-04-24T22:00:00.000Z",
-								source_run_id: "run_1",
-							},
-						},
-						lastRun: {
-							summary: "checked",
-							findings: [],
-							checkedFiles: [],
-							fileInventory: [],
-						},
-					};
-				},
-				async listRuns() {
-					return [
-						{
-							runId: "run_1",
-							daemon: "docs-command-surface",
-							commit: "abc123",
-							provider: "openrouter",
-							startedAt: "2026-04-24T22:00:00.000Z",
-							finishedAt: "2026-04-24T22:00:05.000Z",
-							status: "failed" as const,
-							turns: 18,
-							tokens: { input: 10, output: 5 },
-							reason: "wallclock_exceeded" as const,
-							message: "exceeded max wallclock (180000ms)",
-						},
-					];
-				},
-				async getRun() {
-					return {
-						version: 2,
-						daemon: "docs-command-surface",
-						repoId: "Bind/red",
-						repoRoot: "/repo",
-						scopeRoot: "/repo",
-						file: "/repo/docs-command-surface.daemon.md",
-						runId: "run_1",
-						provider: "openrouter",
-						systemPrompt: "Rendered system prompt",
-						input: null,
-						commit: "abc123",
-						startedAt: "2026-04-24T22:00:00.000Z",
-						finishedAt: "2026-04-24T22:00:05.000Z",
-						status: "failed" as const,
-						turns: 18,
-						tokens: { input: 10, output: 5 },
-						failure: {
-							reason: "wallclock_exceeded" as const,
-							message: "exceeded max wallclock (180000ms)",
-						},
-						events: [],
-					};
-				},
-			},
-		});
+  test("exposes daemon memory and run history endpoints", async () => {
+    const { app } = createFixtureApp({
+      daemonQuery: {
+        async getMemory() {
+          return {
+            version: 3,
+            daemonContractVersion: 1,
+            daemon: "docs-command-surface",
+            scopeRoot: "/repo",
+            repoRoot: "/repo",
+            repoId: "Bind/red",
+            commit: "abc123",
+            baseCommit: null,
+            updatedAt: "2026-04-24T22:00:00.000Z",
+            tracked: {
+              readme_surface: {
+                subject: "readme_surface",
+                fingerprint: "fp",
+                fact: { command: "just verify" },
+                depends_on: ["README.md"],
+                checked_at: "2026-04-24T22:00:00.000Z",
+                source_run_id: "run_1",
+              },
+            },
+            lastRun: {
+              summary: "checked",
+              findings: [],
+              checkedFiles: [],
+              fileInventory: [],
+            },
+          };
+        },
+        async listRuns() {
+          return [
+            {
+              runId: "run_1",
+              daemon: "docs-command-surface",
+              commit: "abc123",
+              provider: "openrouter",
+              startedAt: "2026-04-24T22:00:00.000Z",
+              finishedAt: "2026-04-24T22:00:05.000Z",
+              status: "failed" as const,
+              turns: 18,
+              tokens: { input: 10, output: 5 },
+              reason: "wallclock_exceeded" as const,
+              message: "exceeded max wallclock (180000ms)",
+            },
+          ];
+        },
+        async getRun() {
+          return {
+            version: 2,
+            daemon: "docs-command-surface",
+            repoId: "Bind/red",
+            repoRoot: "/repo",
+            scopeRoot: "/repo",
+            file: "/repo/docs-command-surface.daemon.md",
+            runId: "run_1",
+            provider: "openrouter",
+            systemPrompt: "Rendered system prompt",
+            input: null,
+            commit: "abc123",
+            startedAt: "2026-04-24T22:00:00.000Z",
+            finishedAt: "2026-04-24T22:00:05.000Z",
+            status: "failed" as const,
+            turns: 18,
+            tokens: { input: 10, output: 5 },
+            failure: {
+              reason: "wallclock_exceeded" as const,
+              message: "exceeded max wallclock (180000ms)",
+            },
+            events: [],
+          };
+        },
+      },
+    });
 
-		const memoryResponse = await app.fetch(
-			new Request("http://collector.local/v1/daemons/docs-command-surface/memory"),
-		);
-		expect(memoryResponse.status).toBe(200);
-		expect((await memoryResponse.json()) as { daemon: string }).toMatchObject({
-			daemon: "docs-command-surface",
-		});
+    const memoryResponse = await app.fetch(
+      new Request("http://collector.local/v1/daemons/docs-command-surface/memory"),
+    );
+    expect(memoryResponse.status).toBe(200);
+    expect((await memoryResponse.json()) as { daemon: string }).toMatchObject({
+      daemon: "docs-command-surface",
+    });
 
-		const runsResponse = await app.fetch(
-			new Request("http://collector.local/v1/daemons/docs-command-surface/runs"),
-		);
-		expect(runsResponse.status).toBe(200);
-		expect((await runsResponse.json()) as { count: number }).toMatchObject({
-			count: 1,
-		});
+    const runsResponse = await app.fetch(
+      new Request("http://collector.local/v1/daemons/docs-command-surface/runs"),
+    );
+    expect(runsResponse.status).toBe(200);
+    expect((await runsResponse.json()) as { count: number }).toMatchObject({
+      count: 1,
+    });
 
-		const runResponse = await app.fetch(
-			new Request("http://collector.local/v1/daemons/docs-command-surface/runs/run_1"),
-		);
-		expect(runResponse.status).toBe(200);
-		expect((await runResponse.json()) as { runId: string }).toMatchObject({
-			runId: "run_1",
-		});
+    const runResponse = await app.fetch(
+      new Request("http://collector.local/v1/daemons/docs-command-surface/runs/run_1"),
+    );
+    expect(runResponse.status).toBe(200);
+    expect((await runResponse.json()) as { runId: string }).toMatchObject({
+      runId: "run_1",
+    });
 
-		const debugResponse = await app.fetch(
-			new Request("http://collector.local/v1/daemons/docs-command-surface/debug"),
-		);
-		expect(debugResponse.status).toBe(200);
-		expect(await debugResponse.text()).toContain("Daemon Debug: docs-command-surface");
-	});
+    const debugResponse = await app.fetch(
+      new Request("http://collector.local/v1/daemons/docs-command-surface/debug"),
+    );
+    expect(debugResponse.status).toBe(200);
+    expect(await debugResponse.text()).toContain("Daemon Debug: docs-command-surface");
+  });
 });

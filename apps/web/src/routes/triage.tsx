@@ -1,14 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { type ComponentProps, useCallback, useEffect, useMemo, useState } from "react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -31,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -47,10 +39,10 @@ import {
   type LogEntry,
   type LogQueryResult,
   type LogSummary,
+  subscribeToLogStream,
+  subscribeToRollupStream,
   type TriageRunSummary,
   type WideRollup,
-  subscribeToRollupStream,
-  subscribeToLogStream,
 } from "@/lib/api";
 
 const REQUEST_POLL_INTERVAL_MS = 2000;
@@ -63,6 +55,7 @@ type LogLevelFilter = "all" | "info" | "warning" | "error" | "debug";
 type LogWindowFilter = "15m" | "1h" | "6h" | "24h";
 type StatusClassFilter = "all" | "2xx" | "3xx" | "4xx" | "5xx";
 type LogTab = "requests" | "logs";
+type BadgeVariant = NonNullable<ComponentProps<typeof Badge>["variant"]>;
 
 function formatAgo(iso: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
@@ -85,7 +78,7 @@ function minuteLabel(value: string): string {
 }
 
 function outcomeBadge(rollup: WideRollup) {
-  const variant =
+  const variant: BadgeVariant =
     rollup.final_outcome === "error"
       ? "destructive"
       : rollup.final_outcome === "ok"
@@ -97,7 +90,7 @@ function outcomeBadge(rollup: WideRollup) {
       : rollup.final_outcome === "ok"
         ? "ok"
         : "…";
-  return <Badge variant={variant as any}>{label}</Badge>;
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 function relatedServices(rollup: WideRollup): string[] {
@@ -124,13 +117,13 @@ function isHealthNoise(rollup: WideRollup) {
 }
 
 function triageStatusBadge(status: TriageRunSummary["status"]) {
-  const tone =
+  const tone: BadgeVariant =
     status === "proposal_ready"
       ? "secondary"
       : status === "failed" || status === "rejected"
         ? "destructive"
         : "outline";
-  return <Badge variant={tone as any}>{status}</Badge>;
+  return <Badge variant={tone}>{status}</Badge>;
 }
 
 function levelBadge(level: string) {
@@ -163,7 +156,10 @@ function deriveSummaryFromEntries(entries: LogEntry[]): LogSummary {
   const levelCounts = new Map<string, number>();
   const statusCounts = new Map<string, number>();
   const statusClassCounts = new Map<string, number>();
-  const timeline = new Map<string, { minute: string; total: number; errors: number; status5xx: number }>();
+  const timeline = new Map<
+    string,
+    { minute: string; total: number; errors: number; status5xx: number }
+  >();
 
   for (const entry of entries) {
     serviceCounts.set(entry.service, (serviceCounts.get(entry.service) ?? 0) + 1);
@@ -254,6 +250,13 @@ function RequestsTab({
     for (const run of runs ?? []) map.set(run.rollup.request_id, run);
     return map;
   }, [runs]);
+  const loadingKeys = [
+    "rollup-skeleton-1",
+    "rollup-skeleton-2",
+    "rollup-skeleton-3",
+    "rollup-skeleton-4",
+    "rollup-skeleton-5",
+  ];
   const [animatedRollupFeed] = useAutoAnimate<HTMLDivElement>({
     duration: 220,
     easing: "ease-out",
@@ -267,7 +270,7 @@ function RequestsTab({
     [selectedRequestId, visibleRollups],
   );
   const selectedTriage = selectedRollup
-    ? triageByRequestId.get(selectedRollup.request_id) ?? null
+    ? (triageByRequestId.get(selectedRollup.request_id) ?? null)
     : null;
 
   useEffect(() => {
@@ -275,7 +278,10 @@ function RequestsTab({
       if (selectedRequestId !== null) setSelectedRequestId(null);
       return;
     }
-    if (selectedRequestId === null || !visibleRollups.some((rollup) => rollup.request_id === selectedRequestId)) {
+    if (
+      selectedRequestId === null ||
+      !visibleRollups.some((rollup) => rollup.request_id === selectedRequestId)
+    ) {
       setSelectedRequestId(visibleRollups[0].request_id);
     }
   }, [selectedRequestId, setSelectedRequestId, visibleRollups]);
@@ -293,8 +299,8 @@ function RequestsTab({
         <CardContent>
           {rollups === null && loading ? (
             <div className="flex flex-col gap-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 w-full" />
+              {loadingKeys.map((key) => (
+                <Skeleton key={key} className="h-24 w-full" />
               ))}
             </div>
           ) : visibleRollups.length === 0 ? (
@@ -307,11 +313,7 @@ function RequestsTab({
                   const selected = selectedRequestId === r.request_id;
                   const summary = serviceSummary(r);
                   return (
-                    <div
-                      key={r.request_id}
-                      data-request-id={r.request_id}
-                      className="relative"
-                    >
+                    <div key={r.request_id} data-request-id={r.request_id} className="relative">
                       <button
                         type="button"
                         onClick={() => setSelectedRequestId(r.request_id)}
@@ -324,7 +326,10 @@ function RequestsTab({
                         <div className="flex items-start justify-between gap-4">
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-xs text-muted-foreground" title={r.rolled_up_at}>
+                              <span
+                                className="font-mono text-xs text-muted-foreground"
+                                title={r.rolled_up_at}
+                              >
                                 {formatAgo(r.rolled_up_at)}
                               </span>
                               {selected ? <Badge variant="secondary">pinned</Badge> : null}
@@ -334,13 +339,17 @@ function RequestsTab({
                             <div className="space-y-1">
                               <div className="font-mono text-sm">{summary.primary}</div>
                               {summary.secondary ? (
-                                <div className="text-xs text-muted-foreground">{summary.secondary}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {summary.secondary}
+                                </div>
                               ) : null}
                             </div>
                             <div className="font-mono text-sm">{r.route_names[0] ?? "—"}</div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <div className="font-mono text-sm tabular-nums">{r.total_duration_ms}ms</div>
+                            <div className="font-mono text-sm tabular-nums">
+                              {r.total_duration_ms}ms
+                            </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               {r.event_count} events · {r.error_count} errors
                             </div>
@@ -372,15 +381,21 @@ function RequestsTab({
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
                           <div className="text-xs text-muted-foreground">route</div>
-                          <div className="mt-1 font-mono text-sm">{selectedRollup.route_names[0] ?? "—"}</div>
+                          <div className="mt-1 font-mono text-sm">
+                            {selectedRollup.route_names[0] ?? "—"}
+                          </div>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
                           <div className="text-xs text-muted-foreground">rolled up</div>
-                          <div className="mt-1 font-mono text-sm">{formatClock(selectedRollup.rolled_up_at)}</div>
+                          <div className="mt-1 font-mono text-sm">
+                            {formatClock(selectedRollup.rolled_up_at)}
+                          </div>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
                           <div className="text-xs text-muted-foreground">duration</div>
-                          <div className="mt-1 font-mono text-sm">{selectedRollup.total_duration_ms}ms</div>
+                          <div className="mt-1 font-mono text-sm">
+                            {selectedRollup.total_duration_ms}ms
+                          </div>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
                           <div className="text-xs text-muted-foreground">outcome</div>
@@ -456,10 +471,10 @@ function RequestsTab({
                     <TableCell>{triageStatusBadge(run.status)}</TableCell>
                     <TableCell className="font-mono">{run.rollup.entry_service}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {run.plan?.hypothesis
-                        ?? run.error
-                        ?? (run.rollup.primary_error as { message?: string })?.message
-                        ?? "—"}
+                      {run.plan?.hypothesis ??
+                        run.error ??
+                        (run.rollup.primary_error as { message?: string })?.message ??
+                        "—"}
                     </TableCell>
                     <TableCell title={run.updated_at}>{formatAgo(run.updated_at)}</TableCell>
                   </TableRow>
@@ -483,7 +498,9 @@ function LogRow({ entry }: { entry: LogEntry }) {
       <TableCell>{levelBadge(entry.level)}</TableCell>
       <TableCell>{statusBadge(entry.status)}</TableCell>
       <TableCell className="font-mono text-xs">{entry.method ?? "—"}</TableCell>
-      <TableCell className="font-mono text-xs text-muted-foreground">{entry.path ?? entry.logger}</TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">
+        {entry.path ?? entry.logger}
+      </TableCell>
       <TableCell className="max-w-[28rem]">
         <div className="space-y-1">
           <div className="text-sm">{entry.message}</div>
@@ -544,8 +561,11 @@ function LiveLogPane({
             {entries.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">no lines yet.</div>
             ) : (
-              entries.map((entry, index) => (
-                <div key={`${entry.timestamp}-${entry.service}-${index}`} className="space-y-2 px-4 py-3">
+              entries.map((entry) => (
+                <div
+                  key={`${entry.timestamp}-${entry.service}-${entry.requestId ?? entry.message}`}
+                  className="space-y-2 px-4 py-3"
+                >
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                     <span className="font-mono">{formatClock(entry.timestamp)}</span>
                     {levelBadge(entry.level)}
@@ -613,6 +633,16 @@ function LogsTab({
   const totalErrors = topCount(logs?.summary.levelCounts ?? [], "error");
   const total5xx = topCount(logs?.summary.statusClassCounts ?? [], "5xx");
   const total4xx = topCount(logs?.summary.statusClassCounts ?? [], "4xx");
+  const logLoadingKeys = [
+    "log-skeleton-1",
+    "log-skeleton-2",
+    "log-skeleton-3",
+    "log-skeleton-4",
+    "log-skeleton-5",
+    "log-skeleton-6",
+    "log-skeleton-7",
+    "log-skeleton-8",
+  ];
   const knownServices = ["all", ...(logs?.summary.serviceCounts.map((entry) => entry.value) ?? [])];
   const livePanes = useMemo(() => {
     if (!logs) return [];
@@ -654,8 +684,8 @@ function LogsTab({
               Follow failures across the stack
             </h2>
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Query Loki across services, narrow to Hono request logs when needed, and break status codes
-              out fast enough to spot 5xx spikes before you dig into a single line.
+              Query Loki across services, narrow to Hono request logs when needed, and break status
+              codes out fast enough to spot 5xx spikes before you dig into a single line.
             </p>
           </div>
         </div>
@@ -689,7 +719,10 @@ function LogsTab({
                 <SelectItem value="debug">debug</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={statusClass} onValueChange={(value) => setStatusClass(value as StatusClassFilter)}>
+            <Select
+              value={statusClass}
+              onValueChange={(value) => setStatusClass(value as StatusClassFilter)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="status class" />
               </SelectTrigger>
@@ -842,10 +875,20 @@ function LogsTab({
             {logs === null ? (
               <Skeleton className="h-56 w-full" />
             ) : (
-              <ChartContainer className="h-56 w-full" config={{ count: { label: "Count", color: "#e85450" } }}>
+              <ChartContainer
+                className="h-56 w-full"
+                config={{ count: { label: "Count", color: "#e85450" } }}
+              >
                 <BarChart data={topServices}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="value" tick={{ fontSize: 11 }} interval={0} angle={-18} textAnchor="end" height={44} />
+                  <XAxis
+                    dataKey="value"
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-18}
+                    textAnchor="end"
+                    height={44}
+                  />
                   <YAxis allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="count" fill="var(--color-count)" radius={[6, 6, 0, 0]} />
@@ -863,7 +906,10 @@ function LogsTab({
             {logs === null ? (
               <Skeleton className="h-56 w-full" />
             ) : (
-              <ChartContainer className="h-56 w-full" config={{ count: { label: "Count", color: "#fbfbfb" } }}>
+              <ChartContainer
+                className="h-56 w-full"
+                config={{ count: { label: "Count", color: "#fbfbfb" } }}
+              >
                 <BarChart data={topStatuses}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="value" />
@@ -882,7 +928,8 @@ function LogsTab({
           <div className="space-y-1">
             <CardTitle>Live service panes</CardTitle>
             <p className="text-sm text-muted-foreground">
-              One shared SSE stream, split by service in the browser. Live lines stay buffered for the session instead of dropping after the first small page.
+              One shared SSE stream, split by service in the browser. Live lines stay buffered for
+              the session instead of dropping after the first small page.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -927,8 +974,8 @@ function LogsTab({
         <CardContent>
           {logs === null ? (
             <div className="flex flex-col gap-2">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <Skeleton key={index} className="h-12 w-full" />
+              {logLoadingKeys.map((key) => (
+                <Skeleton key={key} className="h-12 w-full" />
               ))}
             </div>
           ) : logs.entries.length === 0 ? (
@@ -948,8 +995,11 @@ function LogsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.entries.map((entry, index) => (
-                  <LogRow key={`${entry.timestamp}-${entry.service}-${index}`} entry={entry} />
+                {logs.entries.map((entry) => (
+                  <LogRow
+                    key={`${entry.timestamp}-${entry.service}-${entry.requestId ?? entry.message}`}
+                    entry={entry}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -969,7 +1019,8 @@ function LogsTab({
                   full-screen live tail
                 </DialogTitle>
                 <DialogDescription>
-                  Streaming over SSE and grouped by service. This view keeps the full in-session buffer instead of truncating at a small result cap.
+                  Streaming over SSE and grouped by service. This view keeps the full in-session
+                  buffer instead of truncating at a small result cap.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex-1 overflow-hidden p-6">
@@ -1078,7 +1129,9 @@ export function TriagePage() {
   useEffect(() => {
     if (activeTab !== "requests") return;
     const refreshRuns = async () => {
-      const { runs: nextRuns } = await fetchTriageRuns().catch(() => ({ runs: [] as TriageRunSummary[] }));
+      const { runs: nextRuns } = await fetchTriageRuns().catch(() => ({
+        runs: [] as TriageRunSummary[],
+      }));
       setRuns(nextRuns);
     };
     void refreshRuns();
@@ -1110,11 +1163,13 @@ export function TriagePage() {
         if (seen.has(key)) return;
         seen.add(key);
         setStreamEntries((current) => {
-          const exists = current.some((item) =>
-            item.timestamp === entry.timestamp
-            && item.service === entry.service
-            && item.logger === entry.logger
-            && (item.requestId ?? item.path ?? item.message) === (entry.requestId ?? entry.path ?? entry.message)
+          const exists = current.some(
+            (item) =>
+              item.timestamp === entry.timestamp &&
+              item.service === entry.service &&
+              item.logger === entry.logger &&
+              (item.requestId ?? item.path ?? item.message) ===
+                (entry.requestId ?? entry.path ?? entry.message),
           );
           if (exists) return current;
           return [entry, ...current].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -1206,7 +1261,11 @@ export function TriagePage() {
         </Alert>
       )}
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LogTab)} className="gap-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as LogTab)}
+        className="gap-6"
+      >
         <TabsList variant="line">
           <TabsTrigger value="requests">Requests</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>

@@ -1,73 +1,83 @@
-import { buildHealth, statusHttpCode } from "@red/health";
-import { loadDaemons, type DaemonMemoryRecord, type DaemonRunIndexEntry, type DaemonRunRecord } from "@red/daemons";
 import { stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { Hono, createHttpLogger } from "@red/server";
-import { streamSSE } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import {
+  type DaemonMemoryRecord,
+  type DaemonRunIndexEntry,
+  type DaemonRunRecord,
+  loadDaemons,
+} from "@red/daemons";
+import { buildHealth, statusHttpCode } from "@red/health";
+import { createHttpLogger, Hono } from "@red/server";
+import type { Context } from "hono";
+import { streamSSE } from "hono/streaming";
 import { stringify as stringifySuperjson } from "superjson";
+import { z } from "zod";
 import type { WideCollectorBatchResponse } from "./collector-contract";
 import {
-	acceptCollectorBatch,
-	type CollectorDependencies,
-	flushExpiredCollectorRequests,
+  acceptCollectorBatch,
+  type CollectorDependencies,
+  flushExpiredCollectorRequests,
 } from "./collector-service";
 
 export interface CollectorApp extends Hono {
-	flushExpired(now?: Date): Promise<number>;
+  flushExpired(now?: Date): Promise<number>;
 }
 
 async function findGitRoot(startDir: string): Promise<string> {
-	let current = resolve(startDir);
-	while (true) {
-		try {
-			await stat(join(current, ".git"));
-			return current;
-		} catch {
-			const parent = dirname(current);
-			if (parent === current) return resolve(startDir);
-			current = parent;
-		}
-	}
+  let current = resolve(startDir);
+  while (true) {
+    try {
+      await stat(join(current, ".git"));
+      return current;
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(startDir);
+      current = parent;
+    }
+  }
 }
 
-function superjsonResponse(c: any, payload: unknown, status: number = 200): Response {
-	return c.body(stringifySuperjson(payload), status as 200 | 201 | 207 | 400 | 401 | 403 | 404 | 500 | 501, {
-		"content-type": "application/json; charset=utf-8",
-	});
+function superjsonResponse(c: Context, payload: unknown, status: number = 200): Response {
+  return c.body(
+    stringifySuperjson(payload),
+    status as 200 | 201 | 207 | 400 | 401 | 403 | 404 | 500 | 501,
+    {
+      "content-type": "application/json; charset=utf-8",
+    },
+  );
 }
 
 function escapeHtml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function renderDaemonDebugPage(
-	daemon: string,
-	memory: DaemonMemoryRecord | null,
-	runs: DaemonRunIndexEntry[],
-	latestRun: DaemonRunRecord | null,
+  daemon: string,
+  memory: DaemonMemoryRecord | null,
+  runs: DaemonRunIndexEntry[],
+  latestRun: DaemonRunRecord | null,
 ): string {
-	const trackedRows = Object.values(memory?.tracked ?? {})
-		.map((entry) => entry as DaemonMemoryRecord["tracked"][string])
-		.slice(0, 25)
-		.map(
-			(entry) =>
-				`<tr><td><code>${escapeHtml(entry.subject)}</code></td><td>${escapeHtml(entry.depends_on.join(", "))}</td><td>${escapeHtml(entry.checked_at)}</td></tr>`,
-		)
-		.join("");
-	const runRows = runs
-		.map(
-			(run) =>
-				`<tr><td><a href="/v1/daemons/${encodeURIComponent(daemon)}/runs/${encodeURIComponent(run.runId)}">${escapeHtml(run.runId)}</a></td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.startedAt)}</td><td>${escapeHtml(run.finishedAt)}</td><td>${escapeHtml(run.summary ?? run.reason ?? "—")}</td></tr>`,
-		)
-		.join("");
+  const trackedRows = Object.values(memory?.tracked ?? {})
+    .map((entry) => entry as DaemonMemoryRecord["tracked"][string])
+    .slice(0, 25)
+    .map(
+      (entry) =>
+        `<tr><td><code>${escapeHtml(entry.subject)}</code></td><td>${escapeHtml(entry.depends_on.join(", "))}</td><td>${escapeHtml(entry.checked_at)}</td></tr>`,
+    )
+    .join("");
+  const runRows = runs
+    .map(
+      (run) =>
+        `<tr><td><a href="/v1/daemons/${encodeURIComponent(daemon)}/runs/${encodeURIComponent(run.runId)}">${escapeHtml(run.runId)}</a></td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.startedAt)}</td><td>${escapeHtml(run.finishedAt)}</td><td>${escapeHtml(run.summary ?? run.reason ?? "—")}</td></tr>`,
+    )
+    .join("");
 
-	return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -91,314 +101,298 @@ function renderDaemonDebugPage(
     <section>
       <h2>Latest Memory</h2>
       ${
-				memory
-					? `<p>commit: <code>${escapeHtml(memory.commit ?? "unknown")}</code></p>
+        memory
+          ? `<p>commit: <code>${escapeHtml(memory.commit ?? "unknown")}</code></p>
          <p>updated: <code>${escapeHtml(memory.updatedAt)}</code></p>
          <p>summary: ${escapeHtml(memory.lastRun.summary)}</p>
          <p>checked files: ${memory.lastRun.checkedFiles.length} · tracked subjects: ${Object.keys(memory.tracked).length}</p>`
-					: `<p class="muted">No daemon memory found yet.</p>`
-			}
+          : `<p class="muted">No daemon memory found yet.</p>`
+      }
       ${
-				trackedRows
-					? `<table><thead><tr><th>Subject</th><th>Depends On</th><th>Checked At</th></tr></thead><tbody>${trackedRows}</tbody></table>`
-					: ""
-			}
+        trackedRows
+          ? `<table><thead><tr><th>Subject</th><th>Depends On</th><th>Checked At</th></tr></thead><tbody>${trackedRows}</tbody></table>`
+          : ""
+      }
     </section>
     <section>
       <h2>Recent Runs</h2>
       ${
-				runRows
-					? `<table><thead><tr><th>Run</th><th>Status</th><th>Started</th><th>Finished</th><th>Result</th></tr></thead><tbody>${runRows}</tbody></table>`
-					: `<p class="muted">No persisted runs found yet.</p>`
-			}
+        runRows
+          ? `<table><thead><tr><th>Run</th><th>Status</th><th>Started</th><th>Finished</th><th>Result</th></tr></thead><tbody>${runRows}</tbody></table>`
+          : `<p class="muted">No persisted runs found yet.</p>`
+      }
     </section>
     <section>
       <h2>Latest Kickoff Prompt</h2>
       ${
-				latestRun
-					? `<p>run: <code>${escapeHtml(latestRun.runId)}</code></p>
+        latestRun
+          ? `<p>run: <code>${escapeHtml(latestRun.runId)}</code></p>
          <p class="muted">System prompt rendered by the runner, plus the initial input passed to the provider.</p>
          <h3>System Prompt</h3>
          <pre>${escapeHtml(latestRun.systemPrompt ?? "(not recorded for this run)")}</pre>
          <h3>Initial Input</h3>
          <pre>${escapeHtml(latestRun.input ?? "(none)")}</pre>`
-					: `<p class="muted">No persisted run found yet.</p>`
-			}
+          : `<p class="muted">No persisted run found yet.</p>`
+      }
     </section>
   </body>
 </html>`;
 }
 
 export function createApp(deps: CollectorDependencies) {
-	const query = deps.rollupQuery;
+  const query = deps.rollupQuery;
 
-	const app = new Hono()
-		.use("*", createHttpLogger({ service: "obs", app: "red" }))
-		.get("/health", (c) => {
-			const health = buildHealth({ service: "obs" });
-			return c.json(health, statusHttpCode(health.status));
-		})
-		.get(
-			"/v1/rollups",
-			zValidator(
-				"query",
-				z.object({
-					service: z.string().optional(),
-					outcome: z.string().optional(),
-					since: z.string().optional(),
-					limit: z.string().optional(),
-				}),
-			),
-			async (c) => {
-		if (!query) {
-			return c.json({ error: "rollup query engine not configured" }, 501);
-		}
-		const service = c.req.query("service") ?? undefined;
-		const outcomeRaw = c.req.query("outcome");
-		const outcome =
-			outcomeRaw === "ok" || outcomeRaw === "error" || outcomeRaw === "unknown"
-				? outcomeRaw
-				: undefined;
-		const sinceRaw = c.req.query("since");
-		const since =
-			sinceRaw && !Number.isNaN(Date.parse(sinceRaw))
-				? new Date(sinceRaw)
-				: undefined;
-		const limitRaw = c.req.query("limit");
-		const limit = limitRaw
-			? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500)
-			: 100;
-		const records = await query.listRollups({
-			service,
-			outcome,
-			since,
-			limit,
-		});
-		return superjsonResponse(c, { rollups: records, count: records.length });
-		},
-	)
+  const app = new Hono()
+    .use("*", createHttpLogger({ service: "obs", app: "red" }))
+    .get("/health", (c) => {
+      const health = buildHealth({ service: "obs" });
+      return c.json(health, statusHttpCode(health.status));
+    })
+    .get(
+      "/v1/rollups",
+      zValidator(
+        "query",
+        z.object({
+          service: z.string().optional(),
+          outcome: z.string().optional(),
+          since: z.string().optional(),
+          limit: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        if (!query) {
+          return c.json({ error: "rollup query engine not configured" }, 501);
+        }
+        const service = c.req.query("service") ?? undefined;
+        const outcomeRaw = c.req.query("outcome");
+        const outcome =
+          outcomeRaw === "ok" || outcomeRaw === "error" || outcomeRaw === "unknown"
+            ? outcomeRaw
+            : undefined;
+        const sinceRaw = c.req.query("since");
+        const since =
+          sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw) : undefined;
+        const limitRaw = c.req.query("limit");
+        const limit = limitRaw ? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500) : 100;
+        const records = await query.listRollups({
+          service,
+          outcome,
+          since,
+          limit,
+        });
+        return superjsonResponse(c, { rollups: records, count: records.length });
+      },
+    )
 
-		.get(
-			"/v1/rollups/stream",
-			zValidator(
-				"query",
-				z.object({
-					service: z.string().optional(),
-					outcome: z.string().optional(),
-				}),
-			),
-			(c) => {
-		if (!query) {
-			return c.json({ error: "rollup query engine not configured" }, 501);
-		}
-		const service = c.req.query("service") ?? undefined;
-		const lastEventId = c.req.header("last-event-id") ?? undefined;
-		const outcomeRaw = c.req.query("outcome");
-		const outcome =
-			outcomeRaw === "ok" || outcomeRaw === "error" || outcomeRaw === "unknown"
-				? outcomeRaw
-				: undefined;
-		return streamSSE(c, async (stream) => {
-			let closed = false;
-			const seen = new Set<string>();
-			let heartbeat: ReturnType<typeof setInterval> | null = null;
-			stream.onAbort(() => {
-				closed = true;
-			});
+    .get(
+      "/v1/rollups/stream",
+      zValidator(
+        "query",
+        z.object({
+          service: z.string().optional(),
+          outcome: z.string().optional(),
+        }),
+      ),
+      (c) => {
+        if (!query) {
+          return c.json({ error: "rollup query engine not configured" }, 501);
+        }
+        const service = c.req.query("service") ?? undefined;
+        const lastEventId = c.req.header("last-event-id") ?? undefined;
+        const outcomeRaw = c.req.query("outcome");
+        const outcome =
+          outcomeRaw === "ok" || outcomeRaw === "error" || outcomeRaw === "unknown"
+            ? outcomeRaw
+            : undefined;
+        return streamSSE(c, async (stream) => {
+          let closed = false;
+          const seen = new Set<string>();
+          let heartbeat: ReturnType<typeof setInterval> | null = null;
+          stream.onAbort(() => {
+            closed = true;
+          });
 
-			const initial = lastEventId
-				? deps.rollupBroadcaster?.replay({
-						afterId: lastEventId,
-						service,
-						outcome,
-						limit: 100,
-					}) ?? []
-				: (await query.listRollups({ service, outcome, limit: 100 })).map((rollup) => ({
-						id: `${rollup.rolled_up_at}:${rollup.request_id}`,
-						rollup,
-					}));
-			for (const event of [...initial].sort((a, b) => a.id.localeCompare(b.id))) {
-				seen.add(event.id);
-				await stream.writeSSE({
-					event: "rollup",
-					id: event.id,
-					data: stringifySuperjson(event.rollup),
-					retry: 1_000,
-				});
-			}
+          const initial = lastEventId
+            ? (deps.rollupBroadcaster?.replay({
+                afterId: lastEventId,
+                service,
+                outcome,
+                limit: 100,
+              }) ?? [])
+            : (await query.listRollups({ service, outcome, limit: 100 })).map((rollup) => ({
+                id: `${rollup.rolled_up_at}:${rollup.request_id}`,
+                rollup,
+              }));
+          for (const event of [...initial].sort((a, b) => a.id.localeCompare(b.id))) {
+            seen.add(event.id);
+            await stream.writeSSE({
+              event: "rollup",
+              id: event.id,
+              data: stringifySuperjson(event.rollup),
+              retry: 1_000,
+            });
+          }
 
-			if (!deps.rollupBroadcaster) {
-				return;
-			}
+          if (!deps.rollupBroadcaster) {
+            return;
+          }
 
-			const unsubscribe = deps.rollupBroadcaster.subscribe(async (event) => {
-				if (closed || seen.has(event.id)) return;
-				if (service && event.rollup.entry_service !== service) return;
-				if (outcome && event.rollup.final_outcome !== outcome) return;
-				seen.add(event.id);
-				await stream.writeSSE({
-					event: "rollup",
-					id: event.id,
-					data: stringifySuperjson(event.rollup),
-					retry: 1_000,
-				});
-			});
-			heartbeat = setInterval(() => {
-				if (closed) return;
-				void stream.writeSSE({
-					event: "ping",
-					data: new Date().toISOString(),
-				});
-			}, 15_000);
+          const unsubscribe = deps.rollupBroadcaster.subscribe(async (event) => {
+            if (closed || seen.has(event.id)) return;
+            if (service && event.rollup.entry_service !== service) return;
+            if (outcome && event.rollup.final_outcome !== outcome) return;
+            seen.add(event.id);
+            await stream.writeSSE({
+              event: "rollup",
+              id: event.id,
+              data: stringifySuperjson(event.rollup),
+              retry: 1_000,
+            });
+          });
+          heartbeat = setInterval(() => {
+            if (closed) return;
+            void stream.writeSSE({
+              event: "ping",
+              data: new Date().toISOString(),
+            });
+          }, 15_000);
 
-			try {
-				while (!closed) {
-					await new Promise((resolve) => setTimeout(resolve, 1000));
-				}
-			} finally {
-				if (heartbeat) clearInterval(heartbeat);
-				unsubscribe();
-			}
-		});
-		},
-	)
+          try {
+            while (!closed) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          } finally {
+            if (heartbeat) clearInterval(heartbeat);
+            unsubscribe();
+          }
+        });
+      },
+    )
 
-		.get("/v1/rollups/stats", async (c) => {
-		if (!query?.aggregateRollups) {
-			return c.json({ error: "rollup query engine not configured" }, 501);
-		}
-		const groupByRaw = c.req.query("groupBy") ?? "entry_service";
-		const allowed = [
-			"entry_service",
-			"route",
-			"final_outcome",
-			"error_name",
-		] as const;
-		if (!(allowed as readonly string[]).includes(groupByRaw)) {
-			return c.json(
-				{ error: `groupBy must be one of ${allowed.join(", ")}` },
-				400,
-			);
-		}
-		const sinceRaw = c.req.query("since");
-		const since =
-			sinceRaw && !Number.isNaN(Date.parse(sinceRaw))
-				? new Date(sinceRaw)
-				: undefined;
-		const limitRaw = c.req.query("limit");
-		const limit = limitRaw
-			? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500)
-			: 50;
-		const rows = await query.aggregateRollups({
-			groupBy: groupByRaw as (typeof allowed)[number],
-			since,
-			limit,
-		});
-		return c.json({ rows });
-	})
+    .get("/v1/rollups/stats", async (c) => {
+      if (!query?.aggregateRollups) {
+        return c.json({ error: "rollup query engine not configured" }, 501);
+      }
+      const groupByRaw = c.req.query("groupBy") ?? "entry_service";
+      const allowed = ["entry_service", "route", "final_outcome", "error_name"] as const;
+      if (!(allowed as readonly string[]).includes(groupByRaw)) {
+        return c.json({ error: `groupBy must be one of ${allowed.join(", ")}` }, 400);
+      }
+      const sinceRaw = c.req.query("since");
+      const since =
+        sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw) : undefined;
+      const limitRaw = c.req.query("limit");
+      const limit = limitRaw ? Math.min(Math.max(Number.parseInt(limitRaw, 10), 1), 500) : 50;
+      const rows = await query.aggregateRollups({
+        groupBy: groupByRaw as (typeof allowed)[number],
+        since,
+        limit,
+      });
+      return c.json({ rows });
+    })
 
-		.get("/v1/rollups/:request_id", async (c) => {
-		if (!query) {
-			return c.json({ error: "rollup query engine not configured" }, 501);
-		}
-		const record = await query.getRollup(c.req.param("request_id"));
-		if (!record) return c.json({ error: "not found" }, 404);
-		return superjsonResponse(c, record);
-	})
+    .get("/v1/rollups/:request_id", async (c) => {
+      if (!query) {
+        return c.json({ error: "rollup query engine not configured" }, 501);
+      }
+      const record = await query.getRollup(c.req.param("request_id"));
+      if (!record) return c.json({ error: "not found" }, 404);
+      return superjsonResponse(c, record);
+    })
 
-		.get("/v1/daemons", async (c) => {
-		const root = process.env.REPO_ROOT ?? await findGitRoot(process.cwd());
-		const result = await loadDaemons(root).catch(() => null);
-		if (!result) return c.json({ daemons: [] });
-		return c.json({ daemons: result.specs });
-	})
+    .get("/v1/daemons", async (c) => {
+      const root = process.env.REPO_ROOT ?? (await findGitRoot(process.cwd()));
+      const result = await loadDaemons(root).catch(() => null);
+      if (!result) return c.json({ daemons: [] });
+      return c.json({ daemons: result.specs });
+    })
 
-		.get(
-			"/v1/daemons/:daemon/memory",
-			zValidator("query", z.object({ repo: z.string().optional() })),
-			async (c) => {
-		if (!deps.daemonQuery) {
-			return c.json({ error: "daemon query engine not configured" }, 501);
-		}
-		const daemon = c.req.param("daemon");
-		const repo = c.req.query("repo") ?? undefined;
-		const memory = await deps.daemonQuery.getMemory(daemon, repo).catch(() => null);
-		if (!memory) return c.json({ error: "not found" }, 404);
-		return c.json(memory);
-		},
-	)
+    .get(
+      "/v1/daemons/:daemon/memory",
+      zValidator("query", z.object({ repo: z.string().optional() })),
+      async (c) => {
+        if (!deps.daemonQuery) {
+          return c.json({ error: "daemon query engine not configured" }, 501);
+        }
+        const daemon = c.req.param("daemon");
+        const repo = c.req.query("repo") ?? undefined;
+        const memory = await deps.daemonQuery.getMemory(daemon, repo).catch(() => null);
+        if (!memory) return c.json({ error: "not found" }, 404);
+        return c.json(memory);
+      },
+    )
 
-		.get(
-			"/v1/daemons/:daemon/runs",
-			zValidator("query", z.object({ repo: z.string().optional() })),
-			async (c) => {
-		if (!deps.daemonQuery) {
-			return c.json({ error: "daemon query engine not configured" }, 501);
-		}
-		const daemon = c.req.param("daemon");
-		const repo = c.req.query("repo") ?? undefined;
-		const runs = await deps.daemonQuery.listRuns(daemon, repo).catch(() => null);
-		if (!runs) return c.json({ error: "not found" }, 404);
-		return c.json({ runs, count: runs.length });
-		},
-	)
+    .get(
+      "/v1/daemons/:daemon/runs",
+      zValidator("query", z.object({ repo: z.string().optional() })),
+      async (c) => {
+        if (!deps.daemonQuery) {
+          return c.json({ error: "daemon query engine not configured" }, 501);
+        }
+        const daemon = c.req.param("daemon");
+        const repo = c.req.query("repo") ?? undefined;
+        const runs = await deps.daemonQuery.listRuns(daemon, repo).catch(() => null);
+        if (!runs) return c.json({ error: "not found" }, 404);
+        return c.json({ runs, count: runs.length });
+      },
+    )
 
-		.get("/v1/daemons/:daemon/runs/:run_id", async (c) => {
-		if (!deps.daemonQuery) {
-			return c.json({ error: "daemon query engine not configured" }, 501);
-		}
-		const daemon = c.req.param("daemon");
-		const repo = c.req.query("repo") ?? undefined;
-		const run = await deps.daemonQuery
-			.getRun(daemon, c.req.param("run_id"), repo)
-			.catch(() => null);
-		if (!run) return c.json({ error: "not found" }, 404);
-		return c.json(run);
-	})
+    .get("/v1/daemons/:daemon/runs/:run_id", async (c) => {
+      if (!deps.daemonQuery) {
+        return c.json({ error: "daemon query engine not configured" }, 501);
+      }
+      const daemon = c.req.param("daemon");
+      const repo = c.req.query("repo") ?? undefined;
+      const run = await deps.daemonQuery
+        .getRun(daemon, c.req.param("run_id"), repo)
+        .catch(() => null);
+      if (!run) return c.json({ error: "not found" }, 404);
+      return c.json(run);
+    })
 
-		.get("/v1/daemons/:daemon/debug", async (c) => {
-		if (!deps.daemonQuery) {
-			return c.html("<p>daemon query engine not configured</p>", 501);
-		}
-		const daemon = c.req.param("daemon");
-		const [memory, runs] = await Promise.all([
-			deps.daemonQuery.getMemory(daemon).catch(() => null),
-			deps.daemonQuery.listRuns(daemon).catch(() => []),
-		]);
-		const latestRun = runs[0]
-			? await deps.daemonQuery.getRun(daemon, runs[0].runId).catch(() => null)
-			: null;
-		return c.html(renderDaemonDebugPage(daemon, memory, runs, latestRun));
-	})
+    .get("/v1/daemons/:daemon/debug", async (c) => {
+      if (!deps.daemonQuery) {
+        return c.html("<p>daemon query engine not configured</p>", 501);
+      }
+      const daemon = c.req.param("daemon");
+      const [memory, runs] = await Promise.all([
+        deps.daemonQuery.getMemory(daemon).catch(() => null),
+        deps.daemonQuery.listRuns(daemon).catch(() => []),
+      ]);
+      const latestRun = runs[0]
+        ? await deps.daemonQuery.getRun(daemon, runs[0].runId).catch(() => null)
+        : null;
+      return c.html(renderDaemonDebugPage(daemon, memory, runs, latestRun));
+    })
 
-		.post("/v1/events", async (c) => {
-		const payload = await c.req.json().catch(() => null);
-		if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-			return c.json(
-				{
-					accepted: 0,
-					rejected: 0,
-					request_ids: [],
-					errors: [
-						{
-							event_id: "batch",
-							reason: "request body must be a JSON object",
-						},
-					],
-				} satisfies WideCollectorBatchResponse,
-				400,
-			);
-		}
+    .post("/v1/events", async (c) => {
+      const payload = await c.req.json().catch(() => null);
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return c.json(
+          {
+            accepted: 0,
+            rejected: 0,
+            request_ids: [],
+            errors: [
+              {
+                event_id: "batch",
+                reason: "request body must be a JSON object",
+              },
+            ],
+          } satisfies WideCollectorBatchResponse,
+          400,
+        );
+      }
 
-		const result = await acceptCollectorBatch(payload, deps);
-		return c.json(result.body, result.status as 202 | 207 | 400);
-	});
+      const result = await acceptCollectorBatch(payload, deps);
+      return c.json(result.body, result.status as 202 | 207 | 400);
+    });
 
-	return Object.assign(app, {
-		flushExpired(now?: Date) {
-			return flushExpiredCollectorRequests(deps, now);
-		},
-	});
+  return Object.assign(app, {
+    flushExpired(now?: Date) {
+      return flushExpiredCollectorRequests(deps, now);
+    },
+  });
 }
 
 export type AppRouter = ReturnType<typeof createApp>;

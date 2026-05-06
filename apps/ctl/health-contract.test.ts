@@ -1,5 +1,5 @@
 import { describeHealthContract } from "@red/health";
-import { createApp, type AppConfig } from "./index";
+import { type AppConfig, createApp } from "./index";
 
 const testConfig: AppConfig = {
   port: 0,

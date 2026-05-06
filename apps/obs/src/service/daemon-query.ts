@@ -1,10 +1,10 @@
 import {
-  listDaemonRuns,
-  loadDaemonRun,
-  loadLatestMemoryRecord,
   type DaemonMemoryRecord,
   type DaemonRunIndexEntry,
   type DaemonRunRecord,
+  listDaemonRuns,
+  loadDaemonRun,
+  loadLatestMemoryRecord,
 } from "@red/daemons";
 
 export interface DaemonObservabilityQuery {
@@ -29,13 +29,13 @@ function canonicalRepoId(repoId?: string): string | undefined {
 export function createDaemonObservabilityQuery(): DaemonObservabilityQuery {
   const scopeRoot = process.cwd();
   return {
-    async getMemory(daemonName, repoId) {
+    getMemory(daemonName, repoId) {
       return loadLatestMemoryRecord(daemonName, scopeRoot, undefined, canonicalRepoId(repoId));
     },
-    async listRuns(daemonName, repoId) {
+    listRuns(daemonName, repoId) {
       return listDaemonRuns(daemonName, scopeRoot, undefined, canonicalRepoId(repoId));
     },
-    async getRun(daemonName, runId, repoId) {
+    getRun(daemonName, runId, repoId) {
       return loadDaemonRun(daemonName, scopeRoot, runId, undefined, canonicalRepoId(repoId));
     },
   };

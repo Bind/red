@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
+import { type FormEvent, useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,15 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  type AuthMeResponse,
   completeOnboarding,
   enrollTotp,
   fetchPasskeyAuthenticateOptions,
   fetchPasskeyRegisterOptions,
+  type TotpEnrollment,
   verifyPasskeyAuthentication,
   verifyPasskeyRegistration,
   verifyTotp,
-  type AuthMeResponse,
-  type TotpEnrollment,
 } from "@/lib/api";
 import { getAuthLifecycleState, useAuthSession } from "@/lib/auth";
 import {
@@ -24,8 +24,6 @@ import {
   serializeAuthenticationCredential,
   serializeRegistrationCredential,
 } from "@/lib/webauthn";
-
-const WEB_CLIENT_ID = "red-web";
 
 function parseApiMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
@@ -243,6 +241,12 @@ function TotpEnrollmentCard({ onComplete }: { onComplete: () => Promise<void> })
           </Button>
         </form>
       )}
+      {status !== "idle" && message ? (
+        <Alert variant={status === "error" ? "destructive" : "default"}>
+          <AlertTitle>{status === "error" ? "TOTP setup failed" : "TOTP setup"}</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }
@@ -272,8 +276,13 @@ function SeedInstructions({ me }: { me: AuthMeResponse }) {
 }
 
 export function AuthEnrollPage() {
-  const { me, status: sessionStatus, refreshSession, startLoginAttempt, peekMagicLink } =
-    useAuthSession();
+  const {
+    me,
+    status: sessionStatus,
+    refreshSession,
+    startLoginAttempt,
+    peekMagicLink,
+  } = useAuthSession();
   const [email, setEmail] = useState("douglasjbinder@gmail.com");
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -304,8 +313,8 @@ export function AuthEnrollPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Auth Enrollment</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Use this local page to bootstrap a passkey and YubiKey TOTP account, then copy the auth
-          DB rows into a seed script.
+          Use this local page to bootstrap a passkey and YubiKey TOTP account, then copy the auth DB
+          rows into a seed script.
         </p>
       </div>
 

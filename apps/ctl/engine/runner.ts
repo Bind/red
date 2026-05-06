@@ -1,22 +1,21 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { homedir } from "node:os";
 
 export interface RepoTaskRequest {
-  repo: string;       // "owner/repo"
-  baseRef: string;    // base branch to diff against
-  headRef: string;    // branch or SHA to checkout
-  prompt: string;     // agent instructions
+  repo: string; // "owner/repo"
+  baseRef: string; // base branch to diff against
+  headRef: string; // branch or SHA to checkout
+  prompt: string; // agent instructions
   timeoutMs?: number;
   onLog?: (line: string) => void;
 }
 
 export interface RepoTaskResult {
   ok: boolean;
-  output: unknown;    // parsed JSON from /output/result.json
+  output: unknown; // parsed JSON from /output/result.json
   durationMs: number;
-  logs: string;       // stderr
+  logs: string; // stderr
 }
 
 export interface RepoTaskRunnerConfig {
@@ -42,12 +41,19 @@ export class RepoTaskRunner {
 
     try {
       const args = [
-        "docker", "run", "--rm",
-        "-v", `${tmpDir}:/output`,
-        "-e", `REPO_URL=${repoUrl}`,
-        "-e", `BASE_REF=${request.baseRef}`,
-        "-e", `HEAD_REF=${request.headRef}`,
-        "-e", `TASK_PROMPT=${request.prompt}`,
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        `${tmpDir}:/output`,
+        "-e",
+        `REPO_URL=${repoUrl}`,
+        "-e",
+        `BASE_REF=${request.baseRef}`,
+        "-e",
+        `HEAD_REF=${request.headRef}`,
+        "-e",
+        `TASK_PROMPT=${request.prompt}`,
       ];
 
       if (this.config.openaiApiKey) {
@@ -79,7 +85,7 @@ export class RepoTaskRunner {
           if (done) break;
           partial += decoder.decode(value, { stream: true });
           const lines = partial.split("\n");
-          partial = lines.pop()!; // keep incomplete last line
+          partial = lines.pop() ?? ""; // keep incomplete last line
           for (const line of lines) {
             stderrLines.push(line);
             request.onLog?.(line);
@@ -107,7 +113,12 @@ export class RepoTaskRunner {
         const raw = await readFile(join(tmpDir, "result.json"), "utf-8");
         output = JSON.parse(raw);
       } catch {
-        return { ok: false, output: null, durationMs, logs: `No valid result.json. ${stderr.slice(0, 1000)}` };
+        return {
+          ok: false,
+          output: null,
+          durationMs,
+          logs: `No valid result.json. ${stderr.slice(0, 1000)}`,
+        };
       }
 
       return { ok: true, output, durationMs, logs: stderr };

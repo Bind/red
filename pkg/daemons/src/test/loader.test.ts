@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadDaemons, resolveDaemon } from "../loader";
@@ -42,9 +42,7 @@ describe("loadDaemons", () => {
       description: "does foo",
       review: {
         max_turns: 7,
-        routing_categories: [
-          { name: "infra-ops", description: "infra operator files" },
-        ],
+        routing_categories: [{ name: "infra-ops", description: "infra operator files" }],
       },
     });
     const { specs, errors } = await loadDaemons(dir);

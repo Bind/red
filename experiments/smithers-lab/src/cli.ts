@@ -11,4 +11,4 @@ const result = await runResearchBrief(config, {
   audience: "engineering",
 });
 
-console.log(JSON.stringify(result, null, 2));
+process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

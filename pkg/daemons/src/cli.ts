@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 import { relative } from "node:path";
+import { stdin as input, stdout as output } from "node:process";
+import { createInterface } from "node:readline/promises";
 import { defaultCodexAuthPath, loginAndStoreCodexAuth } from "./auth";
 import { loadDaemons, resolveDaemon } from "./loader";
 import { runDaemon } from "./runner";
@@ -82,9 +82,7 @@ async function authCommand(args: ParsedArgs): Promise<number> {
     await loginAndStoreCodexAuth({
       authPath,
       onAuth(info) {
-        process.stderr.write(
-          `\nOpen this URL in your browser to authorize:\n  ${info.url}\n`,
-        );
+        process.stderr.write(`\nOpen this URL in your browser to authorize:\n  ${info.url}\n`);
         if (info.instructions) {
           process.stderr.write(`\n${info.instructions}\n`);
         }
@@ -117,7 +115,7 @@ async function listCommand(args: ParsedArgs): Promise<number> {
 }
 
 async function showCommand(args: ParsedArgs): Promise<number> {
-  const spec = await resolveDaemon(args.name!, args.root);
+  const spec = await resolveDaemon(requireName(args), args.root);
   process.stdout.write(
     [
       `name:        ${spec.name}`,
@@ -134,7 +132,7 @@ async function showCommand(args: ParsedArgs): Promise<number> {
 }
 
 async function runCommand(args: ParsedArgs): Promise<number> {
-  const result = await runDaemon(args.name!, {
+  const result = await runDaemon(requireName(args), {
     root: args.root,
     input: args.input,
     maxTurns: args.maxTurns,
@@ -149,13 +147,11 @@ async function runCommand(args: ParsedArgs): Promise<number> {
     return 0;
   }
 
-  process.stderr.write(
-    `\ndaemon ${result.daemon} FAILED: ${result.reason} — ${result.message}\n`,
-  );
+  process.stderr.write(`\ndaemon ${result.daemon} FAILED: ${result.reason} — ${result.message}\n`);
   return 1;
 }
 
-async function main(): Promise<number> {
+function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
   switch (args.command) {
     case "auth":
@@ -169,9 +165,14 @@ async function main(): Promise<number> {
   }
 }
 
+function requireName(args: ParsedArgs): string {
+  if (!args.name) usage();
+  return args.name;
+}
+
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.stderr.write(`${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
     process.exit(1);
   });

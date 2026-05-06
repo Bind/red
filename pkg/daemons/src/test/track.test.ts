@@ -27,13 +27,17 @@ describe("track tool", () => {
       fact: { commands: ["just up"] },
       depends_on: [],
     });
-    expect((recordResult.details as { entry: { subject: string } }).entry.subject).toBe("README.md");
+    expect((recordResult.details as { entry: { subject: string } }).entry.subject).toBe(
+      "README.md",
+    );
 
     const lookupResult = await tool.execute("call_2", {
       action: "lookup",
       subject: "README.md",
     });
-    const lookupEntries = (lookupResult.details as { entries: Array<{ subject: string; depends_on: string[] }> }).entries;
+    const lookupEntries = (
+      lookupResult.details as { entries: Array<{ subject: string; depends_on: string[] }> }
+    ).entries;
     expect(lookupEntries).toHaveLength(1);
     expect(lookupEntries[0]?.subject).toBe("README.md");
     expect(lookupEntries[0]?.depends_on).toEqual([]);

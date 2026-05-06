@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router";
 import QRCode from "qrcode";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -15,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -24,6 +24,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  type AuthMeResponse,
+  type Branch,
+  type Change,
   completeOnboarding,
   createRepo,
   enrollTotp,
@@ -32,17 +35,14 @@ import {
   fetchPasskeyRegisterOptions,
   fetchRepos,
   fetchReviewQueue,
-  verifyPasskeyAuthentication,
-  verifyPasskeyRegistration,
-  verifyTotp,
-  type AuthMeResponse,
-  type Branch,
-  type Change,
   type LoginAttempt,
   type MagicLinkPreview,
   type RepoSummary,
   type RepoVisibility,
   type TotpEnrollment,
+  verifyPasskeyAuthentication,
+  verifyPasskeyRegistration,
+  verifyTotp,
 } from "@/lib/api";
 import { getAuthLifecycleState, useAuthSession } from "@/lib/auth";
 import {
@@ -117,7 +117,11 @@ function PasskeyEnrollmentCard({ onComplete }: { onComplete: () => Promise<void>
   const [message, setMessage] = useState<string | null>(null);
 
   const handleEnroll = async () => {
-    if (!window.PublicKeyCredential || !navigator.credentials?.create || !navigator.credentials?.get) {
+    if (
+      !window.PublicKeyCredential ||
+      !navigator.credentials?.create ||
+      !navigator.credentials?.get
+    ) {
       setStatus("error");
       setMessage("This browser does not support passkey enrollment.");
       return;
@@ -135,10 +139,7 @@ function PasskeyEnrollmentCard({ onComplete }: { onComplete: () => Promise<void>
         throw new Error("Passkey creation was cancelled.");
       }
 
-      await verifyPasskeyRegistration(
-        serializeRegistrationCredential(registration),
-        "red passkey",
-      );
+      await verifyPasskeyRegistration(serializeRegistrationCredential(registration), "red passkey");
 
       setMessage("Confirming the new passkey.");
       const authenticateOptions = await fetchPasskeyAuthenticateOptions();
@@ -266,7 +267,8 @@ function TotpEnrollmentCard({ onComplete }: { onComplete: () => Promise<void> })
         <form className="space-y-4" onSubmit={handleVerify}>
           <div className="space-y-2 rounded-md border border-border/60 bg-background/60 p-4">
             <p className="text-sm text-muted-foreground">
-              Add this secret or `otpauth` URI to your authenticator app, then enter the current code.
+              Add this secret or `otpauth` URI to your authenticator app, then enter the current
+              code.
             </p>
             {qrCodeUrl && (
               <div className="rounded-md border border-border/60 bg-background/70 p-3">
@@ -535,7 +537,8 @@ function AuthGate({
                     {mailboxPreview ? (
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">
-                          Latest generated magic link for <span className="font-mono">{mailboxPreview.email}</span>
+                          Latest generated magic link for{" "}
+                          <span className="font-mono">{mailboxPreview.email}</span>
                         </p>
                         <div className="rounded-md border border-border/60 bg-background/70 p-3">
                           <a
@@ -569,8 +572,8 @@ function AuthGate({
                 )}
                 {lifecycle === "error" && (
                   <p>
-                    The session could not be loaded. Automatic retries are still running, or you
-                    can request a new magic link.
+                    The session could not be loaded. Automatic retries are still running, or you can
+                    request a new magic link.
                   </p>
                 )}
                 {lifecycle === "loading" && <p>Loading the current user session.</p>}
@@ -695,7 +698,10 @@ function RepoCreateCard({
           </div>
           <div className="space-y-2">
             <Label htmlFor="repo-visibility">Visibility</Label>
-            <Select value={visibility} onValueChange={(value) => setVisibility(value as RepoVisibility)}>
+            <Select
+              value={visibility}
+              onValueChange={(value) => setVisibility(value as RepoVisibility)}
+            >
               <SelectTrigger id="repo-visibility" className="w-full">
                 <SelectValue placeholder="Visibility" />
               </SelectTrigger>
@@ -822,11 +828,7 @@ function RepoCatalogCard({
   );
 }
 
-function DashboardContent({
-  me,
-}: {
-  me: AuthMeResponse;
-}) {
+function DashboardContent({ me }: { me: AuthMeResponse }) {
   const [queue, setQueue] = useState<Change[] | null>(null);
   const [queueError, setQueueError] = useState(false);
   const [repos, setRepos] = useState<RepoSummary[] | null>(null);
@@ -861,7 +863,9 @@ function DashboardContent({
           }
         }),
       );
-      setBranches(Object.fromEntries(entries.filter(([, repoBranches]) => repoBranches.length > 0)));
+      setBranches(
+        Object.fromEntries(entries.filter(([, repoBranches]) => repoBranches.length > 0)),
+      );
       setReposError(false);
       setBranchesError(false);
     } catch {
@@ -896,8 +900,8 @@ function DashboardContent({
             </div>
             <CardTitle className="text-2xl">Authenticated dashboard</CardTitle>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Create repos, refresh the catalog, and keep the review queue in view while the
-              auth flow remains in sync with the session cookie.
+              Create repos, refresh the catalog, and keep the review queue in view while the auth
+              flow remains in sync with the session cookie.
             </p>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -938,7 +942,9 @@ function DashboardContent({
       ) : (
         Object.entries(
           queue.reduce<Record<string, Change[]>>((acc, change) => {
-            (acc[change.repo] ??= []).push(change);
+            const repoChanges = acc[change.repo] ?? [];
+            repoChanges.push(change);
+            acc[change.repo] = repoChanges;
             return acc;
           }, {}),
         ).map(([repo, changes]) => (

@@ -1,8 +1,8 @@
+import { PatchDiff } from "@pierre/diffs/react";
+import type { GitStatusEntry } from "@pierre/trees";
+import { FileTree } from "@pierre/trees/react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { PatchDiff } from "@pierre/diffs/react";
-import { FileTree } from "@pierre/trees/react";
-import type { GitStatusEntry } from "@pierre/trees";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,7 +84,8 @@ function parseDiffFiles(diff: string): { files: string[]; gitStatus: GitStatusEn
 
     let status: GitStatusEntry["status"] = "modified";
     if (/^new file mode/m.test(chunk) || /^--- \/dev\/null/m.test(chunk)) status = "added";
-    else if (/^deleted file mode/m.test(chunk) || /^\+\+\+ \/dev\/null/m.test(chunk)) status = "deleted";
+    else if (/^deleted file mode/m.test(chunk) || /^\+\+\+ \/dev\/null/m.test(chunk))
+      status = "deleted";
     gitStatus.push({ path, status });
   }
 
@@ -168,7 +169,10 @@ export function HostedRepoCommitPage() {
           <Badge variant="outline" className="font-mono">
             {sha.slice(0, 12)}
           </Badge>
-          <Link className="text-sm text-muted-foreground underline-offset-4 hover:underline" to={`/${repoId}`}>
+          <Link
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            to={`/${repoId}`}
+          >
             Back to repo
           </Link>
         </div>
@@ -219,21 +223,20 @@ export function HostedRepoCommitPage() {
                 </div>
               </div>
               <div className="min-w-0 flex-1 space-y-4">
-                {patches.map((patch, index) => (
-                  <div
-                    key={`${sha}-${index}`}
-                    data-diff-file={files[index]}
-                    className={
-                      `overflow-hidden rounded-xl border bg-card/40 transition-colors ${
-                        files[index] === selectedFile
-                          ? "border-primary/60"
-                          : "border-border/60"
-                      }`
-                    }
-                  >
-                    <PatchDiff patch={patch} options={diffOptions} />
-                  </div>
-                ))}
+                {patches.map((patch, index) => {
+                  const filePath = files[index] ?? `${sha}:${patch.slice(0, 32)}`;
+                  return (
+                    <div
+                      key={filePath}
+                      data-diff-file={filePath}
+                      className={`overflow-hidden rounded-xl border bg-card/40 transition-colors ${
+                        filePath === selectedFile ? "border-primary/60" : "border-border/60"
+                      }`}
+                    >
+                      <PatchDiff patch={patch} options={diffOptions} />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : (

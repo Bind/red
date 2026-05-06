@@ -1,5 +1,6 @@
-import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
+import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { CommandJournalEvent, CommandNodeMetadata, FileMutation } from "../util/types";
 
@@ -84,7 +85,7 @@ async function withStateLock<T>(statePath: string, run: () => Promise<T>): Promi
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
 function mapToRecord(snapshot: Map<string, FileSnapshotEntry>): Record<string, FileSnapshotEntry> {
@@ -100,7 +101,7 @@ async function scanWorkspace(
   current = root,
 ): Promise<Map<string, FileSnapshotEntry>> {
   const snapshot = new Map<string, FileSnapshotEntry>();
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(current, { withFileTypes: true });
   } catch {

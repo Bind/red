@@ -94,8 +94,7 @@ export interface ClawJobDefinition<TInput, TJson = unknown> {
   build(input: TInput): ClawRepoRunRequest<TJson>;
 }
 
-export interface ManualClawJob<TInput, TJson = unknown>
-  extends ClawJobDefinition<TInput, TJson> {
+export interface ManualClawJob<TInput, TJson = unknown> extends ClawJobDefinition<TInput, TJson> {
   parseCliArgs(args: string[]): TInput;
 }
 
@@ -111,7 +110,7 @@ export interface ClawRunTracker {
       durationMs: number;
       errorType?: string | null;
       errorMessage?: string | null;
-    }
+    },
   ): void;
   getByRunId(runId: string): ClawRunRecord | null;
   listRecent(limit?: number): ClawRunRecord[];
@@ -131,10 +130,7 @@ export interface ClawArtifactStore {
   persistRunArtifacts(
     runId: string,
     inputDir: string,
-    outputDir: string
+    outputDir: string,
   ): Promise<PersistedClawArtifacts>;
-  readTextArtifact(
-    runId: string,
-    kind: "request" | "result" | "events"
-  ): Promise<string | null>;
+  readTextArtifact(runId: string, kind: "request" | "result" | "events"): Promise<string | null>;
 }

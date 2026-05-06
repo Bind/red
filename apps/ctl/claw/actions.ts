@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import type { ClawJobDefinition, ManualClawJob } from "./types";
+import { generateSummaryJob } from "./jobs/generate-summary";
+import { summarizeAndPatchJob } from "./jobs/summarize-and-patch";
 import { summarizeChangeJob } from "./jobs/summarize-change";
 import { writeReviewReportJob } from "./jobs/write-review-report";
-import { summarizeAndPatchJob } from "./jobs/summarize-and-patch";
-import { generateSummaryJob } from "./jobs/generate-summary";
 import { getPromptPath, loadPromptTemplate } from "./prompts";
+import type { ClawJobDefinition, ManualClawJob } from "./types";
 
 export const manualClawActions = [
   summarizeChangeJob,
@@ -13,7 +13,7 @@ export const manualClawActions = [
 ] as const satisfies readonly ManualClawJob<unknown, unknown>[];
 
 export const manualClawActionMap = new Map(
-  manualClawActions.map((job) => [job.name, job as ManualClawJob<unknown, unknown>])
+  manualClawActions.map((job) => [job.name, job as ManualClawJob<unknown, unknown>]),
 );
 
 export const productClawActions = {

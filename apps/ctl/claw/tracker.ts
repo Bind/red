@@ -27,7 +27,11 @@ type ClawRunRow = {
 export class SqliteClawRunTracker implements ClawRunTracker {
   private db: Database;
 
-  constructor(dbPath: string = process.env.CLAW_RUNS_DB_PATH ?? process.env.CODEX_RUNS_DB_PATH ?? ".claw-runs.db") {
+  constructor(
+    dbPath: string = process.env.CLAW_RUNS_DB_PATH ??
+      process.env.CODEX_RUNS_DB_PATH ??
+      ".claw-runs.db",
+  ) {
     this.db = new Database(dbPath);
     this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run("PRAGMA journal_mode = WAL");
@@ -41,7 +45,7 @@ export class SqliteClawRunTracker implements ClawRunTracker {
           run_id, job_name, job_id, change_id, worker_id, repo, head_ref, base_ref,
           image, container_name, container_id, codex_session_id, rollout_path, status, created_at, started_at, finished_at,
           duration_ms, error_type, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.runId,
@@ -63,7 +67,7 @@ export class SqliteClawRunTracker implements ClawRunTracker {
         record.finishedAt,
         record.durationMs,
         record.errorType,
-        record.errorMessage
+        record.errorMessage,
       );
   }
 
@@ -72,7 +76,7 @@ export class SqliteClawRunTracker implements ClawRunTracker {
       .prepare(
         `UPDATE codex_runs
          SET status = 'running', container_id = ?, started_at = ?
-         WHERE run_id = ?`
+         WHERE run_id = ?`,
       )
       .run(containerId, startedAt, runId);
   }
@@ -82,7 +86,7 @@ export class SqliteClawRunTracker implements ClawRunTracker {
       .prepare(
         `UPDATE codex_runs
          SET codex_session_id = ?, rollout_path = ?
-         WHERE run_id = ?`
+         WHERE run_id = ?`,
       )
       .run(codexSessionId, rolloutPath, runId);
   }
@@ -95,13 +99,13 @@ export class SqliteClawRunTracker implements ClawRunTracker {
       durationMs: number;
       errorType?: string | null;
       errorMessage?: string | null;
-    }
+    },
   ): void {
     this.db
       .prepare(
         `UPDATE codex_runs
          SET status = ?, finished_at = ?, duration_ms = ?, error_type = ?, error_message = ?
-         WHERE run_id = ?`
+         WHERE run_id = ?`,
       )
       .run(
         params.status,
@@ -109,7 +113,7 @@ export class SqliteClawRunTracker implements ClawRunTracker {
         params.durationMs,
         params.errorType ?? null,
         params.errorMessage ?? null,
-        runId
+        runId,
       );
   }
 
@@ -122,18 +126,14 @@ export class SqliteClawRunTracker implements ClawRunTracker {
 
   listRecent(limit: number = 20): ClawRunRecord[] {
     const rows = this.db
-      .prepare(
-        "SELECT * FROM codex_runs ORDER BY created_at DESC LIMIT ?"
-      )
+      .prepare("SELECT * FROM codex_runs ORDER BY created_at DESC LIMIT ?")
       .all(limit) as ClawRunRow[];
     return rows.map(mapRow);
   }
 
   listByStatus(status: ClawRunRecord["status"], limit: number = 100): ClawRunRecord[] {
     const rows = this.db
-      .prepare(
-        "SELECT * FROM codex_runs WHERE status = ? ORDER BY created_at DESC LIMIT ?"
-      )
+      .prepare("SELECT * FROM codex_runs WHERE status = ? ORDER BY created_at DESC LIMIT ?")
       .all(status, limit) as ClawRunRow[];
     return rows.map(mapRow);
   }

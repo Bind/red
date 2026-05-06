@@ -1,8 +1,8 @@
-import { describe, test, expect, beforeEach } from "bun:test";
-import { initInMemoryDatabase } from "../db/schema";
-import { ChangeQueries, EventQueries } from "../db/queries";
-import { ChangeStateMachine, InvalidTransitionError } from "./state-machine";
 import type { Database } from "bun:sqlite";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { ChangeQueries, EventQueries } from "../db/queries";
+import { initInMemoryDatabase } from "../db/schema";
+import { ChangeStateMachine, InvalidTransitionError } from "./state-machine";
 
 let db: Database;
 let changes: ChangeQueries;

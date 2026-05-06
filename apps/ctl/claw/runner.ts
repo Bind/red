@@ -1,17 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type {
   ClawArtifactStore,
   ClawOutputFile,
   ClawRepoRunRequest,
   ClawRepoRunResult,
   ClawRunError,
+  ClawRunnerConfig,
   ClawRunRecord,
   PersistedClawArtifacts,
-  ClawRunnerConfig,
 } from "./types";
 
 interface RuntimeRequestManifest {
@@ -35,7 +35,7 @@ export class DockerClawRunner {
   constructor(private config: ClawRunnerConfig) {}
 
   async run<TJson = unknown>(
-    request: ClawRepoRunRequest<TJson>
+    request: ClawRepoRunRequest<TJson>,
   ): Promise<ClawRepoRunResult<TJson>> {
     const timeout = request.timeoutMs ?? this.config.defaultTimeoutMs ?? 120_000;
     const runId = request.metadata.runId ?? randomUUID();
@@ -64,11 +64,7 @@ export class DockerClawRunner {
       setupScript: request.setupScript,
       output: request.output,
     };
-    await writeFile(
-      join(inputDir, "request.json"),
-      JSON.stringify(manifest, null, 2),
-      "utf8"
-    );
+    await writeFile(join(inputDir, "request.json"), JSON.stringify(manifest, null, 2), "utf8");
 
     const createdRecord: ClawRunRecord = {
       runId,
@@ -221,7 +217,7 @@ export class DockerClawRunner {
         this.config.artifactStore,
         runId,
         inputDir,
-        outputDir
+        outputDir,
       );
 
       const rollout = await readRolloutMetadata(outputDir);
@@ -229,7 +225,7 @@ export class DockerClawRunner {
         this.config.tracker?.attachRollout(
           runId,
           rollout.runtimeSessionId,
-          persistedArtifacts?.rolloutPath ?? rollout.rolloutPath
+          persistedArtifacts?.rolloutPath ?? rollout.rolloutPath,
         );
       }
 
@@ -262,7 +258,10 @@ export class DockerClawRunner {
       }
 
       if (exitCode !== 0) {
-        const error = classifyDockerRunFailure(exitCode, stderrLines.length > 0 ? stderrLines : stdoutLines);
+        const error = classifyDockerRunFailure(
+          exitCode,
+          stderrLines.length > 0 ? stderrLines : stdoutLines,
+        );
         this.config.tracker?.finish(runId, {
           status: "failed",
           finishedAt: new Date().toISOString(),
@@ -392,7 +391,7 @@ export class DockerClawRunner {
 
 async function runDockerPreflightChecks(
   image: string,
-  writablePath: string
+  writablePath: string,
 ): Promise<ClawRunError | null> {
   const minTmpFreeBytes = getConfiguredMinTmpFreeBytes();
   if (minTmpFreeBytes > 0) {
@@ -411,14 +410,17 @@ async function runDockerPreflightChecks(
 
   const dockerInfo = await runCommand(["docker", "info"]);
   if (dockerInfo.exitCode !== 0) {
-    return classifyDockerEnvironmentFailure("Docker daemon is unavailable", dockerInfo.stderr || dockerInfo.stdout);
+    return classifyDockerEnvironmentFailure(
+      "Docker daemon is unavailable",
+      dockerInfo.stderr || dockerInfo.stdout,
+    );
   }
 
   const imageInspect = await runCommand(["docker", "image", "inspect", image]);
   if (imageInspect.exitCode !== 0) {
     return classifyDockerEnvironmentFailure(
       `Runner image ${image} is unavailable locally`,
-      imageInspect.stderr || imageInspect.stdout
+      imageInspect.stderr || imageInspect.stdout,
     );
   }
 
@@ -439,7 +441,7 @@ async function runDockerPreflightChecks(
     if (createProbe.exitCode !== 0) {
       return classifyDockerEnvironmentFailure(
         "Docker cannot create runner containers in the current local environment",
-        createProbe.stderr || createProbe.stdout
+        createProbe.stderr || createProbe.stdout,
       );
     }
   } finally {
@@ -449,7 +451,9 @@ async function runDockerPreflightChecks(
   return null;
 }
 
-async function runCommand(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function runCommand(
+  args: string[],
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
@@ -459,7 +463,7 @@ async function runCommand(args: string[]): Promise<{ exitCode: number; stdout: s
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  return { exitCode, stdout, stderr, };
+  return { exitCode, stdout, stderr };
 }
 
 function classifyDockerRunFailure(exitCode: number, lines: string[]): ClawRunError {
@@ -468,7 +472,7 @@ function classifyDockerRunFailure(exitCode: number, lines: string[]): ClawRunErr
   if (exitCode === 125 && isDockerEnvironmentFailure(combinedLogs)) {
     return classifyDockerEnvironmentFailure(
       "Local Docker environment failed before the runner container could start",
-      combinedLogs
+      combinedLogs,
     );
   }
 
@@ -537,7 +541,7 @@ function formatBytes(value: number): string {
 
 async function drainStream(
   stream: ReadableStream<Uint8Array>,
-  onLine: (line: string) => void
+  onLine: (line: string) => void,
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -572,15 +576,15 @@ async function readRolloutMetadata(outputDir: string): Promise<RolloutMetadata |
   }
 }
 
-async function readOpenCodeEventMetadata(outputDir: string): Promise<RolloutMetadata | null> {
+function readOpenCodeEventMetadata(outputDir: string): Promise<RolloutMetadata | null> {
   const eventsPath = join(outputDir, "agent-events.jsonl");
   try {
-    return {
+    return Promise.resolve({
       runtimeSessionId: null,
       rolloutPath: eventsPath,
-    };
+    });
   } catch {
-    return null;
+    return Promise.resolve(null);
   }
 }
 
@@ -596,12 +600,21 @@ async function waitForContainerId(cidFile: string): Promise<string | undefined> 
 }
 
 function buildContainerName(jobName: string, runId: string): string {
-  const safeJobName = jobName.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
-  const shortRunId = runId.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12);
+  const safeJobName = jobName
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const shortRunId = runId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 12);
   return `red-${safeJobName || "job"}-${shortRunId || "run"}`;
 }
 
-async function collectFiles(outputDir: string, requestedPaths: string[]): Promise<ClawOutputFile[]> {
+async function collectFiles(
+  outputDir: string,
+  requestedPaths: string[],
+): Promise<ClawOutputFile[]> {
   const files: ClawOutputFile[] = [];
 
   for (const relativePath of requestedPaths) {
@@ -626,7 +639,7 @@ function asRunError(
     ? T extends { type: infer U }
       ? U
       : never
-    : never
+    : never,
 ) {
   if (
     error &&
@@ -651,11 +664,11 @@ function summarizeLogs(lines: string[], maxLines: number = 12): string {
   return `Last logs: ${nonEmpty.slice(-maxLines).join(" | ")}`;
 }
 
-async function persistArtifacts(
+function persistArtifacts(
   artifactStore: ClawArtifactStore | undefined,
   runId: string,
   inputDir: string,
-  outputDir: string
+  outputDir: string,
 ): Promise<PersistedClawArtifacts | null> {
   if (artifactStore) {
     return artifactStore.persistRunArtifacts(runId, inputDir, outputDir);
@@ -666,9 +679,10 @@ async function persistArtifacts(
 async function persistRunArtifactsLocally(
   runId: string,
   inputDir: string,
-  outputDir: string
+  outputDir: string,
 ): Promise<PersistedClawArtifacts> {
-  const artifactsRoot = process.env.CLAW_ARTIFACTS_DIR ?? process.env.CODEX_ARTIFACTS_DIR ?? ".claw-artifacts";
+  const artifactsRoot =
+    process.env.CLAW_ARTIFACTS_DIR ?? process.env.CODEX_ARTIFACTS_DIR ?? ".claw-artifacts";
   const runDir = join(artifactsRoot, runId);
   await rm(runDir, { recursive: true, force: true }).catch(() => {});
   await mkdir(runDir, { recursive: true });

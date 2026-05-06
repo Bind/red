@@ -1,6 +1,6 @@
-import type { LLMSummary } from "../../types";
 import type { SummaryInput } from "../../engine/summary";
 import { buildSummaryPrompt, validateSummaryOutput } from "../../engine/tasks/summary";
+import type { LLMSummary } from "../../types";
 import type { ClawJobDefinition } from "../types";
 
 export const generateSummaryJob: ClawJobDefinition<SummaryInput, LLMSummary> = {

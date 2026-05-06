@@ -1,15 +1,6 @@
-export type AgentRuntimeStatus =
-  | "created"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type AgentRuntimeStatus = "created" | "running" | "completed" | "failed" | "cancelled";
 
-export type AgentRuntimeEventKind =
-  | "lifecycle"
-  | "message"
-  | "artifact"
-  | "custom";
+export type AgentRuntimeEventKind = "lifecycle" | "message" | "artifact" | "custom";
 
 export interface AgentRuntimeIdentity {
   runId: string;
@@ -87,6 +78,6 @@ export interface AgentRuntimeSession<TJson = unknown> {
 
 export interface AgentRuntime {
   startRun<TJson = unknown>(
-    request: AgentRuntimeRunRequest<TJson>
+    request: AgentRuntimeRunRequest<TJson>,
   ): Promise<AgentRuntimeSession<TJson>>;
 }

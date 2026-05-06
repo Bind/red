@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-import { DockerClawRunner } from "./runner";
-import type { ManualClawJob } from "./types";
-import { SqliteClawRunTracker } from "./tracker";
 import { clawPromptRegistry, manualClawActionMap } from "./actions";
-import { getPromptPath, loadPromptTemplate } from "./prompts";
 import { LocalClawArtifactStore } from "./artifacts";
+import { getPromptPath, loadPromptTemplate } from "./prompts";
+import { DockerClawRunner } from "./runner";
+import { SqliteClawRunTracker } from "./tracker";
+import type { ManualClawJob } from "./types";
 
 const JOBS = manualClawActionMap as Map<string, ManualClawJob<unknown, unknown>>;
 
@@ -21,12 +21,18 @@ Jobs:
   summarize-and-patch --repo owner/repo --head <ref> [--base main]
 `;
 
+function writeStdout(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
+function writeStderr(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 function parseGlobalArgs(argv: string[]) {
   const args = [...argv];
   let image =
-    process.env.OPENCODE_RUNNER_IMAGE ??
-    process.env.CODEX_RUNNER_IMAGE ??
-    "red-claw-runner";
+    process.env.OPENCODE_RUNNER_IMAGE ?? process.env.CODEX_RUNNER_IMAGE ?? "red-claw-runner";
   let gitBaseUrl = process.env.GIT_STORAGE_PUBLIC_URL ?? process.env.GIT_BASE_URL;
   let timeoutMs: number | undefined;
   let limit = 20;
@@ -43,12 +49,12 @@ function parseGlobalArgs(argv: string[]) {
       continue;
     }
     if (args[i] === "--timeout-ms" && args[i + 1]) {
-      timeoutMs = parseInt(args.splice(i, 2)[1], 10);
+      timeoutMs = Number.parseInt(args.splice(i, 2)[1], 10);
       i--;
       continue;
     }
     if (args[i] === "--limit" && args[i + 1]) {
-      limit = parseInt(args.splice(i, 2)[1], 10);
+      limit = Number.parseInt(args.splice(i, 2)[1], 10);
       i--;
     }
   }
@@ -63,51 +69,51 @@ async function main(argv: string[]): Promise<number> {
 
   if (command === "list") {
     for (const job of JOBS.values()) {
-      console.log(`${job.name}\t${job.description}`);
+      writeStdout(`${job.name}\t${job.description}`);
     }
     return 0;
   }
 
   if (command === "prompts") {
     for (const [name, promptName] of Object.entries(clawPromptRegistry)) {
-      console.log(`${name}\t${getPromptPath(promptName)}`);
+      writeStdout(`${name}\t${getPromptPath(promptName)}`);
     }
     return 0;
   }
 
   if (command === "prompt") {
     if (!maybeJobName) {
-      console.error(USAGE);
+      writeStderr(USAGE);
       return 1;
     }
     const promptName = clawPromptRegistry[maybeJobName as keyof typeof clawPromptRegistry];
     if (!promptName) {
-      console.error(`Unknown prompt: ${maybeJobName}`);
+      writeStderr(`Unknown prompt: ${maybeJobName}`);
       return 1;
     }
-    console.log(loadPromptTemplate(promptName));
+    writeStdout(loadPromptTemplate(promptName));
     return 0;
   }
 
   if (command === "runs") {
-    console.log(JSON.stringify(tracker.listRecent(limit), null, 2));
+    writeStdout(JSON.stringify(tracker.listRecent(limit), null, 2));
     return 0;
   }
 
   if (command !== "run" || !maybeJobName) {
-    console.error(USAGE);
+    writeStderr(USAGE);
     return 1;
   }
 
   if (!gitBaseUrl) {
-    console.error("Missing GIT_STORAGE_PUBLIC_URL, GIT_BASE_URL, or --git-base-url");
+    writeStderr("Missing GIT_STORAGE_PUBLIC_URL, GIT_BASE_URL, or --git-base-url");
     return 1;
   }
 
   const job = JOBS.get(maybeJobName);
   if (!job) {
-    console.error(`Unknown job: ${maybeJobName}`);
-    console.error(USAGE);
+    writeStderr(`Unknown job: ${maybeJobName}`);
+    writeStderr(USAGE);
     return 1;
   }
 
@@ -115,7 +121,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     input = job.parseCliArgs(rest);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    writeStderr(error instanceof Error ? error.message : String(error));
     return 1;
   }
 
@@ -141,24 +147,30 @@ async function main(argv: string[]): Promise<number> {
   const result = await runner.run({
     ...request,
     onLog: (line) => {
-      console.error(line);
+      writeStderr(line);
     },
   });
 
   if (!result.ok) {
-    console.error(result.error?.message ?? "Claw job failed");
+    writeStderr(result.error?.message ?? "Claw job failed");
     return 1;
   }
 
-  console.log(JSON.stringify({
-    runId: result.runId,
-    status: result.status,
-    containerName: result.containerName,
-    containerId: result.containerId ?? null,
-    json: result.json ?? null,
-    files: result.files,
-    durationMs: result.durationMs,
-  }, null, 2));
+  writeStdout(
+    JSON.stringify(
+      {
+        runId: result.runId,
+        status: result.status,
+        containerName: result.containerName,
+        containerId: result.containerId ?? null,
+        json: result.json ?? null,
+        files: result.files,
+        durationMs: result.durationMs,
+      },
+      null,
+      2,
+    ),
+  );
   return 0;
 }
 

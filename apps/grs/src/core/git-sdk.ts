@@ -76,9 +76,9 @@ export class GitSdk implements GitStorageAdapter {
 
   constructor(private readonly options: GitSdkOptions) {}
 
-  async getRepo(id: string): Promise<Repo | null> {
+  getRepo(id: string): Promise<Repo | null> {
     const [owner, name] = id.split("/", 2);
-    if (!owner || !name) return null;
+    if (!owner || !name) return Promise.resolve(null);
     return this.getRepoByName(owner, name);
   }
 
@@ -111,12 +111,15 @@ class GitSdkRepo implements Repo {
     };
   }
 
-  async getRemoteUrl(options: RemoteUrlOptions): Promise<RemoteUrlResult> {
+  getRemoteUrl(options: RemoteUrlOptions): Promise<RemoteUrlResult> {
     const repoId = `${this.target.owner}/${this.target.name}`;
     const url = `${this.options.publicUrl.replace(/\/+$/, "")}/${this.target.owner}/${this.target.name}.git`;
     const access = options.access ?? "write";
-    const issuer = this.options.credentialIssuer
-      ?? (this.options.authTokenSecret ? new SharedSecretGitAuth({ tokenSecret: this.options.authTokenSecret }) : null);
+    const issuer =
+      this.options.credentialIssuer ??
+      (this.options.authTokenSecret
+        ? new SharedSecretGitAuth({ tokenSecret: this.options.authTokenSecret })
+        : null);
     const credentials = issuer
       ? issuer.issueRepoCredentials({
           actorId: options.actorId,
@@ -125,15 +128,17 @@ class GitSdkRepo implements Repo {
           ttlSeconds: options.ttlSeconds ?? 3600,
         })
       : undefined;
-    const authenticatedUrl = credentials ? addBasicAuth(url, credentials.username, credentials.password) : url;
-    return {
+    const authenticatedUrl = credentials
+      ? addBasicAuth(url, credentials.username, credentials.password)
+      : url;
+    return Promise.resolve({
       url: authenticatedUrl,
       fetchUrl: authenticatedUrl,
       pushUrl: authenticatedUrl,
       protocol: "smart-http",
       username: credentials?.username,
       password: credentials?.password,
-    };
+    });
   }
 
   async getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult> {
@@ -142,7 +147,9 @@ class GitSdkRepo implements Repo {
       head: range.headRef,
     });
     if (range.includePatch) params.set("patch", "1");
-    const payload = await this.readJson<ComparePayload>(`${this.repoPath()}/compare?${params.toString()}`);
+    const payload = await this.readJson<ComparePayload>(
+      `${this.repoPath()}/compare?${params.toString()}`,
+    );
     const files = payload.files
       .filter((file) => !range.pathPrefix || file.filename.startsWith(range.pathPrefix))
       .map((file) => ({
@@ -166,7 +173,9 @@ class GitSdkRepo implements Repo {
       path: options.path,
       ref: options.ref,
     });
-    const payload = await this.readJson<FilePayload>(`${this.repoPath()}/file?${params.toString()}`);
+    const payload = await this.readJson<FilePayload>(
+      `${this.repoPath()}/file?${params.toString()}`,
+    );
     return payload.content;
   }
 
@@ -185,7 +194,9 @@ class GitSdkRepo implements Repo {
     }));
   }
 
-  async listBranches(): Promise<Array<{ name: string; sha: string; message?: string; timestamp?: string; protected?: boolean }>> {
+  async listBranches(): Promise<
+    Array<{ name: string; sha: string; message?: string; timestamp?: string; protected?: boolean }>
+  > {
     const payload = await this.readJson<BranchPayload[]>(`${this.repoPath()}/branches`);
     return payload.map((branch) => ({
       name: branch.name,
@@ -201,10 +212,16 @@ class GitSdkRepo implements Repo {
   }
 
   private async readJson<T>(path: string): Promise<T> {
-    const url = new URL(path, this.options.controlPlaneBaseUrl ?? this.options.publicUrl).toString();
+    const url = new URL(
+      path,
+      this.options.controlPlaneBaseUrl ?? this.options.publicUrl,
+    ).toString();
     const headers = new Headers();
-    const issuer = this.options.credentialIssuer
-      ?? (this.options.authTokenSecret ? new SharedSecretGitAuth({ tokenSecret: this.options.authTokenSecret }) : null);
+    const issuer =
+      this.options.credentialIssuer ??
+      (this.options.authTokenSecret
+        ? new SharedSecretGitAuth({ tokenSecret: this.options.authTokenSecret })
+        : null);
     const credentials = issuer?.issueRepoCredentials({
       actorId: "git-sdk",
       repoId: `${this.target.owner}/${this.target.name}`,
@@ -212,7 +229,10 @@ class GitSdkRepo implements Repo {
       ttlSeconds: 3600,
     });
     if (credentials) {
-      headers.set("Authorization", `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`);
+      headers.set(
+        "Authorization",
+        `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
+      );
     }
     const response = await fetch(url, { headers });
     if (!response.ok) {

@@ -4,7 +4,7 @@ const readline = require("node:readline");
 
 const rl = readline.createInterface({
   input: process.stdin,
-  crlfDelay: Infinity,
+  crlfDelay: Number.POSITIVE_INFINITY,
 });
 
 rl.on("line", (line) => {
@@ -32,7 +32,9 @@ function parseActivity(line) {
     case "turn.completed":
       return "Turn completed";
     case "session_meta":
-      return event.payload?.id ? `Claw session ${event.payload.id} started` : "Claw session started";
+      return event.payload?.id
+        ? `Claw session ${event.payload.id} started`
+        : "Claw session started";
     case "event_msg":
       return formatEventMessage(event.payload);
     case "response_item":
@@ -63,7 +65,11 @@ function formatEventMessage(payload) {
 function formatResponseItem(payload) {
   if (!payload || typeof payload !== "object") return null;
 
-  if (payload.type === "message" && payload.role === "assistant" && Array.isArray(payload.content)) {
+  if (
+    payload.type === "message" &&
+    payload.role === "assistant" &&
+    Array.isArray(payload.content)
+  ) {
     const text = payload.content
       .map((item) => {
         if (!item || typeof item !== "object") return "";

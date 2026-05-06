@@ -7,20 +7,20 @@ import { z } from "zod";
  * Real tools (list_repos, get_change, etc.) land in follow-up PRs.
  */
 export function registerTools(server: McpServer): void {
-	(server.registerTool as any)(
-		"ping",
-		{
-			title: "Ping",
-			description: "Connectivity probe. Echoes the received `msg` back.",
-			inputSchema: { msg: z.string().default("pong") },
-		},
-		async ({ msg }: { msg: string }) => ({
-			content: [
-				{
-					type: "text",
-					text: `${msg} @ ${new Date().toISOString()}`,
-				},
-			],
-		}),
-	);
+  server.registerTool(
+    "ping",
+    {
+      title: "Ping",
+      description: "Connectivity probe. Echoes the received `msg` back.",
+      inputSchema: { msg: z.string().default("pong") },
+    },
+    async ({ msg }: { msg: string }) => ({
+      content: [
+        {
+          type: "text",
+          text: `${msg} @ ${new Date().toISOString()}`,
+        },
+      ],
+    }),
+  );
 }

@@ -138,7 +138,7 @@ function buildLogql(query: LogQueryInput): string {
 function parseJsonLine(line: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(line);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -152,11 +152,16 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function normalizeEntry(stream: Record<string, string>, timestampNs: string, line: string): LogEntry {
+function normalizeEntry(
+  stream: Record<string, string>,
+  timestampNs: string,
+  line: string,
+): LogEntry {
   const parsed = parseJsonLine(line);
-  const properties = parsed?.properties && typeof parsed.properties === "object"
-    ? parsed.properties as Record<string, unknown>
-    : {};
+  const properties =
+    parsed?.properties && typeof parsed.properties === "object"
+      ? (parsed.properties as Record<string, unknown>)
+      : {};
   const timestamp = Number.parseInt(timestampNs.slice(0, -6) || "0", 10);
   return {
     timestamp: asString(parsed?.timestamp) ?? new Date(timestamp).toISOString(),
@@ -174,7 +179,11 @@ function normalizeEntry(stream: Record<string, string>, timestampNs: string, lin
   };
 }
 
-function buildStreamEvent(stream: Record<string, string>, timestampNs: string, line: string): LogStreamEvent {
+function buildStreamEvent(
+  stream: Record<string, string>,
+  timestampNs: string,
+  line: string,
+): LogStreamEvent {
   const entry = normalizeEntry(stream, timestampNs, line);
   return {
     id: `${timestampNs}:${entry.service}:${entry.logger}:${entry.requestId ?? entry.path ?? entry.message.slice(0, 64)}`,
@@ -243,7 +252,7 @@ function buildSummary(entries: LogEntry[]): LogSummary {
 }
 
 export async function queryLokiLogs(input: LogQueryInput = {}): Promise<LogQueryResult> {
-  const lokiUrl = requireLokiUrl();
+  requireLokiUrl();
   const limit = coerceLimit(input.limit);
   const endMs = Date.now();
   const startMs = endMs - parseWindowToMs(input.window);
@@ -280,7 +289,8 @@ export async function queryLokiLogEvents(
   const lokiUrl = requireLokiUrl();
   const limit = coerceLimit(options.limit ?? input.limit);
   const endNs = options.endNs ?? `${BigInt(Date.now()) * 1000000n}`;
-  const startNs = options.startNs ?? `${BigInt(Date.now() - parseWindowToMs(input.window)) * 1000000n}`;
+  const startNs =
+    options.startNs ?? `${BigInt(Date.now() - parseWindowToMs(input.window)) * 1000000n}`;
   const params = new URLSearchParams({
     query: buildLogql(input),
     start: startNs,
@@ -293,11 +303,13 @@ export async function queryLokiLogEvents(
     throw new Error(`loki query failed: ${response.status}`);
   }
 
-  const payload = await response.json() as LokiQueryRangeResponse;
+  const payload = (await response.json()) as LokiQueryRangeResponse;
   return (payload.data?.result ?? [])
     .flatMap((streamResult) => {
       const stream = streamResult.stream ?? {};
-      return (streamResult.values ?? []).map(([timestampNs, line]) => buildStreamEvent(stream, timestampNs, line));
+      return (streamResult.values ?? []).map(([timestampNs, line]) =>
+        buildStreamEvent(stream, timestampNs, line),
+      );
     })
     .filter((event) => matchesStatusFilter(event.entry, input))
     .sort((a, b) => a.timestampNs.localeCompare(b.timestampNs));

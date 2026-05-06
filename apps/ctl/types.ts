@@ -58,12 +58,7 @@ export interface RepoRecord {
   updated_at: string;
 }
 
-export type PullRequestStatus =
-  | "draft"
-  | "open"
-  | "approved"
-  | "merged"
-  | "closed";
+export type PullRequestStatus = "draft" | "open" | "approved" | "merged" | "closed";
 
 export interface PullRequest {
   id: number;

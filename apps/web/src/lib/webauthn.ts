@@ -85,9 +85,7 @@ export function requestOptionsFromJson(
   };
 }
 
-export function serializeRegistrationCredential(
-  credential: Credential,
-): Record<string, unknown> {
+export function serializeRegistrationCredential(credential: Credential): Record<string, unknown> {
   const publicKeyCredential = credential as PublicKeyCredential;
   const response = publicKeyCredential.response as AuthenticatorAttestationResponse;
 
@@ -109,9 +107,7 @@ export function serializeRegistrationCredential(
   };
 }
 
-export function serializeAuthenticationCredential(
-  credential: Credential,
-): Record<string, unknown> {
+export function serializeAuthenticationCredential(credential: Credential): Record<string, unknown> {
   const publicKeyCredential = credential as PublicKeyCredential;
   const response = publicKeyCredential.response as AuthenticatorAssertionResponse;
 

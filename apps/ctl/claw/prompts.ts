@@ -11,7 +11,7 @@ export function loadPromptTemplate(name: string): string {
 
 export function renderPrompt(
   template: string,
-  values: Record<string, string | number | undefined>
+  values: Record<string, string | number | undefined>,
 ): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
     const value = values[key];

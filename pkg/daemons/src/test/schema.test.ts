@@ -33,9 +33,9 @@ describe("DaemonFrontmatter", () => {
 
   test("rejects empty description and too-long description", () => {
     expect(DaemonFrontmatter.safeParse({ name: "x", description: "" }).success).toBe(false);
-    expect(
-      DaemonFrontmatter.safeParse({ name: "x", description: "a".repeat(201) }).success,
-    ).toBe(false);
+    expect(DaemonFrontmatter.safeParse({ name: "x", description: "a".repeat(201) }).success).toBe(
+      false,
+    );
   });
 
   test("accepts review metadata", () => {

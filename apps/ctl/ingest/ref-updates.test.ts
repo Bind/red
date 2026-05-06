@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, test } from "bun:test";
-import { initInMemoryDatabase } from "../db/schema";
-import { ChangeQueries, DeliveryQueries, EventQueries, JobQueries } from "../db/queries";
-import { ingestRefUpdate } from "./ref-updates";
 import type { Database } from "bun:sqlite";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { ChangeQueries, DeliveryQueries, EventQueries, JobQueries } from "../db/queries";
+import { initInMemoryDatabase } from "../db/schema";
+import { ingestRefUpdate } from "./ref-updates";
 
 let db: Database;
 let changes: ChangeQueries;
@@ -29,7 +29,7 @@ describe("ingestRefUpdate", () => {
         headSha: "abc123",
         createdBy: "human",
         metadata: { commits: 1, sender: "owner", source: "local_api" },
-      }
+      },
     );
 
     expect(result.status).toBe("accepted");
@@ -50,7 +50,7 @@ describe("ingestRefUpdate", () => {
         headSha: "abc123",
         createdBy: "human",
         deliveryId: "dup-1",
-      }
+      },
     );
 
     const result = ingestRefUpdate(
@@ -62,7 +62,7 @@ describe("ingestRefUpdate", () => {
         headSha: "abc123",
         createdBy: "human",
         deliveryId: "dup-1",
-      }
+      },
     );
 
     expect(result).toEqual({ status: "duplicate", delivery_id: "dup-1" });
@@ -78,7 +78,7 @@ describe("ingestRefUpdate", () => {
         headSha: "abc123",
         createdBy: "human",
         deliveryId: "main-1",
-      }
+      },
     );
 
     expect(result).toEqual({

@@ -1,46 +1,38 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { createObsSinkFromEnv, type EventEnvelope, obsMiddleware } from "@red/obs";
+import { configureServerLogging, createHttpLogger, getServerLogger, Hono } from "@red/server";
+import { makeApiRouter } from "./api/router";
 import {
-  Hono,
-  configureServerLogging,
-  createHttpLogger,
-  getServerLogger,
-} from "@red/server";
-import {
-  createObsSinkFromEnv,
-  obsMiddleware,
-  type EventEnvelope,
-} from "@red/obs";
-import { initDatabase } from "./db/schema";
+  ClawArtifactUploader,
+  ClawRunReconciler,
+  DockerClawRunner,
+  getRequiredMinioArtifactStoreConfig,
+  LocalClawArtifactStore,
+  MinioClawArtifactStore,
+  OpenCodeBatchAgentRuntime,
+  SqliteClawRunTracker,
+} from "./claw";
 import {
   ChangeQueries,
+  DeliveryQueries,
   EventQueries,
   JobQueries,
-  DeliveryQueries,
   RepoQueries,
   SessionQueries,
 } from "./db/queries";
+import { initDatabase } from "./db/schema";
+import { EventBus } from "./engine/event-bus";
+import { ScoringEngine } from "./engine/review";
+import { ChangeStateMachine } from "./engine/state-machine";
+import type { SummaryGenerator } from "./engine/summary";
+import { ClawSummaryGenerator, StubSummaryGenerator } from "./engine/summary";
+import { NotificationSender } from "./jobs/notify";
+import { JobWorker } from "./jobs/worker";
 import { GitServerHttpRepositoryProvider } from "./repo/git-server-http-provider";
 import type { RepositoryProvider } from "./repo/repository-provider";
-import { ScoringEngine } from "./engine/review";
-import { StubSummaryGenerator, ClawSummaryGenerator } from "./engine/summary";
-import type { SummaryGenerator } from "./engine/summary";
-import { EventBus } from "./engine/event-bus";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { ChangeStateMachine } from "./engine/state-machine";
-import { JobWorker } from "./jobs/worker";
-import { NotificationSender } from "./jobs/notify";
-import {
-  ClawRunReconciler,
-  ClawArtifactUploader,
-  DockerClawRunner,
-  OpenCodeBatchAgentRuntime,
-  LocalClawArtifactStore,
-  SqliteClawRunTracker,
-  MinioClawArtifactStore,
-  getRequiredMinioArtifactStoreConfig,
-} from "./claw";
-import { makeApiRouter } from "./api/router";
+
 export type { AppRouter } from "./api/router";
 
 export interface AppConfig {
@@ -78,7 +70,7 @@ function loadConfig(): AppConfig {
     .filter(Boolean);
 
   return {
-    port: parseInt(process.env.RED_PORT ?? "3000", 10),
+    port: Number.parseInt(process.env.RED_PORT ?? "3000", 10),
     dbPath: process.env.RED_DB_PATH ?? ".local/state/red.db",
     repoBackend: {
       kind: "git_storage",
@@ -86,13 +78,14 @@ function loadConfig(): AppConfig {
       defaultOwner: process.env.GIT_STORAGE_DEFAULT_OWNER ?? inferDefaultOwner(configuredRepos),
       defaultBranch: process.env.GIT_STORAGE_DEFAULT_BRANCH ?? "main",
       controlPlane: {
-        baseUrl: process.env.GIT_STORAGE_CONTROL_PLANE_URL
-          ?? process.env.GIT_STORAGE_PUBLIC_URL
-          ?? "http://grs:8080",
-        username: process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME
-          ?? process.env.GIT_SERVER_ADMIN_USERNAME,
-        password: process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD
-          ?? process.env.GIT_SERVER_ADMIN_PASSWORD,
+        baseUrl:
+          process.env.GIT_STORAGE_CONTROL_PLANE_URL ??
+          process.env.GIT_STORAGE_PUBLIC_URL ??
+          "http://grs:8080",
+        username:
+          process.env.GIT_STORAGE_CONTROL_PLANE_USERNAME ?? process.env.GIT_SERVER_ADMIN_USERNAME,
+        password:
+          process.env.GIT_STORAGE_CONTROL_PLANE_PASSWORD ?? process.env.GIT_SERVER_ADMIN_PASSWORD,
       },
     },
     repos: configuredRepos,
@@ -158,19 +151,18 @@ export function createApp(config: AppConfig) {
   const scorer = new ScoringEngine();
   const openaiKey = process.env.OPENAI_API_KEY ?? null;
   const clawImage =
-    process.env.OPENCODE_RUNNER_IMAGE ??
-    process.env.CODEX_RUNNER_IMAGE ??
-    "red-claw-runner";
+    process.env.OPENCODE_RUNNER_IMAGE ?? process.env.CODEX_RUNNER_IMAGE ?? "red-claw-runner";
   const hasClawAuth = existsSync(join(homedir(), ".local", "share", "opencode", "auth.json"));
-  const runner = (openaiKey || hasClawAuth)
-    ? new DockerClawRunner({
-        image: clawImage,
-        gitBaseUrl: config.repoBackend.publicUrl,
-        openaiApiKey: openaiKey,
-        tracker: clawTracker,
-        artifactStore: localClawArtifactStore,
-      })
-    : null;
+  const runner =
+    openaiKey || hasClawAuth
+      ? new DockerClawRunner({
+          image: clawImage,
+          gitBaseUrl: config.repoBackend.publicUrl,
+          openaiApiKey: openaiKey,
+          tracker: clawTracker,
+          artifactStore: localClawArtifactStore,
+        })
+      : null;
   const agentRuntime = runner
     ? new OpenCodeBatchAgentRuntime({
         runner,
@@ -233,7 +225,7 @@ export function createApp(config: AppConfig) {
 
 function inferDefaultOwner(repos: string[]): string {
   const first = repos[0];
-  if (!first || !first.includes("/")) return "red";
+  if (!first?.includes("/")) return "red";
   return first.split("/")[0] || "red";
 }
 

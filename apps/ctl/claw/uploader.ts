@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import type { ClawRunTracker } from "./types";
 import { getLocalArtifactRunDir, type MinioClawArtifactStore } from "./artifacts";
+import type { ClawRunTracker } from "./types";
 
 export interface ClawArtifactUploaderDeps {
   tracker: ClawRunTracker;
@@ -25,7 +25,7 @@ export class ClawArtifactUploader {
 
   constructor(
     private readonly deps: ClawArtifactUploaderDeps,
-    config: Partial<ClawArtifactUploaderConfig> = {}
+    config: Partial<ClawArtifactUploaderConfig> = {},
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -59,7 +59,11 @@ export class ClawArtifactUploader {
       if (!(await pathExists(inputDir)) || !(await pathExists(outputDir))) continue;
 
       try {
-        const persisted = await this.deps.remoteStore.persistRunArtifacts(run.runId, inputDir, outputDir);
+        const persisted = await this.deps.remoteStore.persistRunArtifacts(
+          run.runId,
+          inputDir,
+          outputDir,
+        );
         this.deps.tracker.attachRollout(run.runId, run.codexSessionId, persisted.rolloutPath);
       } catch {
         // Keep local artifacts and retry on the next pass.

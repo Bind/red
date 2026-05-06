@@ -37,7 +37,9 @@ export function buildSummaryPrompt(params: SummaryInput): string {
     `The "annotations" array maps each sentence in "what_changed" to the files it describes.`,
     `Each annotation "text" must be an exact sentence from "what_changed".`,
     `"type" categorizes the change: "new_module" for new files/architecture, "refactor" for renames/restructuring, "bugfix" for fixes, "config" for config/infra, "change" for general modifications.`,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -60,7 +62,9 @@ export function validateSummaryOutput(raw: unknown): LLMSummary {
     obj.annotations = (obj.annotations as unknown[]).filter((a): a is SummaryAnnotation => {
       if (typeof a !== "object" || a === null) return false;
       const ann = a as Record<string, unknown>;
-      return typeof ann.text === "string" && Array.isArray(ann.files) && typeof ann.type === "string";
+      return (
+        typeof ann.text === "string" && Array.isArray(ann.files) && typeof ann.type === "string"
+      );
     });
   }
 

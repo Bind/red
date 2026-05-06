@@ -22,12 +22,20 @@ export async function startDevGitServer(): Promise<StartedDevGitServer> {
     "GIT_SERVER_AUTH_TOKEN_SECRET",
   ]);
   await removeComposeServicesBestEffort(composeFile, ["grs", "init"]);
-  await composeUpWithRetry(composeFile, ["s3", "init", "grs"], process.env.GIT_SERVER_BUILD_ON_START === "1");
+  await composeUpWithRetry(
+    composeFile,
+    ["s3", "init", "grs"],
+    process.env.GIT_SERVER_BUILD_ON_START === "1",
+  );
 
   const publicUrl = composeEnv.GIT_SERVER_PUBLIC_URL;
   try {
     await waitForHttpServer(publicUrl);
-    await waitForGitSmartHttpRoute(publicUrl, composeEnv.GIT_SERVER_ADMIN_USERNAME, composeEnv.GIT_SERVER_ADMIN_PASSWORD);
+    await waitForGitSmartHttpRoute(
+      publicUrl,
+      composeEnv.GIT_SERVER_ADMIN_USERNAME,
+      composeEnv.GIT_SERVER_ADMIN_PASSWORD,
+    );
   } catch (error) {
     await runCommand("docker", ["compose", "-f", composeFile, "logs", "--no-color", "grs"]);
     throw error;
@@ -62,7 +70,9 @@ async function composeUpWithRetry(composeFile: string, services: string[], build
       await removeComposeServicesBestEffort(composeFile, ["grs", "init"]);
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("timed out starting git server compose stack");
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("timed out starting git server compose stack");
 }
 
 async function removeComposeServicesBestEffort(composeFile: string, services: string[]) {
@@ -127,7 +137,9 @@ async function waitForGitSmartHttpRoute(baseUrl: string, username: string, passw
 
 async function readComposeEnv(composeFile: string, names: string[]) {
   const { stdout } = await runCommand("docker", ["compose", "-f", composeFile, "config"]);
-  const values = Object.fromEntries(names.map((name) => [name, extractComposeEnv(stdout, name)])) as Record<string, string>;
+  const values = Object.fromEntries(
+    names.map((name) => [name, extractComposeEnv(stdout, name)]),
+  ) as Record<string, string>;
   for (const [name, value] of Object.entries(values)) {
     if (!value) {
       throw new Error(`Missing required compose env: ${name}`);
@@ -158,7 +170,7 @@ export async function runCommand(command: string, args: string[], options: Comma
 
   if (exitCode !== 0) {
     throw new Error(
-      `${command} ${args.join(" ")} failed with exit code ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+      `${command} ${args.join(" ")} failed with exit code ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
     );
   }
 
@@ -187,7 +199,9 @@ export async function runCommandWithRetry(
       await Bun.sleep(250 * (attempt + 1));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(`${command} ${args.join(" ")} failed after retries`);
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`${command} ${args.join(" ")} failed after retries`);
 }
 
 function isTransientCommandError(error: unknown) {

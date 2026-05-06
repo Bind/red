@@ -1,5 +1,5 @@
-import type { ManualClawJob } from "../types";
 import { loadPromptTemplate, renderPrompt } from "../prompts";
+import type { ManualClawJob } from "../types";
 
 export interface ChangeSummary {
   title: string;

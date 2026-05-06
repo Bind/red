@@ -1,9 +1,14 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
-import { startDevGitServer, runCommand, runCommandWithRetry, type StartedDevGitServer } from "../core/dev-stack";
+import {
+  runCommand,
+  runCommandWithRetry,
+  type StartedDevGitServer,
+  startDevGitServer,
+} from "../core/dev-stack";
 import { buildRemoteUrl, fetchJson } from "./http-test-helpers";
 
 interface RepoPayload {
@@ -60,7 +65,13 @@ async function createRepoWithHistory(server: StartedDevGitServer, repoName: stri
     owner: "red",
     name: repoName,
   };
-  const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoInfo.id, "control-plane-test", "write");
+  const remote = buildRemoteUrl(
+    server.publicUrl,
+    server.authTokenSecret,
+    repoInfo.id,
+    "control-plane-test",
+    "write",
+  );
 
   const repoDir = await mkdtemp(join(tmpdir(), "red-gitty-control-plane-"));
 
@@ -77,11 +88,18 @@ async function createRepoWithHistory(server: StartedDevGitServer, repoName: stri
   await runCommand("git", ["checkout", "-b", "feature/native-control-plane"], { cwd: repoDir });
   await mkdir(join(repoDir, "src"), { recursive: true });
   await mkdir(join(repoDir, "docs"), { recursive: true });
-  await Bun.write(join(repoDir, "src", "feature.ts"), 'export const mode = "native-control-plane";\n');
+  await Bun.write(
+    join(repoDir, "src", "feature.ts"),
+    'export const mode = "native-control-plane";\n',
+  );
   await Bun.write(join(repoDir, "docs", "guide.md"), "# guide\n");
   await runCommand("git", ["add", "src/feature.ts", "docs/guide.md"], { cwd: repoDir });
   await runCommand("git", ["commit", "-m", "add nested control plane files"], { cwd: repoDir });
-  await runCommandWithRetry("git", ["push", "origin", "HEAD:refs/heads/feature/native-control-plane"], { cwd: repoDir });
+  await runCommandWithRetry(
+    "git",
+    ["push", "origin", "HEAD:refs/heads/feature/native-control-plane"],
+    { cwd: repoDir },
+  );
 
   const mainRef = {
     sha: (await runCommand("git", ["-C", repoDir, "rev-parse", "main"])).stdout,
@@ -106,7 +124,10 @@ describe("native control-plane integration", () => {
   test("serves repo, branch, commit, file, and compare endpoints with stable data", async () => {
     const server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const { repoInfo, repoDir, mainRef, featureRef } = await createRepoWithHistory(server, `cp-repo-${runId}`);
+    const { repoInfo, repoDir, mainRef, featureRef } = await createRepoWithHistory(
+      server,
+      `cp-repo-${runId}`,
+    );
 
     try {
       const auth = {
@@ -114,15 +135,28 @@ describe("native control-plane integration", () => {
         password: server.adminPassword,
       };
 
-      const repoResult = await fetchJson<RepoPayload>(repoUrl(server, repoInfo.owner, repoInfo.name), auth);
+      const repoResult = await fetchJson<RepoPayload>(
+        repoUrl(server, repoInfo.owner, repoInfo.name),
+        auth,
+      );
       expect(repoResult.response.status).toBe(200);
       expect(repoResult.json?.full_name).toBe(repoInfo.id);
       expect(repoResult.json?.default_branch).toBe("main");
 
-      const branchesResult = await fetchJson<BranchPayload[]>(repoUrl(server, repoInfo.owner, repoInfo.name, "/branches"), auth);
+      const branchesResult = await fetchJson<BranchPayload[]>(
+        repoUrl(server, repoInfo.owner, repoInfo.name, "/branches"),
+        auth,
+      );
       expect(branchesResult.response.status).toBe(200);
-      expect(branchesResult.json?.some((branch) => branch.name === "main" && branch.protected)).toBe(true);
-      expect(branchesResult.json?.some((branch) => branch.name === "feature/native-control-plane" && branch.commit.id === featureRef.sha)).toBe(true);
+      expect(
+        branchesResult.json?.some((branch) => branch.name === "main" && branch.protected),
+      ).toBe(true);
+      expect(
+        branchesResult.json?.some(
+          (branch) =>
+            branch.name === "feature/native-control-plane" && branch.commit.id === featureRef.sha,
+        ),
+      ).toBe(true);
 
       const commitsResult = await fetchJson<CommitPayload[]>(
         repoUrl(
@@ -175,7 +209,10 @@ describe("native control-plane integration", () => {
       expect(compareResult.json?.base).toBe(mainRef.sha);
       expect(compareResult.json?.head).toBe(featureRef.sha);
       expect(compareResult.json?.files_changed).toBe(2);
-      expect(compareResult.json?.files.map((file) => file.filename).sort()).toEqual(["docs/guide.md", "src/feature.ts"]);
+      expect(compareResult.json?.files.map((file) => file.filename).sort()).toEqual([
+        "docs/guide.md",
+        "src/feature.ts",
+      ]);
       expect(compareResult.json?.files.every((file) => !file.filename.includes("\n"))).toBe(true);
       expect(compareResult.json?.additions).toBeGreaterThan(0);
 
@@ -210,7 +247,10 @@ describe("native control-plane integration", () => {
   test("preserves control-plane reads across git-server restarts", async () => {
     let server = await startDevGitServer();
     const runId = randomUUID().slice(0, 8);
-    const { repoInfo, repoDir, featureRef } = await createRepoWithHistory(server, `cp-restart-${runId}`);
+    const { repoInfo, repoDir, featureRef } = await createRepoWithHistory(
+      server,
+      `cp-restart-${runId}`,
+    );
 
     try {
       await server.stop();
@@ -221,9 +261,17 @@ describe("native control-plane integration", () => {
         password: server.adminPassword,
       };
 
-      const branchesResult = await fetchJson<BranchPayload[]>(repoUrl(server, repoInfo.owner, repoInfo.name, "/branches"), auth);
+      const branchesResult = await fetchJson<BranchPayload[]>(
+        repoUrl(server, repoInfo.owner, repoInfo.name, "/branches"),
+        auth,
+      );
       expect(branchesResult.response.status).toBe(200);
-      expect(branchesResult.json?.some((branch) => branch.name === "feature/native-control-plane" && branch.commit.id === featureRef.sha)).toBe(true);
+      expect(
+        branchesResult.json?.some(
+          (branch) =>
+            branch.name === "feature/native-control-plane" && branch.commit.id === featureRef.sha,
+        ),
+      ).toBe(true);
 
       const fileResult = await fetchJson<FilePayload>(
         repoUrl(

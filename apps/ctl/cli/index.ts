@@ -18,6 +18,14 @@ export interface CliContext {
   args: string[];
 }
 
+function writeStdout(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
+function writeStderr(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 export function parseArgs(argv: string[]): CliContext {
   const args: string[] = [];
   let apiUrl = process.env.RED_API_URL ?? "http://localhost:3000";
@@ -37,7 +45,7 @@ export function parseArgs(argv: string[]): CliContext {
   return { apiUrl: apiUrl.replace(/\/+$/, ""), format, args };
 }
 
-export async function run(argv: string[]): Promise<number> {
+export function run(argv: string[]): Promise<number> {
   const ctx = parseArgs(argv);
   const [command] = ctx.args;
 
@@ -47,13 +55,13 @@ export async function run(argv: string[]): Promise<number> {
 
     case "help":
     case undefined:
-      console.log(USAGE);
-      return 0;
+      writeStdout(USAGE);
+      return Promise.resolve(0);
 
     default:
-      console.error(`Unknown command: ${command}`);
-      console.error(USAGE);
-      return 1;
+      writeStderr(`Unknown command: ${command}`);
+      writeStderr(USAGE);
+      return Promise.resolve(1);
   }
 }
 

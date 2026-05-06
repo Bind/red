@@ -1,6 +1,6 @@
-import type { DiffStats, LLMSummary, ConfidenceLevel, SummaryAnnotation } from "../types";
-import type { AgentRuntime, AgentRuntimeEvent } from "../claw/runtime";
 import { getClawActionMetadata, productClawActions } from "../claw/actions";
+import type { AgentRuntime, AgentRuntimeEvent } from "../claw/runtime";
+import type { ConfidenceLevel, DiffStats, LLMSummary, SummaryAnnotation } from "../types";
 
 /**
  * Summary generator interface — allows swapping in a real LLM backend later.
@@ -29,29 +29,29 @@ export interface SummaryInput {
  * Swap this for a real LLM-backed implementation in Phase 3.
  */
 export class StubSummaryGenerator implements SummaryGenerator {
-  async generate(params: SummaryInput): Promise<LLMSummary> {
+  generate(params: SummaryInput): Promise<LLMSummary> {
     const { diffStats, confidence, commitMessages } = params;
 
-    const totalLines = diffStats.additions + diffStats.deletions;
     const fileList = diffStats.files.map((f) => f.filename);
     const modules = extractModules(fileList);
 
-    const what = commitMessages.length > 0
-      ? commitMessages.join("; ")
-      : `${diffStats.files_changed} files changed (+${diffStats.additions}/-${diffStats.deletions})`;
+    const what =
+      commitMessages.length > 0
+        ? commitMessages.join("; ")
+        : `${diffStats.files_changed} files changed (+${diffStats.additions}/-${diffStats.deletions})`;
 
     const risk = buildRiskAssessment(diffStats, confidence);
     const action = mapConfidenceToAction(confidence);
     const annotations = buildStubAnnotations(diffStats);
 
-    return {
+    return Promise.resolve({
       title: `${params.branch}: ${diffStats.files_changed} files changed`,
       what_changed: what,
       risk_assessment: risk,
       affected_modules: modules,
       recommended_action: action,
       annotations,
-    };
+    });
   }
 
   getMetadata(): Record<string, unknown> | null {
@@ -66,7 +66,10 @@ export class StubSummaryGenerator implements SummaryGenerator {
 export class ClawSummaryGenerator implements SummaryGenerator {
   constructor(private runtime: AgentRuntime) {}
 
-  async generate(params: SummaryInput, onEvent?: (event: AgentRuntimeEvent) => void): Promise<LLMSummary> {
+  async generate(
+    params: SummaryInput,
+    onEvent?: (event: AgentRuntimeEvent) => void,
+  ): Promise<LLMSummary> {
     const action = getClawActionMetadata(productClawActions.generateSummary.name);
     if (!action) {
       throw new Error("Missing action metadata for generate-summary");
@@ -113,7 +116,7 @@ export class ClawSummaryGenerator implements SummaryGenerator {
 
     if (result.status !== "completed" || !result.json) {
       throw new Error(
-        `Agent runtime failed (${result.durationMs}ms): ${result.errorMessage ?? "unknown error"}`
+        `Agent runtime failed (${result.durationMs}ms): ${result.errorMessage ?? "unknown error"}`,
       );
     }
 
@@ -217,8 +220,11 @@ function buildRiskAssessment(diff: DiffStats, confidence: ConfidenceLevel): stri
 
 function mapConfidenceToAction(confidence: ConfidenceLevel): LLMSummary["recommended_action"] {
   switch (confidence) {
-    case "safe": return "approve";
-    case "needs_review": return "review";
-    case "critical": return "block";
+    case "safe":
+      return "approve";
+    case "needs_review":
+      return "review";
+    case "critical":
+      return "block";
   }
 }
