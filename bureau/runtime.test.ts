@@ -90,6 +90,53 @@ describe("runBureauAgent", () => {
     });
   });
 
+  test("populates session.meta.output with the provider's typed payload", async () => {
+    const definition = agent<{ prompt: string }>()
+      .instructions(() => "test")
+      .initialInput((ctx) => ctx.input.prompt)
+      .build();
+
+    const expectedPayload = { kind: "custom-output", value: 42 };
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts) {
+        return {
+          ok: true,
+          payload: expectedPayload,
+          turns: 1,
+          tokens: { input: 1, output: 1 },
+          session: { systemPrompt: opts.systemPrompt, messages: [] },
+        };
+      },
+    };
+
+    const outcome = await runBureauAgent({
+      definition,
+      input: { prompt: "hello" },
+      args: null,
+      provider,
+      maxTurns: 1,
+      maxWallclockMs: 5_000,
+      context: {
+        name: "output-test",
+        sourceRoot: rootDir,
+        root: rootDir,
+        cwd: rootDir,
+        agentDir: join(rootDir, "bureau", "agents", "output-test"),
+        assets: { skills: [] },
+        emit() {},
+        resolveAsset(p) {
+          return join(rootDir, p);
+        },
+        resolveSharedAsset(p) {
+          return join(rootDir, p);
+        },
+      },
+    });
+
+    expect(outcome.session.meta.output).toEqual(expectedPayload);
+  });
+
   test("harvests .bureau-out/ into the blob store and records names on the session meta", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "bureau-runtime-cwd-"));
     const blobsDir = await mkdtemp(join(tmpdir(), "bureau-runtime-blobs-"));
