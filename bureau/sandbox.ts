@@ -1,7 +1,12 @@
 import { cp, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import type { AgentProvider, ProviderRunCallbacks } from "../pkg/daemons/src/providers/types";
+import type { BlobStore } from "./blob-store";
 import type { SandboxRepo } from "./repo";
+import { runBureauAgent } from "./runtime";
+import type { BureauAgentContext, BureauAgentDefinition } from "./sdk";
+import type { BureauStoredSession } from "./session-store";
 
 export type PreparedBureauWorkspace = {
   root: string;
@@ -153,5 +158,113 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
 export const sandbox = {
   justBash(): BureauSandboxProvider {
     return justBashSandboxProvider;
+  },
+};
+
+export type BureauSandboxContextBase = Omit<
+  BureauAgentContext<unknown>,
+  "sessionId" | "input" | "cwd" | "root"
+>;
+
+export type BureauSandboxRunOptions<Input> = {
+  definition: BureauAgentDefinition<Input>;
+  input: Input;
+  args: unknown;
+  maxTurns: number;
+  mode?: string | null;
+  sourceSha?: string | null;
+  providerCallbacks?: ProviderRunCallbacks;
+};
+
+export type BureauSandboxRunOutcome<Input> = Awaited<
+  ReturnType<typeof runBureauAgent<Input>>
+>;
+
+export type CloseResult = {
+  workspaceRef?: string;
+};
+
+export type BureauSandbox = {
+  readonly workspaceDir: string;
+  run<Input>(
+    options: BureauSandboxRunOptions<Input>,
+  ): Promise<BureauSandboxRunOutcome<Input>>;
+  close(): Promise<CloseResult>;
+  [Symbol.asyncDispose](): Promise<void>;
+};
+
+export type CreateSandboxOptions = {
+  provider: BureauSandboxProvider;
+  agentProvider: AgentProvider;
+  contextBase: BureauSandboxContextBase;
+  maxWallclockMs: number;
+  blobStore?: BlobStore;
+};
+
+export async function createSandbox(options: CreateSandboxOptions): Promise<BureauSandbox> {
+  const session = await options.provider.create({ preserve: false });
+  const workspaceDir = session.root;
+  let closed = false;
+  const close = async (): Promise<CloseResult> => {
+    if (closed) return {};
+    closed = true;
+    await session.cleanup();
+    return {};
+  };
+  const dispose = async (): Promise<void> => {
+    await close();
+  };
+
+  return {
+    workspaceDir,
+    async run<Input>(
+      runOptions: BureauSandboxRunOptions<Input>,
+    ): Promise<BureauSandboxRunOutcome<Input>> {
+      return runBureauAgent({
+        definition: runOptions.definition,
+        context: {
+          ...(options.contextBase as BureauSandboxContextBase),
+          cwd: workspaceDir,
+          root: workspaceDir,
+        } as Omit<BureauAgentContext<Input>, "sessionId" | "input">,
+        input: runOptions.input,
+        args: runOptions.args,
+        provider: options.agentProvider,
+        maxTurns: runOptions.maxTurns,
+        maxWallclockMs: options.maxWallclockMs,
+        mode: runOptions.mode,
+        sourceSha: runOptions.sourceSha,
+        providerCallbacks: runOptions.providerCallbacks,
+        blobStore: options.blobStore,
+      });
+    },
+    close,
+    [Symbol.asyncDispose]: dispose,
+  };
+}
+
+export type BureauStoredSessionResult = BureauStoredSession;
+
+export const bureau = {
+  createSandbox,
+  async run<Input>(
+    options: CreateSandboxOptions & BureauSandboxRunOptions<Input>,
+  ): Promise<BureauSandboxRunOutcome<Input>> {
+    await using sb = await createSandbox({
+      provider: options.provider,
+      agentProvider: options.agentProvider,
+      contextBase: options.contextBase,
+      maxWallclockMs: options.maxWallclockMs,
+      blobStore: options.blobStore,
+    });
+    return sb.run({
+      definition: options.definition,
+      input: options.input,
+      args: options.args,
+      maxTurns: options.maxTurns,
+      mode: options.mode,
+      sourceSha: options.sourceSha,
+      providerCallbacks: options.providerCallbacks,
+    });
   },
 };
