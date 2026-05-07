@@ -32,7 +32,7 @@ export type PreparedBureauClone = {
 };
 
 export type BureauSandboxSession = {
-  name: "just-bash";
+  name: string;
   root: string;
   exposedRoot: string | null;
   clone(options: BureauSandboxCloneOptions): Promise<PreparedBureauClone>;
@@ -46,7 +46,7 @@ export type BureauSandboxPrepareOptions = {
 };
 
 export type BureauSandboxProvider = {
-  name: "just-bash";
+  name: string;
   create(options: { preserve: boolean }): Promise<BureauSandboxSession>;
   prepare(options: BureauSandboxPrepareOptions): Promise<PreparedBureauWorkspace>;
 };
