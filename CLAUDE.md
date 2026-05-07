@@ -28,26 +28,3 @@ Use `/Users/db/workspace/redc` as the single working checkout for this repo.
 When working on a different branch or PR, switch branches in this folder instead
 of creating a new Git worktree, unless the user explicitly asks for a separate
 worktree.
-
-## Skill routing
-
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
-
-Keep repo-owned skill definitions under `.agents/skills/`. Do not add or duplicate
-repo skill definitions under `.codex/`.
-
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
-- Preview deploy debugging, preview URL failures, remote preview SSH/log inspection → invoke debug-preview
-- Obs request tracing, MinIO rollup/raw debugging → invoke wide-events-observability
-- Ship, deploy, push, create PR → invoke ship
-- QA, test the site, find bugs → invoke qa
-- Code review, check my diff → invoke review
-- Update docs after shipping → invoke document-release
-- Weekly retro → invoke retro
-- Design system, brand → invoke design-consultation
-- Visual audit, design polish → invoke design-review
-- Architecture review → invoke plan-eng-review
