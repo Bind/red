@@ -1,4 +1,6 @@
 import type { AgentProvider, ProviderRunCallbacks, ProviderRunResult } from "../pkg/daemons/src/providers/types";
+import type { BlobStore } from "./blob-store";
+import { harvestBureauOut } from "./harvest";
 import {
   createBureauSessionId,
   createLocalBureauSessionStore,
@@ -18,6 +20,7 @@ export async function runBureauAgent<Input>(input: {
   mode?: string | null;
   sourceSha?: string | null;
   providerCallbacks?: ProviderRunCallbacks;
+  blobStore?: BlobStore;
 }): Promise<{
   context: BureauAgentContext<Input>;
   plan: Awaited<ReturnType<BureauAgentDefinition<Input>["run"]>>;
@@ -31,8 +34,9 @@ export async function runBureauAgent<Input>(input: {
     sessionId,
   };
   const plan = await input.definition.run(ctx);
+  const workspaceDir = plan.cwd ?? ctx.cwd;
   const result = await input.provider.runUntilComplete({
-    cwd: plan.cwd ?? ctx.cwd,
+    cwd: workspaceDir,
     systemPrompt: plan.systemPrompt,
     initialInput: plan.initialInput,
     maxTurns: input.maxTurns,
@@ -40,6 +44,9 @@ export async function runBureauAgent<Input>(input: {
     extraTools: plan.tools ?? [],
     ...input.providerCallbacks,
   });
+  const blobs = input.blobStore
+    ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
+    : undefined;
   const store = createLocalBureauSessionStore({ rootDir: ctx.root });
   const session = await store.createRoot({
     sessionId,
@@ -48,6 +55,7 @@ export async function runBureauAgent<Input>(input: {
     mode: input.mode ?? null,
     sourceSha: input.sourceSha ?? null,
     snapshot: normalizeSnapshot(result.session),
+    blobs,
   });
 
   return { context: ctx, plan, result, session };
@@ -64,6 +72,7 @@ export async function resumeBureauAgent<Input>(input: {
   mode?: string | null;
   sourceSha?: string | null;
   providerCallbacks?: ProviderRunCallbacks;
+  blobStore?: BlobStore;
 }): Promise<{
   context: BureauAgentContext<Input>;
   plan: Awaited<ReturnType<BureauAgentDefinition<Input>["run"]>>;
@@ -77,8 +86,9 @@ export async function resumeBureauAgent<Input>(input: {
     sessionId,
   };
   const plan = await input.definition.run(ctx);
+  const workspaceDir = plan.cwd ?? ctx.cwd;
   const result = await input.provider.runUntilComplete({
-    cwd: plan.cwd ?? ctx.cwd,
+    cwd: workspaceDir,
     systemPrompt: input.parentSession.snapshot.systemPrompt,
     initialInput: plan.initialInput,
     messages: input.parentSession.snapshot.messages,
@@ -87,6 +97,9 @@ export async function resumeBureauAgent<Input>(input: {
     extraTools: plan.tools ?? [],
     ...input.providerCallbacks,
   });
+  const blobs = input.blobStore
+    ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
+    : undefined;
   const store = createLocalBureauSessionStore({ rootDir: ctx.root });
   const session = await store.createChild({
     sessionId,
@@ -96,6 +109,7 @@ export async function resumeBureauAgent<Input>(input: {
     mode: input.mode ?? null,
     sourceSha: input.sourceSha ?? null,
     snapshot: normalizeSnapshot(result.session),
+    blobs,
   });
 
   return { context: ctx, plan, result, session };

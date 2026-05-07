@@ -16,6 +16,9 @@ export type BureauSessionMeta = {
   sourceSha: string | null;
   createdAt: string;
   updatedAt: string;
+  workspaceRef?: string;
+  output?: unknown;
+  blobs?: string[];
 };
 
 export type BureauStoredSession = {
@@ -31,6 +34,9 @@ export type BureauSessionStore = {
     mode?: string | null;
     sourceSha?: string | null;
     snapshot: PiSessionSnapshot;
+    workspaceRef?: string;
+    output?: unknown;
+    blobs?: string[];
   }): Promise<BureauStoredSession>;
   get(sessionId: string): Promise<BureauStoredSession | null>;
   createChild(input: {
@@ -41,6 +47,9 @@ export type BureauSessionStore = {
     mode?: string | null;
     sourceSha?: string | null;
     snapshot: PiSessionSnapshot;
+    workspaceRef?: string;
+    output?: unknown;
+    blobs?: string[];
   }): Promise<BureauStoredSession>;
   list(filter?: {
     agentName?: string;
@@ -55,7 +64,17 @@ export function createLocalBureauSessionStore(input: {
   const sessionsRoot = join(input.rootDir, ".bureau", "sessions");
 
   return {
-    async createRoot({ sessionId = createBureauSessionId(), agentName, args, mode = null, sourceSha = null, snapshot }) {
+    async createRoot({
+      sessionId = createBureauSessionId(),
+      agentName,
+      args,
+      mode = null,
+      sourceSha = null,
+      snapshot,
+      workspaceRef,
+      output,
+      blobs,
+    }) {
       const timestamp = new Date().toISOString();
       const meta: BureauSessionMeta = {
         sessionId,
@@ -66,6 +85,9 @@ export function createLocalBureauSessionStore(input: {
         sourceSha,
         createdAt: timestamp,
         updatedAt: timestamp,
+        ...(workspaceRef !== undefined ? { workspaceRef } : {}),
+        ...(output !== undefined ? { output } : {}),
+        ...(blobs !== undefined ? { blobs } : {}),
       };
       const dir = join(sessionsRoot, sessionId);
 
@@ -98,6 +120,9 @@ export function createLocalBureauSessionStore(input: {
       mode = null,
       sourceSha = null,
       snapshot,
+      workspaceRef,
+      output,
+      blobs,
     }) {
       const timestamp = new Date().toISOString();
       const meta: BureauSessionMeta = {
@@ -109,6 +134,9 @@ export function createLocalBureauSessionStore(input: {
         sourceSha,
         createdAt: timestamp,
         updatedAt: timestamp,
+        ...(workspaceRef !== undefined ? { workspaceRef } : {}),
+        ...(output !== undefined ? { output } : {}),
+        ...(blobs !== undefined ? { blobs } : {}),
       };
       const dir = join(sessionsRoot, sessionId);
 
