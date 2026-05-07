@@ -33,4 +33,6 @@ Agent stops, hits an iteration cap, or hits a budget.
 
 **Workspace** — the filesystem state an Agent operates on inside a Sandbox.
 Lifetime can exceed a single Sandbox (a Workflow may hand the same Workspace
-to a second Sandbox).
+to a second Sandbox). Persistence across Sandboxes is anchored to the Session:
+the workspace ref is stored in the Session snapshot and rehydrated by
+checking out a scratch branch (on GRS) keyed by `sessionId`.
