@@ -13,7 +13,9 @@ locality) lives separately and is shared across projects.
 principles: `docs/agent-substrate.md`.
 
 **Agent** — a unit of behavior with typed input and output, packaged at
-`bureau/agents/<name>/agent.ts`. Runs inside a Sandbox.
+`bureau/agents/<name>/agent.ts`. Runs inside a Sandbox. Agents are the unit
+of scheduling: external schedulers (e.g. ctl) invoke them by name with typed
+input. There is no separate "job" abstraction between scheduler and Agent.
 
 **Workflow** — plain TypeScript orchestration at
 `bureau/workflows/<name>/workflow.ts`. Composes one or more Agents and owns
