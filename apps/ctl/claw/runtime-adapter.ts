@@ -1,5 +1,4 @@
 import type { DockerClawRunner } from "./runner";
-import type { ClawRunTracker } from "./types";
 import type {
   AgentRuntime,
   AgentRuntimeEvent,
@@ -7,6 +6,7 @@ import type {
   AgentRuntimeRunResult,
   AgentRuntimeSession,
 } from "./runtime";
+import type { ClawRunTracker } from "./types";
 
 export interface LegacyClawCliAgentRuntimeConfig {
   runner: DockerClawRunner;
@@ -16,8 +16,8 @@ export interface LegacyClawCliAgentRuntimeConfig {
 export class OpenCodeBatchAgentRuntime implements AgentRuntime {
   constructor(private readonly config: LegacyClawCliAgentRuntimeConfig) {}
 
-  async startRun<TJson = unknown>(
-    request: AgentRuntimeRunRequest<TJson>
+  startRun<TJson = unknown>(
+    request: AgentRuntimeRunRequest<TJson>,
   ): Promise<AgentRuntimeSession<TJson>> {
     const queue = new AsyncEventQueue<AgentRuntimeEvent>();
     const startedAt = Date.now();
@@ -59,7 +59,7 @@ export class OpenCodeBatchAgentRuntime implements AgentRuntime {
           queue.push(event);
         },
       })
-      .then(async (result): Promise<AgentRuntimeRunResult<TJson>> => {
+      .then((result): AgentRuntimeRunResult<TJson> => {
         const trackedRun = this.config.tracker?.getByRunId(request.identity.runId);
         if (!runtimeSessionId && trackedRun?.codexSessionId) {
           runtimeSessionId = trackedRun.codexSessionId;
@@ -171,11 +171,11 @@ export class OpenCodeBatchAgentRuntime implements AgentRuntime {
         };
       });
 
-    return {
+    return Promise.resolve({
       identity: request.identity,
       events: queue,
       result: () => resultPromise,
-      cancel: async () => {
+      cancel: () => {
         pushEvent(queue, request.identity.runId, ++sequence, {
           runtimeSessionId,
           kind: "lifecycle",
@@ -183,8 +183,9 @@ export class OpenCodeBatchAgentRuntime implements AgentRuntime {
           status: "cancelled",
           text: "Cancellation is not implemented for the batch runtime",
         });
+        return Promise.resolve();
       },
-    };
+    });
   }
 }
 
@@ -198,7 +199,7 @@ function pushEvent(
   queue: AsyncEventQueue<AgentRuntimeEvent>,
   runId: string,
   sequence: number,
-  partial: Omit<AgentRuntimeEvent, "id" | "runId" | "sequence" | "timestamp">
+  partial: Omit<AgentRuntimeEvent, "id" | "runId" | "sequence" | "timestamp">,
 ): void {
   queue.push({
     id: `${runId}:${sequence}`,
@@ -213,8 +214,10 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
   const timestamp = new Date().toISOString();
 
   try {
-    const raw = JSON.parse(line) as Record<string, any>;
+    const raw = asUnknownRecord(JSON.parse(line));
     const sessionId = typeof raw.sessionID === "string" ? raw.sessionID : undefined;
+    const part = asUnknownRecord(raw.part);
+    const state = asUnknownRecord(part.state);
 
     if (raw.type === "step_start") {
       return {
@@ -241,7 +244,7 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
         sequence,
         kind: "lifecycle",
         type: "step.completed",
-        status: raw.part?.reason === "stop" ? "completed" : "running",
+        status: part.reason === "stop" ? "completed" : "running",
         text: describeOpenCodeStepCompletion(raw),
         data: raw,
         raw,
@@ -257,7 +260,7 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
         sequence,
         kind: "lifecycle",
         type: "tool.used",
-        status: normalizeToolStatus(raw.part?.state?.status),
+        status: normalizeToolStatus(state.status),
         role: "tool",
         text: describeOpenCodeToolUse(raw),
         data: raw,
@@ -275,7 +278,7 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
         kind: "message",
         type: "message.completed",
         role: "assistant",
-        text: typeof raw.part?.text === "string" ? raw.part.text : line,
+        text: typeof part.text === "string" ? part.text : line,
         data: raw,
         raw,
       };
@@ -306,30 +309,33 @@ function normalizeRunnerLine(runId: string, sequence: number, line: string): Age
   }
 }
 
-function describeOpenCodeStep(raw: Record<string, any>): string {
-  const snapshot = typeof raw.part?.snapshot === "string" ? raw.part.snapshot.slice(0, 12) : null;
+function describeOpenCodeStep(raw: Record<string, unknown>): string {
+  const part = asUnknownRecord(raw.part);
+  const snapshot = typeof part.snapshot === "string" ? part.snapshot.slice(0, 12) : null;
   return snapshot ? `Model step started (${snapshot})` : "Model step started";
 }
 
-function describeOpenCodeStepCompletion(raw: Record<string, any>): string {
-  const reason = typeof raw.part?.reason === "string" ? raw.part.reason : null;
-  const tokens = raw.part?.tokens && typeof raw.part.tokens.total === "number"
-    ? `${raw.part.tokens.total} tokens`
-    : null;
-  return [reason ? `Step finished: ${reason}` : "Model step completed", tokens].filter(Boolean).join(" | ");
+function describeOpenCodeStepCompletion(raw: Record<string, unknown>): string {
+  const part = asUnknownRecord(raw.part);
+  const tokensRecord = asUnknownRecord(part.tokens);
+  const reason = typeof part.reason === "string" ? part.reason : null;
+  const tokens = typeof tokensRecord.total === "number" ? `${tokensRecord.total} tokens` : null;
+  return [reason ? `Step finished: ${reason}` : "Model step completed", tokens]
+    .filter(Boolean)
+    .join(" | ");
 }
 
-function describeOpenCodeToolUse(raw: Record<string, any>): string {
-  const tool = typeof raw.part?.tool === "string" ? raw.part.tool : "tool";
-  const status = typeof raw.part?.state?.status === "string" ? raw.part.state.status : null;
-  const input = describeToolInput(raw.part?.state?.input);
-  const output = describeToolOutput(raw.part?.state?.output);
+function describeOpenCodeToolUse(raw: Record<string, unknown>): string {
+  const part = asUnknownRecord(raw.part);
+  const state = asUnknownRecord(part.state);
+  const tool = typeof part.tool === "string" ? part.tool : "tool";
+  const status = typeof state.status === "string" ? state.status : null;
+  const input = describeToolInput(state.input);
+  const output = describeToolOutput(state.output);
 
-  return [
-    status ? `${capitalize(status)} ${tool}` : `Used ${tool}`,
-    input,
-    output,
-  ].filter(Boolean).join(" | ");
+  return [status ? `${capitalize(status)} ${tool}` : `Used ${tool}`, input, output]
+    .filter(Boolean)
+    .join(" | ");
 }
 
 function describeToolInput(input: unknown): string | null {
@@ -351,6 +357,13 @@ function describeToolOutput(output: unknown): string | null {
   const compact = output.replace(/\s+/g, " ").trim();
   if (!compact) return null;
   return compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
 
 function normalizeToolStatus(value: unknown): AgentRuntimeEvent["status"] {

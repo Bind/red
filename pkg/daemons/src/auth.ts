@@ -81,16 +81,15 @@ export function createFileCodexAuthSource(path?: string): CodexAuthSource {
   };
 }
 
-export function createInMemoryCodexAuthSource(
-  credentials: OAuthCredentials,
-): CodexAuthSource {
+export function createInMemoryCodexAuthSource(credentials: OAuthCredentials): CodexAuthSource {
   let current = { ...credentials };
   return {
-    async load() {
-      return { ...current };
+    load() {
+      return Promise.resolve({ ...current });
     },
-    async save(next) {
+    save(next) {
       current = { ...next };
+      return Promise.resolve();
     },
   };
 }

@@ -18,19 +18,17 @@ describe("obs", () => {
   });
 
   test("marks generated request ids as root requests", () => {
-    const envelope = createEventEnvelope(
-      new Request("http://localhost/health"),
-      { service: "test-service" },
-    );
+    const envelope = createEventEnvelope(new Request("http://localhost/health"), {
+      service: "test-service",
+    });
 
     expect(envelope.event.is_request_root).toBe(true);
   });
 
   test("finalizes envelopes with response metadata", () => {
-    const envelope = createEventEnvelope(
-      new Request("http://localhost/health"),
-      { service: "test-service" },
-    );
+    const envelope = createEventEnvelope(new Request("http://localhost/health"), {
+      service: "test-service",
+    });
 
     envelope.set({
       route: {

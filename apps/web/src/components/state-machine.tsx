@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
 import type { ChangeStatus } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const STATES: { id: ChangeStatus; label: string }[] = [
   { id: "pushed", label: "pushed" },
@@ -52,7 +52,7 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
                     ? "bg-primary text-primary-foreground"
                     : isPast
                       ? "bg-muted text-foreground"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                 )}
               >
                 {state.label}
@@ -61,7 +61,7 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
                 <span
                   className={cn(
                     "mx-0.5 hidden text-xs sm:inline",
-                    isPast ? "text-foreground" : "text-muted-foreground/40"
+                    isPast ? "text-foreground" : "text-muted-foreground/40",
                   )}
                 >
                   →
@@ -81,7 +81,7 @@ export function StateMachine({ activeStatus, className }: StateMachineProps) {
               "rounded px-1.5 py-0.5 font-mono text-xs",
               activeStatus === branch.id
                 ? "bg-destructive text-destructive-foreground"
-                : "text-muted-foreground/40"
+                : "text-muted-foreground/40",
             )}
           >
             {branch.label}

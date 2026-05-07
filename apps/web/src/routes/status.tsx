@@ -3,11 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  fetchStatusReport,
-  type ServiceStatusProbe,
-  type ServiceStatusReport,
-} from "@/lib/api";
+import { fetchStatusReport, type ServiceStatusProbe, type ServiceStatusReport } from "@/lib/api";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -83,9 +79,7 @@ function ServiceCard({ service }: { service: ServiceStatusProbe }) {
           <summary className="cursor-pointer list-none px-3 py-2 text-xs text-muted-foreground group-open:border-b group-open:border-border/60">
             raw response
           </summary>
-          <pre className="overflow-x-auto p-3 text-xs">
-            {JSON.stringify(service.body, null, 2)}
-          </pre>
+          <pre className="overflow-x-auto p-3 text-xs">{JSON.stringify(service.body, null, 2)}</pre>
         </details>
       </CardContent>
     </Card>
@@ -95,6 +89,14 @@ function ServiceCard({ service }: { service: ServiceStatusProbe }) {
 export function StatusPage() {
   const [report, setReport] = useState<ServiceStatusReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loadingKeys = [
+    "status-skeleton-1",
+    "status-skeleton-2",
+    "status-skeleton-3",
+    "status-skeleton-4",
+    "status-skeleton-5",
+    "status-skeleton-6",
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +110,9 @@ export function StatusPage() {
         }
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Unable to load service status");
+          setError(
+            nextError instanceof Error ? nextError.message : "Unable to load service status",
+          );
         }
       }
     };
@@ -188,8 +192,8 @@ export function StatusPage() {
 
       {report === null ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-64 rounded-2xl" />
+          {loadingKeys.map((key) => (
+            <Skeleton key={key} className="h-64 rounded-2xl" />
           ))}
         </div>
       ) : (

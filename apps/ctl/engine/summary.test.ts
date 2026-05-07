@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { StubSummaryGenerator } from "./summary";
+import { describe, expect, test } from "bun:test";
 import type { SummaryInput } from "./summary";
+import { StubSummaryGenerator } from "./summary";
 
 const generator = new StubSummaryGenerator();
 
@@ -55,32 +55,36 @@ describe("StubSummaryGenerator", () => {
   });
 
   test("risk assessment mentions deletion-heavy", async () => {
-    const result = await generator.generate(makeInput({
-      confidence: "needs_review",
-      diffStats: {
-        files_changed: 1,
-        additions: 2,
-        deletions: 50,
-        files: [{ filename: "src/old.ts", additions: 2, deletions: 50, status: "modified" }],
-      },
-    }));
+    const result = await generator.generate(
+      makeInput({
+        confidence: "needs_review",
+        diffStats: {
+          files_changed: 1,
+          additions: 2,
+          deletions: 50,
+          files: [{ filename: "src/old.ts", additions: 2, deletions: 50, status: "modified" }],
+        },
+      }),
+    );
     expect(result.risk_assessment).toContain("deletions");
   });
 
   test("generates annotations grouped by file status", async () => {
-    const result = await generator.generate(makeInput({
-      diffStats: {
-        files_changed: 4,
-        additions: 30,
-        deletions: 10,
-        files: [
-          { filename: "src/new.ts", additions: 10, deletions: 0, status: "added" },
-          { filename: "src/another-new.ts", additions: 5, deletions: 0, status: "added" },
-          { filename: "src/old.ts", additions: 0, deletions: 5, status: "deleted" },
-          { filename: "src/app.ts", additions: 15, deletions: 5, status: "modified" },
-        ],
-      },
-    }));
+    const result = await generator.generate(
+      makeInput({
+        diffStats: {
+          files_changed: 4,
+          additions: 30,
+          deletions: 10,
+          files: [
+            { filename: "src/new.ts", additions: 10, deletions: 0, status: "added" },
+            { filename: "src/another-new.ts", additions: 5, deletions: 0, status: "added" },
+            { filename: "src/old.ts", additions: 0, deletions: 5, status: "deleted" },
+            { filename: "src/app.ts", additions: 15, deletions: 5, status: "modified" },
+          ],
+        },
+      }),
+    );
     expect(result.annotations).toBeDefined();
     expect(result.annotations!.length).toBe(3); // added, deleted, modified groups
     for (const ann of result.annotations!) {
@@ -99,18 +103,20 @@ describe("StubSummaryGenerator", () => {
   });
 
   test("extracts modules from file paths", async () => {
-    const result = await generator.generate(makeInput({
-      diffStats: {
-        files_changed: 3,
-        additions: 10,
-        deletions: 5,
-        files: [
-          { filename: "src/api/handler.ts", additions: 5, deletions: 2, status: "modified" },
-          { filename: "src/db/schema.ts", additions: 3, deletions: 3, status: "modified" },
-          { filename: "README.md", additions: 2, deletions: 0, status: "modified" },
-        ],
-      },
-    }));
+    const result = await generator.generate(
+      makeInput({
+        diffStats: {
+          files_changed: 3,
+          additions: 10,
+          deletions: 5,
+          files: [
+            { filename: "src/api/handler.ts", additions: 5, deletions: 2, status: "modified" },
+            { filename: "src/db/schema.ts", additions: 3, deletions: 3, status: "modified" },
+            { filename: "README.md", additions: 2, deletions: 0, status: "modified" },
+          ],
+        },
+      }),
+    );
     expect(result.affected_modules).toContain("src/api");
     expect(result.affected_modules).toContain("src/db");
     expect(result.affected_modules).toContain("README.md");

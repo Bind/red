@@ -8,7 +8,13 @@ export interface RepositoryProvider {
     head: string,
     requestId?: string,
   ): Promise<DiffStats>;
-  getDiff(owner: string, repo: string, base: string, head: string, requestId?: string): Promise<string>;
+  getDiff(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    requestId?: string,
+  ): Promise<string>;
   getCommitDiff?(owner: string, repo: string, sha: string, requestId?: string): Promise<string>;
   getFileContent(
     owner: string,
@@ -27,4 +33,5 @@ export interface RepositoryProvider {
   listRepos?(): Promise<RepoInfo[]>;
   getRepo?(owner: string, repo: string, requestId?: string): Promise<RepoInfo>;
   listBranches?(owner: string, repo: string, requestId?: string): Promise<BranchInfo[]>;
+  listTree?(owner: string, repo: string, ref?: string, requestId?: string): Promise<string[]>;
 }

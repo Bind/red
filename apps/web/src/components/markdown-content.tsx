@@ -26,9 +26,7 @@ const components: Components = {
       {children}
     </a>
   ),
-  strong: ({ children }) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
-  ),
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   ul: ({ children }) => (
     <ul className="mb-4 list-disc space-y-1 pl-6 text-sm text-foreground">{children}</ul>

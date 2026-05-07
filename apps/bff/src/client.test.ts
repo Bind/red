@@ -1,0 +1,338 @@
+import { describe, expect, test } from "bun:test";
+import { Hono } from "@red/server";
+import {
+  type ClientConfig,
+  forwardAuthRequest,
+  makeApi,
+  makeAuth,
+  makeObs,
+  makeTriage,
+} from "./client";
+
+type Call = {
+  url: string;
+  method: string;
+  authorization: string | null;
+  cookie: string | null;
+  redirect: RequestRedirect | undefined;
+  body: string | null;
+};
+
+function recorder(impl: (req: Request) => Promise<Response>) {
+  const calls: Call[] = [];
+  const fetchImpl = async (input: RequestInfo | URL | Request, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const body =
+      request.method === "GET" || request.method === "HEAD" ? null : await request.clone().text();
+    calls.push({
+      url: request.url,
+      method: request.method,
+      authorization: request.headers.get("authorization"),
+      cookie: request.headers.get("cookie"),
+      redirect: init?.redirect,
+      body,
+    });
+    return impl(request);
+  };
+  return { calls, fetchImpl };
+}
+
+function baseConfig(overrides: Partial<ClientConfig> = {}): ClientConfig {
+  return {
+    apiBaseUrl: "http://api.test",
+    authBaseUrl: "http://auth.test",
+    obsBaseUrl: "http://obs.test",
+    triageBaseUrl: "http://triage.test",
+    ...overrides,
+  };
+}
+
+function exchangeOk(token = "tok-1") {
+  return Response.json({ access_token: token, token_type: "Bearer", expires_in: 600 });
+}
+
+describe("service client", () => {
+  test("default jwt mode exchanges session and forwards Bearer to api", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      if (url.pathname === "/api/review") return Response.json([]);
+      return new Response("nf", { status: 404 });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => api(c).send(($) => $.api.review.$get()));
+
+    const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
+
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/session/exchange", "/api/review"]);
+    expect(calls[0]?.cookie).toBe("session=abc");
+    expect(calls[1]?.authorization).toBe("Bearer tok-1");
+    expect(calls[1]?.cookie).toBe("session=abc");
+  });
+
+  test("jwt exchange failure passes upstream auth response through", async () => {
+    const { fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") {
+        return new Response(JSON.stringify({ error: "no_session" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("nf", { status: 404 });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => api(c).send(($) => $.api.review.$get()));
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "no_session" });
+  });
+
+  test("cookie auth uses redirect:manual and copies set-cookie", async () => {
+    const { calls, fetchImpl } = recorder(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "session=new; Path=/; HttpOnly",
+          },
+        }),
+    );
+    const auth = makeAuth({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => auth(c).send(($) => $.me.$get()));
+
+    const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("session=new");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("http://auth.test/me");
+    expect(calls[0]?.redirect).toBe("manual");
+    expect(calls[0]?.cookie).toBe("session=abc");
+    expect(calls[0]?.authorization).toBeNull();
+  });
+
+  test("session auth gates without injecting Bearer", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      if (url.pathname === "/v1/daemons") return Response.json([{ name: "d1" }]);
+      return new Response("nf", { status: 404 });
+    });
+    const obs = makeObs({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.v1.daemons.$get()));
+
+    const res = await app.request("/test", { headers: { Cookie: "session=abc" } });
+
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/session/exchange", "/v1/daemons"]);
+    expect(calls[1]?.authorization).toBeNull();
+  });
+
+  test("session auth bypassed when disableAuth is true", async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json([]));
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.v1.daemons.$get()));
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/v1/daemons"]);
+  });
+
+  test('auth("none") skips session exchange entirely', async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json({ files: [] }));
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      api(c)
+        .auth("none")
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].tree.$get({
+            param: { owner: "x", repo: "y" },
+            query: {},
+          }),
+        ),
+    );
+
+    await app.request("/test");
+
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/api/repos/x/y/tree"]);
+    expect(calls[0]?.authorization).toBeNull();
+  });
+
+  test("503 when upstream is unconfigured, with shaped error body", async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
+    const triage = makeTriage({
+      config: baseConfig({ triageBaseUrl: undefined, disableAuth: true }),
+      fetchImpl,
+    });
+    const app = new Hono().get("/test", (c) => triage(c).send(($) => $.v1.runs.$get()));
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "triage backend not configured" });
+    expect(calls).toHaveLength(0);
+  });
+
+  test("text body mode preserves upstream content-type", async () => {
+    const { fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      return new Response("diff --git a/x b/x\n", {
+        headers: { "Content-Type": "text/x-diff; charset=utf-8" },
+      });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      api(c)
+        .as("text")
+        .send(($) => $.api.changes[":id"].diff.$get({ param: { id: "1" } })),
+    );
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/x-diff");
+    expect(await res.text()).toContain("diff --git");
+  });
+
+  test("stream body mode passes body and select headers through", async () => {
+    const { fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      return new Response("event: ping\ndata: 1\n\n", {
+        headers: {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          "x-strip-me": "should-be-stripped",
+        },
+      });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      api(c)
+        .as("stream")
+        .send(($) => $.api.changes[":id"]["agent-events"].$get({ param: { id: "1" } })),
+    );
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("x-strip-me")).toBeNull();
+    expect(await res.text()).toContain("event: ping");
+  });
+
+  test("onError returns fallback when upstream fetch throws", async () => {
+    const fetchImpl = async (input: RequestInfo | URL | Request) => {
+      const req = input instanceof Request ? input : new Request(input);
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      throw new Error("connect ECONNREFUSED");
+    };
+    const triage = makeTriage({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      triage(c)
+        .onError(() => c.json({ runs: [] }))
+        .send(($) => $.v1.runs.$get()),
+    );
+
+    const res = await app.request("/test");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ runs: [] });
+  });
+
+  test("typed query args make it into the upstream URL", async () => {
+    const { calls, fetchImpl } = recorder(async () => Response.json([]));
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const app = new Hono().get("/test", (c) =>
+      obs(c).send(($) =>
+        $.v1.rollups.$get({
+          query: {
+            service: c.req.query("service"),
+            outcome: c.req.query("outcome"),
+          },
+        }),
+      ),
+    );
+
+    await app.request("/test?service=ctl&outcome=ok");
+
+    const target = new URL(calls[0]?.url);
+    expect(target.pathname).toBe("/v1/rollups");
+    expect(target.searchParams.get("service")).toBe("ctl");
+    expect(target.searchParams.get("outcome")).toBe("ok");
+  });
+
+  test("POST forwards a parsed JSON body upstream after exchange", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/session/exchange") return exchangeOk();
+      return Response.json({ id: 1 }, { status: 201 });
+    });
+    const api = makeApi({ config: baseConfig(), fetchImpl });
+    const app = new Hono().post("/test", async (c) => {
+      const body = await c.req.json<{ owner: string; name: string }>();
+      return api(c).send(($) => $.api.repos.$post({ json: body }));
+    });
+
+    const payload = { owner: "red", name: "demo" };
+    const res = await app.request("/test", {
+      method: "POST",
+      headers: { Cookie: "session=abc", "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(201);
+    expect(calls.map((c) => [c.method, new URL(c.url).pathname])).toEqual([
+      ["POST", "/session/exchange"],
+      ["POST", "/api/repos"],
+    ]);
+    expect(JSON.parse(calls[1]?.body ?? "")).toEqual(payload);
+    expect(calls[1]?.authorization).toBe("Bearer tok-1");
+  });
+
+  test("forwardAuthRequest preserves method, body, and set-cookie", async () => {
+    const { calls, fetchImpl } = recorder(async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname.startsWith("/api/auth/")) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "set-cookie": "session=new; Path=/; HttpOnly",
+          },
+        });
+      }
+      return new Response("nf", { status: 404 });
+    });
+    const config = baseConfig();
+    const app = new Hono().all("/api/auth/*", async (c) => {
+      const incoming = new URL(c.req.url);
+      return forwardAuthRequest(c, { config, fetchImpl }, incoming.pathname + incoming.search);
+    });
+
+    const res = await app.request("/api/auth/sign-in?cb=/", {
+      method: "POST",
+      headers: { Cookie: "session=abc", "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "x@y.z" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("session=new");
+    expect(calls).toHaveLength(1);
+    const target = new URL(calls[0]?.url);
+    expect(target.pathname).toBe("/api/auth/sign-in");
+    expect(target.searchParams.get("cb")).toBe("/");
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.cookie).toBe("session=abc");
+    expect(calls[0]?.redirect).toBe("manual");
+    expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ email: "x@y.z" });
+  });
+});

@@ -47,7 +47,7 @@ function walkFiles(root: string, base = root): FileEntry[] {
 export class InlineShellExecutorBackend implements ExecutorBackend {
   private readonly executions = new Map<string, InflightExecution>();
 
-  async start(bundle: ExecutionBundle): Promise<ExecutionHandle> {
+  start(bundle: ExecutionBundle): Promise<ExecutionHandle> {
     mkdirSync(bundle.workspaceDir, { recursive: true });
     mkdirSync(bundle.artifactsDir, { recursive: true });
 
@@ -86,26 +86,26 @@ export class InlineShellExecutorBackend implements ExecutorBackend {
     });
 
     this.executions.set(executionId, inflight);
-    return { backendExecutionId: executionId };
+    return Promise.resolve({ backendExecutionId: executionId });
   }
 
-  async status(handle: ExecutionHandle): Promise<ExecutionStatus> {
+  status(handle: ExecutionHandle): Promise<ExecutionStatus> {
     const execution = this.executions.get(handle.backendExecutionId);
     if (!execution) {
-      return { phase: "failed", exitCode: 1 };
+      return Promise.resolve({ phase: "failed", exitCode: 1 });
     }
 
     if (execution.status.phase === "starting") {
       execution.status = { phase: "running" };
     }
 
-    return execution.status;
+    return Promise.resolve(execution.status);
   }
 
-  async readLogs(handle: ExecutionHandle, cursor: number): Promise<LogReadResult> {
+  readLogs(handle: ExecutionHandle, cursor: number): Promise<LogReadResult> {
     const execution = this.executions.get(handle.backendExecutionId);
     if (!execution) {
-      return { chunks: [], cursor };
+      return Promise.resolve({ chunks: [], cursor });
     }
 
     const stdout = execution.stdout.slice(cursor);
@@ -121,22 +121,22 @@ export class InlineShellExecutorBackend implements ExecutorBackend {
 
     const nextCursor = Math.max(execution.stdout.length, execution.stderr.length);
     execution.cursor = nextCursor;
-    return {
+    return Promise.resolve({
       chunks,
       cursor: nextCursor,
-    };
+    });
   }
 
-  async listFiles(handle: ExecutionHandle, containerPath: string): Promise<FileEntry[]> {
+  listFiles(handle: ExecutionHandle, containerPath: string): Promise<FileEntry[]> {
     const execution = this.executions.get(handle.backendExecutionId);
     if (!execution) {
-      return [];
+      return Promise.resolve([]);
     }
 
     if (containerPath !== execution.artifactsDir) {
-      return [];
+      return Promise.resolve([]);
     }
 
-    return walkFiles(containerPath);
+    return Promise.resolve(walkFiles(containerPath));
   }
 }

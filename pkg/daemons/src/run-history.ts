@@ -1,12 +1,8 @@
-import {
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { findRepoRoot, getCurrentCommit, inferRepoId, resolveMemoryDir } from "./memory";
 import type { CompletePayload } from "./schema";
-import { findRepoRoot, resolveMemoryDir, inferRepoId, getCurrentCommit } from "./memory";
 import type { WideEvent } from "./wide-events";
 
 const RUN_HISTORY_VERSION = 2;
@@ -112,7 +108,7 @@ export async function loadDaemonRun(
 ): Promise<DaemonRunRecord | null> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
+  const repoId = explicitRepoId ?? (await inferRepoId(repoRoot));
   const backend = createRunHistoryBackend(memoryDir, repoId);
   return backend.loadRun(daemonName, runId);
 }
@@ -125,7 +121,7 @@ export async function listDaemonRuns(
 ): Promise<DaemonRunIndexEntry[]> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
+  const repoId = explicitRepoId ?? (await inferRepoId(repoRoot));
   const backend = createRunHistoryBackend(memoryDir, repoId);
   const index = await backend.loadIndex(daemonName);
   return index?.recentRuns ?? [];
@@ -233,7 +229,10 @@ function createR2RunHistoryBackend(repoId: string): RunHistoryBackend {
       secretAccessKey,
     },
   });
-  const prefix = (process.env.AI_DAEMONS_MEMORY_PREFIX ?? DEFAULT_MEMORY_PREFIX).replace(/\/+$/, "");
+  const prefix = (process.env.AI_DAEMONS_MEMORY_PREFIX ?? DEFAULT_MEMORY_PREFIX).replace(
+    /\/+$/,
+    "",
+  );
 
   function keyForDaemon(daemonName: string, suffix: string): string {
     return `${prefix}/${repoId}/${daemonName}/runs/${suffix}`;

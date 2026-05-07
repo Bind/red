@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { RollupBroadcaster } from "../service/rollup-broadcaster";
 import type { WideRollupRecord } from "../service/collector-contract";
+import { RollupBroadcaster } from "../service/rollup-broadcaster";
 
 function sampleRollup(requestId: string): WideRollupRecord {
   return {
@@ -70,10 +70,7 @@ describe("RollupBroadcaster", () => {
       limit: 10,
     });
 
-    expect(replay.map((event) => event.rollup.request_id)).toEqual([
-      "req-2",
-      "req-3",
-    ]);
+    expect(replay.map((event) => event.rollup.request_id)).toEqual(["req-2", "req-3"]);
   });
 
   test("replay filters by service and outcome", async () => {

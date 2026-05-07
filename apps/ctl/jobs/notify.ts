@@ -1,4 +1,4 @@
-import type { Change, NotificationConfig, ConfidenceLevel } from "../types";
+import type { Change, ConfidenceLevel, NotificationConfig } from "../types";
 
 export interface NotificationPayload {
   event: "change_ready" | "change_critical";
@@ -25,7 +25,7 @@ export class NotificationSender {
   async send(
     configs: NotificationConfig[],
     change: Change,
-    event: NotificationPayload["event"]
+    event: NotificationPayload["event"],
   ): Promise<NotifyResult[]> {
     const matching = configs.filter((c) => shouldNotify(c, change, event));
     if (matching.length === 0) return [];
@@ -97,7 +97,7 @@ export interface NotifyResult {
 function shouldNotify(
   config: NotificationConfig,
   change: Change,
-  event: NotificationPayload["event"]
+  event: NotificationPayload["event"],
 ): boolean {
   if (config.events.includes("all")) return true;
 
@@ -145,11 +145,7 @@ export function isPrivateUrl(urlStr: string): boolean {
   if (isPrivateIP(hostname)) return true;
 
   // Block common internal hostnames
-  if (
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    hostname.endsWith(".lan")
-  ) {
+  if (hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".lan")) {
     return true;
   }
 
@@ -164,7 +160,7 @@ export function isPrivateUrl(urlStr: string): boolean {
 function isPrivateIP(ip: string): boolean {
   // IPv4 private ranges
   const parts = ip.split(".").map(Number);
-  if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
+  if (parts.length === 4 && parts.every((p) => !Number.isNaN(p))) {
     // 10.0.0.0/8
     if (parts[0] === 10) return true;
     // 172.16.0.0/12

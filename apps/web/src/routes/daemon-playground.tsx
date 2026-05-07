@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useHeaderContent } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,12 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import type {
-  DaemonPlaygroundProfile,
-  DaemonPlaygroundRunResult,
-} from "@/lib/api";
+import type { DaemonPlaygroundProfile, DaemonPlaygroundRunResult } from "@/lib/api";
 import { fetchDaemonPlayground } from "@/lib/api";
-import { useHeaderContent } from "@/components/layout";
 
 const DEFAULT_PROFILES: DaemonPlaygroundProfile[] = [
   {
@@ -59,29 +56,29 @@ export function DaemonPlaygroundPage() {
           <Badge variant="secondary">local cohort lab</Badge>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Compare routing cohorts across memory, embeddings, and librarian profiles using the checked-in
-          training set and real repo files.
+          Compare routing cohorts across memory, embeddings, and librarian profiles using the
+          checked-in training set and real repo files.
         </p>
       </div>,
     );
     return () => setHeaderContent(null);
   }, [setHeaderContent]);
 
-  const run = async () => {
+  const runWithProfiles = useCallback(async (nextProfiles: DaemonPlaygroundProfile[]) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await fetchDaemonPlayground(profiles));
+      setResult(await fetchDaemonPlayground(nextProfiles));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Playground run failed");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void run();
-  }, []);
+    void runWithProfiles(DEFAULT_PROFILES);
+  }, [runWithProfiles]);
 
   const scenarioNames = useMemo(() => {
     return result?.profiles[0]?.scenarios.map((scenario) => scenario.scenario) ?? [];
@@ -118,7 +115,10 @@ export function DaemonPlaygroundPage() {
                       value={profile.mode}
                       onValueChange={(value) => {
                         const next = [...profiles];
-                        next[index] = { ...profile, mode: value as DaemonPlaygroundProfile["mode"] };
+                        next[index] = {
+                          ...profile,
+                          mode: value as DaemonPlaygroundProfile["mode"],
+                        };
                         setProfiles(next);
                       }}
                     >
@@ -129,7 +129,9 @@ export function DaemonPlaygroundPage() {
                         <SelectItem value="memory_only">memory_only</SelectItem>
                         <SelectItem value="embedding_only">embedding_only</SelectItem>
                         <SelectItem value="memory_embedding">memory_embedding</SelectItem>
-                        <SelectItem value="memory_embedding_librarian">memory_embedding_librarian</SelectItem>
+                        <SelectItem value="memory_embedding_librarian">
+                          memory_embedding_librarian
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -141,7 +143,9 @@ export function DaemonPlaygroundPage() {
                         const next = [...profiles];
                         next[index] = {
                           ...profile,
-                          routerProvider: value as NonNullable<DaemonPlaygroundProfile["routerProvider"]>,
+                          routerProvider: value as NonNullable<
+                            DaemonPlaygroundProfile["routerProvider"]
+                          >,
                         };
                         setProfiles(next);
                       }}
@@ -190,7 +194,7 @@ export function DaemonPlaygroundPage() {
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={() => void run()} disabled={loading}>
+            <Button onClick={() => void runWithProfiles(profiles)} disabled={loading}>
               {loading ? "Running..." : "Run playground"}
             </Button>
             {result && (
@@ -211,7 +215,9 @@ export function DaemonPlaygroundPage() {
           </div>
           <div className="grid gap-4 xl:grid-cols-3">
             {result?.profiles.map((profileResult) => {
-              const scenario = profileResult.scenarios.find((entry) => entry.scenario === scenarioName);
+              const scenario = profileResult.scenarios.find(
+                (entry) => entry.scenario === scenarioName,
+              );
               if (!scenario) return null;
               return (
                 <Card key={profileResult.profile.id} className="border-border/60">
@@ -223,11 +229,15 @@ export function DaemonPlaygroundPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {scenario.evaluation.fileDebug.map((file) => (
-                      <div key={file.file} className="space-y-3 rounded border border-border/50 p-3">
+                      <div
+                        key={file.file}
+                        className="space-y-3 rounded border border-border/50 p-3"
+                      >
                         <div className="space-y-1">
                           <div className="font-mono text-sm text-foreground">{file.file}</div>
                           <div className="text-xs text-muted-foreground">
-                            expected: {(scenario.expectedByFile[file.file] ?? []).join(", ") || "(none)"}
+                            expected:{" "}
+                            {(scenario.expectedByFile[file.file] ?? []).join(", ") || "(none)"}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             selected: {file.selectedDaemons.join(", ") || "(none)"}
@@ -243,13 +253,16 @@ export function DaemonPlaygroundPage() {
                           {file.scores.slice(0, 4).map((score) => (
                             <div key={score.daemonName} className="rounded bg-muted/30 p-2 text-xs">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-mono text-foreground">{score.daemonName}</span>
+                                <span className="font-mono text-foreground">
+                                  {score.daemonName}
+                                </span>
                                 <span className={scoreTone(score.finalScore)}>
                                   {score.finalScore.toFixed(3)}
                                 </span>
                               </div>
                               <div className="mt-1 text-muted-foreground">
-                                semantic {score.semanticScore.toFixed(3)} · boost {score.scoreBoost.toFixed(3)}
+                                semantic {score.semanticScore.toFixed(3)} · boost{" "}
+                                {score.scoreBoost.toFixed(3)}
                               </div>
                               <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                                 <span>dep {String(score.dependencyExact)}</span>

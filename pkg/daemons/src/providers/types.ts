@@ -1,4 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { TSchema } from "@mariozechner/pi-ai";
 import type { CompletePayload } from "../schema";
 
 export type ProviderTokenUsage = { input: number; output: number };
@@ -29,7 +30,10 @@ export type ProviderRunResult = ProviderRunSuccess | ProviderRunFailure;
 
 export type ProviderRunCallbacks = {
   onTurnStart?(turnIndex: number): void;
-  onTurnEnd?(turnIndex: number, info: { tokens: ProviderTokenUsage; completeCalled: boolean }): void;
+  onTurnEnd?(
+    turnIndex: number,
+    info: { tokens: ProviderTokenUsage; completeCalled: boolean },
+  ): void;
   onToolCall?(turnIndex: number, toolName: string, args?: unknown): void;
   onAssistantTextDelta?(turnIndex: number, delta: string): void;
 };
@@ -41,7 +45,7 @@ export type ProviderRunOptions = ProviderRunCallbacks & {
   messages?: unknown[];
   maxTurns: number;
   maxWallclockMs: number;
-  extraTools?: AgentTool<any>[];
+  extraTools?: AgentTool<TSchema>[];
 };
 
 export interface AgentProvider {

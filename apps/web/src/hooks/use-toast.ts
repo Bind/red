@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 export type ToastRecord = Omit<Partial<ToastProps>, "title" | "description" | "action"> & {

@@ -30,7 +30,7 @@ export class MinioClawArtifactStore implements ClawArtifactStore {
   async persistRunArtifacts(
     runId: string,
     inputDir: string,
-    outputDir: string
+    outputDir: string,
   ): Promise<PersistedClawArtifacts> {
     const baseKey = joinKey(this.prefix, runId);
     const inputKeys = await this.uploadDirectory(inputDir, joinKey(baseKey, "input"));
@@ -52,7 +52,7 @@ export class MinioClawArtifactStore implements ClawArtifactStore {
 
   async readTextArtifact(
     runId: string,
-    kind: "request" | "result" | "events"
+    kind: "request" | "result" | "events",
   ): Promise<string | null> {
     const key = this.keyForArtifact(runId, kind);
     try {
@@ -69,9 +69,12 @@ export class MinioClawArtifactStore implements ClawArtifactStore {
     for (const filePath of files) {
       const relPath = relative(rootDir, filePath).replaceAll("\\", "/");
       const objectKey = joinKey(baseKey, relPath);
-      await write(this.client.file(objectKey, {
-        type: contentTypeForPath(filePath),
-      }), Bun.file(filePath));
+      await write(
+        this.client.file(objectKey, {
+          type: contentTypeForPath(filePath),
+        }),
+        Bun.file(filePath),
+      );
       uploaded.push(objectKey);
     }
 
@@ -95,12 +98,16 @@ export class MinioClawArtifactStore implements ClawArtifactStore {
 }
 
 export class LocalClawArtifactStore implements ClawArtifactStore {
-  constructor(private readonly rootDir: string = process.env.CLAW_ARTIFACTS_DIR ?? process.env.CODEX_ARTIFACTS_DIR ?? ".claw-artifacts") {}
+  constructor(
+    private readonly rootDir: string = process.env.CLAW_ARTIFACTS_DIR ??
+      process.env.CODEX_ARTIFACTS_DIR ??
+      ".claw-artifacts",
+  ) {}
 
   async persistRunArtifacts(
     runId: string,
     inputDir: string,
-    outputDir: string
+    outputDir: string,
   ): Promise<PersistedClawArtifacts> {
     const runDir = getLocalArtifactRunDir(runId, this.rootDir);
     await rm(runDir, { recursive: true, force: true }).catch(() => {});
@@ -121,7 +128,7 @@ export class LocalClawArtifactStore implements ClawArtifactStore {
 
   async readTextArtifact(
     runId: string,
-    kind: "request" | "result" | "events"
+    kind: "request" | "result" | "events",
   ): Promise<string | null> {
     const section = kind === "request" ? "input" : "output";
     const fileName =
@@ -132,7 +139,10 @@ export class LocalClawArtifactStore implements ClawArtifactStore {
           : "agent-events.jsonl";
 
     try {
-      return await readFile(join(getLocalArtifactRunDir(runId, this.rootDir), section, fileName), "utf8");
+      return await readFile(
+        join(getLocalArtifactRunDir(runId, this.rootDir), section, fileName),
+        "utf8",
+      );
     } catch {
       return null;
     }
@@ -140,7 +150,7 @@ export class LocalClawArtifactStore implements ClawArtifactStore {
 }
 
 export function getRequiredMinioArtifactStoreConfig(
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
 ): MinioArtifactStoreConfig {
   const required = (key: string): string => {
     const value = env[key];
@@ -150,7 +160,7 @@ export function getRequiredMinioArtifactStoreConfig(
 
   return {
     endPoint: required("MINIO_ENDPOINT"),
-    port: parseInt(required("MINIO_PORT"), 10),
+    port: Number.parseInt(required("MINIO_PORT"), 10),
     useSSL: required("MINIO_USE_SSL").toLowerCase() === "true",
     accessKey: required("MINIO_ACCESS_KEY"),
     secretKey: required("MINIO_SECRET_KEY"),
@@ -160,7 +170,7 @@ export function getRequiredMinioArtifactStoreConfig(
 }
 
 export function createMinioArtifactStoreFromEnv(
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
 ): MinioClawArtifactStore | null {
   const requiredKeys = [
     "MINIO_ENDPOINT",
@@ -178,7 +188,9 @@ export function createMinioArtifactStoreFromEnv(
 
 export function getLocalArtifactRunDir(
   runId: string,
-  rootDir: string = process.env.CLAW_ARTIFACTS_DIR ?? process.env.CODEX_ARTIFACTS_DIR ?? ".claw-artifacts"
+  rootDir: string = process.env.CLAW_ARTIFACTS_DIR ??
+    process.env.CODEX_ARTIFACTS_DIR ??
+    ".claw-artifacts",
 ): string {
   return join(rootDir, runId);
 }
@@ -202,10 +214,7 @@ async function collectFiles(rootDir: string): Promise<string[]> {
 }
 
 function joinKey(...parts: string[]): string {
-  return parts
-    .map(trimSlashes)
-    .filter(Boolean)
-    .join("/");
+  return parts.map(trimSlashes).filter(Boolean).join("/");
 }
 
 function trimSlashes(value: string): string {

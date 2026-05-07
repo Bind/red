@@ -2,6 +2,12 @@
   "name": "@red/ctl",
   "private": true,
   "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./api/router": "./api/router.ts"
+  },
   "scripts": {
     "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
@@ -9,11 +15,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.5.0",
     "@huggingface/transformers": "^4.2.0",
     "@red/health": "workspace:*",
     "@red/obs": "workspace:*",
     "@red/server": "workspace:*",
-    "yaml": "^2.7.0"
+    "yaml": "^2.7.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bun": "latest"

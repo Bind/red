@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { MemorySink } from "./core";
+import { type EventEnvelope, MemorySink } from "./core";
 import { getEnvelope, obsMiddleware } from "./hono";
+
+type ObsVars = { Variables: { envelope: EventEnvelope } };
 
 describe("obsMiddleware route naming", () => {
   test("records matched route path by default", async () => {
     const sink = new MemorySink();
-    const app = new Hono();
-    app.use("*", obsMiddleware({ service: "test", sink }) as any);
+    const app = new Hono<ObsVars>();
+    app.use("*", obsMiddleware({ service: "test", sink }));
     app.get("/foo/:id", (c) => c.json({ ok: true }));
 
     const response = await app.request("http://local.test/foo/123");
@@ -19,10 +21,10 @@ describe("obsMiddleware route naming", () => {
 
   test("preserves explicit route names set by handlers", async () => {
     const sink = new MemorySink();
-    const app = new Hono();
-    app.use("*", obsMiddleware({ service: "test", sink }) as any);
+    const app = new Hono<ObsVars>();
+    app.use("*", obsMiddleware({ service: "test", sink }));
     app.get("/health", (c) => {
-      getEnvelope(c as any).set({
+      getEnvelope(c).set({
         route: {
           name: "health",
         },

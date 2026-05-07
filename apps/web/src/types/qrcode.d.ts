@@ -4,10 +4,7 @@ declare module "qrcode" {
     width?: number;
   }
 
-  export function toDataURL(
-    text: string,
-    options?: QRCodeToDataURLOptions,
-  ): Promise<string>;
+  export function toDataURL(text: string, options?: QRCodeToDataURLOptions): Promise<string>;
 
   const QRCode: {
     toDataURL: typeof toDataURL;

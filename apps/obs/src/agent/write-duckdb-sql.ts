@@ -3,8 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const outputPath = resolve(
-	process.env.WIDE_EVENTS_AGENT_SQL_PATH ??
-		".wide-events-agent/duckdb-bootstrap.sql",
+  process.env.WIDE_EVENTS_AGENT_SQL_PATH ?? ".wide-events-agent/duckdb-bootstrap.sql",
 );
 
 const sql = `INSTALL httpfs;
@@ -36,4 +35,4 @@ FROM read_json_auto(
 
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, sql, "utf8");
-console.log(outputPath);
+process.stdout.write(`${outputPath}\n`);

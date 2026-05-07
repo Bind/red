@@ -13,6 +13,8 @@
     "cli": "bun run apps/ctl/cli/index.ts",
     "claw:manual": "bun run apps/ctl/claw/manual.ts",
     "build": "turbo run build",
+    "lint": "biome check apps pkg experiments",
+    "format": "biome format --write apps pkg experiments",
     "test": "bun test",
     "turbo:test": "turbo run test",
     "typecheck": "turbo run typecheck",
@@ -25,6 +27,7 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "latest",
     "@types/bun": "latest",
     "sst": "^3",
     "turbo": "^2.5.4",

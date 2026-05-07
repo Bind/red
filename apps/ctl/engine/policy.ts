@@ -1,13 +1,8 @@
 import { parse as parseYaml } from "yaml";
-import type { PolicyConfig, ConfidenceLevel, DiffStats } from "../types";
 import type { RepositoryProvider } from "../repo/repository-provider";
+import type { ConfidenceLevel, DiffStats, PolicyConfig, PolicyRule } from "../types";
+import { actionPriority, ruleMatches, validatePolicy } from "./policy-shared";
 import { matchGlob } from "./review";
-import {
-  ruleMatches,
-  actionPriority,
-  validatePolicy,
-} from "./policy-shared";
-import type { PolicyRule } from "../types";
 
 export interface PolicyDecision {
   action: "auto-approve" | "require-review" | "block";
@@ -28,16 +23,12 @@ export class PolicyEngine {
    * Load policy from the repo's base branch.
    * Returns null if no policy file exists (repo hasn't configured red).
    */
-  async loadPolicy(
-    owner: string,
-    repo: string,
-    baseBranch: string
-  ): Promise<PolicyConfig | null> {
+  async loadPolicy(owner: string, repo: string, baseBranch: string): Promise<PolicyConfig | null> {
     const content = await this.repositoryProvider.getFileContent(
       owner,
       repo,
       ".red/policy.yaml",
-      baseBranch
+      baseBranch,
     );
 
     if (!content) return null;
@@ -54,7 +45,7 @@ export class PolicyEngine {
   evaluate(
     policy: PolicyConfig | null,
     diff: DiffStats,
-    confidence: ConfidenceLevel
+    confidence: ConfidenceLevel,
   ): PolicyDecision {
     // No policy = default to require-review
     if (!policy || policy.rules.length === 0) {
@@ -90,18 +81,15 @@ export class PolicyEngine {
   }
 }
 
-function describeMatch(
-  rule: PolicyRule,
-  diff: DiffStats,
-  confidence: ConfidenceLevel
-): string {
+function describeMatch(rule: PolicyRule, diff: DiffStats, confidence: ConfidenceLevel): string {
   const parts: string[] = [];
   if (rule.match.confidence) {
     parts.push(`confidence=${confidence}`);
   }
   if (rule.match.files) {
+    const files = rule.match.files;
     const matched = diff.files
-      .filter((f) => rule.match.files!.some((p) => matchGlob(p, f.filename)))
+      .filter((f) => files.some((p) => matchGlob(p, f.filename)))
       .map((f) => f.filename);
     if (matched.length > 0) {
       parts.push(`files=${matched.join(",")}`);

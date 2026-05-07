@@ -86,13 +86,15 @@ export interface Repo {
   getCommitDiff(range: CommitDiffRange): Promise<CommitDiffResult>;
   readTextFile(options: { ref: string; path: string }): Promise<string | null>;
   listCommits(options?: { ref?: string; limit?: number }): Promise<CommitInfo[]>;
-  listBranches(): Promise<Array<{
-    name: string;
-    sha: string;
-    message?: string;
-    timestamp?: string;
-    protected?: boolean;
-  }>>;
+  listBranches(): Promise<
+    Array<{
+      name: string;
+      sha: string;
+      message?: string;
+      timestamp?: string;
+      protected?: boolean;
+    }>
+  >;
 }
 
 export interface GitStorage {
@@ -142,18 +144,8 @@ export function describeExperimentArchitecture() {
       ],
     },
     separation: {
-      storage: [
-        "git remotes",
-        "diffs",
-        "history reads",
-        "file reads",
-      ],
-      product: [
-        "red review/change lifecycle",
-        "policy",
-        "audit trail",
-        "permissions",
-      ],
+      storage: ["git remotes", "diffs", "history reads", "file reads"],
+      product: ["red review/change lifecycle", "policy", "audit trail", "permissions"],
     },
     principle: "match code.storage semantics at the SDK layer; keep red review semantics above it",
   };

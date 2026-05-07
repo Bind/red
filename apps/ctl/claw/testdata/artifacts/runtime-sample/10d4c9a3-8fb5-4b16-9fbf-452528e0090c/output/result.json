@@ -27,20 +27,12 @@
     },
     {
       "text": "Update the server and worker pipeline to support summary regeneration, raw diff retrieval, SSE log streaming, and re-entering `summarizing` from `ready_for_review`.",
-      "files": [
-        "src/index.ts",
-        "src/jobs/worker.ts",
-        "src/engine/state-machine.ts"
-      ],
+      "files": ["src/index.ts", "src/jobs/worker.ts", "src/engine/state-machine.ts"],
       "type": "change"
     },
     {
       "text": "Rework the change detail UI to inject route-specific header content and show annotated summaries, live Codex logs, and an interactive file tree plus rendered patch diff.",
-      "files": [
-        "web/src/routes/change.tsx",
-        "web/src/components/layout.tsx",
-        "web/src/lib/api.ts"
-      ],
+      "files": ["web/src/routes/change.tsx", "web/src/components/layout.tsx", "web/src/lib/api.ts"],
       "type": "change"
     },
     {

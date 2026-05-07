@@ -1,5 +1,5 @@
-import { Type, type Static } from "@mariozechner/pi-ai";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { type Static, Type } from "@mariozechner/pi-ai";
 import { CompletePayload, type CompletePayload as CompletePayloadT } from "../schema";
 
 export const COMPLETE_TOOL_NAME = "complete";
@@ -55,13 +55,13 @@ export function createCompleteTool(
     description:
       "Signal that this daemon's run is complete. Call this exactly once, at the end of your work. The run ends as soon as this tool is called.",
     parameters: CompleteParams,
-    async execute(_toolCallId, params: Static<typeof CompleteParams>) {
+    execute(_toolCallId, params: Static<typeof CompleteParams>) {
       const parsed = CompletePayload.safeParse(params);
       if (!parsed.success) {
         capture.error = parsed.error.issues
           .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
           .join("; ");
-        return {
+        return Promise.resolve({
           content: [
             {
               type: "text" as const,
@@ -69,11 +69,11 @@ export function createCompleteTool(
             },
           ],
           details: { error: capture.error },
-        };
+        });
       }
       capture.payload = parsed.data;
       queueMicrotask(() => options.onComplete?.(parsed.data));
-      return {
+      return Promise.resolve({
         content: [
           {
             type: "text" as const,
@@ -81,7 +81,7 @@ export function createCompleteTool(
           },
         ],
         details: parsed.data,
-      };
+      });
     },
   };
 }

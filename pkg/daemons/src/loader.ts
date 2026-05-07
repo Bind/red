@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import matter from "gray-matter";
@@ -40,7 +41,7 @@ const DEFAULT_IGNORED_DIRS = new Set([
 ]);
 
 async function* walk(root: string): AsyncGenerator<string> {
-  let entries;
+  let entries: Dirent<string>[];
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch {

@@ -17,18 +17,20 @@ test("parseDfAvailableKilobytes returns null for malformed output", () => {
 test("isDockerEnvironmentFailure matches overlay and read-only daemon failures", () => {
   expect(
     isDockerEnvironmentFailure(
-      "docker: Error response from daemon: mkdir /var/lib/docker/overlay2/abc-init: read-only file system"
-    )
+      "docker: Error response from daemon: mkdir /var/lib/docker/overlay2/abc-init: read-only file system",
+    ),
   ).toBe(true);
   expect(
     isDockerEnvironmentFailure(
-      "docker: Error response from daemon: error creating temporary lease: read-only file system: unknown."
-    )
+      "docker: Error response from daemon: error creating temporary lease: read-only file system: unknown.",
+    ),
   ).toBe(true);
 });
 
 test("isDockerEnvironmentFailure ignores ordinary container exit logs", () => {
   expect(
-    isDockerEnvironmentFailure("Cloning repo...\nRunning OpenCode...\nContainer exited with code 1")
+    isDockerEnvironmentFailure(
+      "Cloning repo...\nRunning OpenCode...\nContainer exited with code 1",
+    ),
   ).toBe(false);
 });

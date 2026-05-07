@@ -27,7 +27,7 @@ export type RefUpdateIngestResult =
 
 export function ingestRefUpdate(
   deps: RefUpdateIngestDeps,
-  input: RefUpdateInput
+  input: RefUpdateInput,
 ): RefUpdateIngestResult {
   const deliveryId = input.deliveryId ?? null;
   if (deliveryId && deps.deliveries.isDuplicate(deliveryId)) {

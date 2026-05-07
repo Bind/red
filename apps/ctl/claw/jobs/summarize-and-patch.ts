@@ -1,5 +1,5 @@
-import type { ManualClawJob } from "../types";
 import { loadPromptTemplate, renderPrompt } from "../prompts";
+import type { ManualClawJob } from "../types";
 
 export interface SummarizeAndPatchJson {
   title: string;
@@ -14,10 +14,7 @@ interface SummarizeAndPatchInput {
   baseRef: string;
 }
 
-export const summarizeAndPatchJob: ManualClawJob<
-  SummarizeAndPatchInput,
-  SummarizeAndPatchJson
-> = {
+export const summarizeAndPatchJob: ManualClawJob<SummarizeAndPatchInput, SummarizeAndPatchJson> = {
   name: "summarize-and-patch",
   description: "Summarize a change and produce a proposed patch artifact.",
   parseCliArgs(args) {

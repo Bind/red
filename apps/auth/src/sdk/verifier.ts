@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, customFetch } from "jose";
+import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 
 export interface TokenVerifierConfig {
   issuer: string;
@@ -38,11 +38,12 @@ function toPlainObject(payload: Record<string, unknown>): Record<string, unknown
 }
 
 export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier {
+  const fetchImpl = config.fetchImpl;
   const jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
-    ...(config.fetchImpl
+    ...(fetchImpl
       ? {
           [customFetch]: async (url, options) =>
-            config.fetchImpl!(new Request(url, options as RequestInit)),
+            fetchImpl(new Request(url, options as RequestInit)),
         }
       : {}),
   });

@@ -1,13 +1,13 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
-import { initInMemoryDatabase } from "../db/schema";
-import { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
-import { ScoringEngine } from "../engine/review";
-import { StubSummaryGenerator } from "../engine/summary";
-import { ChangeStateMachine } from "../engine/state-machine";
-import { JobWorker, type WorkerDeps } from "./worker";
-import { NotificationSender } from "./notify";
-import type { RepositoryProvider } from "../repo/repository-provider";
 import type { Database } from "bun:sqlite";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
+import { initInMemoryDatabase } from "../db/schema";
+import { ScoringEngine } from "../engine/review";
+import { ChangeStateMachine } from "../engine/state-machine";
+import { StubSummaryGenerator } from "../engine/summary";
+import type { RepositoryProvider } from "../repo/repository-provider";
+import { NotificationSender } from "./notify";
+import { JobWorker, type WorkerDeps } from "./worker";
 
 let db: Database;
 let deps: WorkerDeps;
@@ -130,9 +130,7 @@ describe("JobWorker", () => {
           files_changed: 2,
           additions: 15,
           deletions: 3,
-          files: [
-            { filename: "src/app.ts", additions: 10, deletions: 2, status: "modified" },
-          ],
+          files: [{ filename: "src/app.ts", additions: 10, deletions: 2, status: "modified" }],
         },
       }),
     });

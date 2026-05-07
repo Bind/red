@@ -1,29 +1,41 @@
-import { Hono, createHttpLogger } from "@red/server";
+import { repoCreateInputSchema } from "@red/ctl";
 import {
   collectHealthReport,
   createObsSinkFromEnv,
+  type EventEnvelope,
   getEnvelope,
   type ObsFields,
   obsMiddleware,
 } from "@red/obs";
+import { createHttpLogger, getServerLogger, Hono } from "@red/server";
+import {
+  type ClientConfig,
+  forwardAuthRequest,
+  joinUrl,
+  makeApi,
+  makeAuth,
+  makeObs,
+  makeTriage,
+} from "./client";
 import {
   createHostedRepoReader,
-  splitHostedRepoId,
   type HostedRepoConfig,
   type HostedRepoReader,
+  splitHostedRepoId,
 } from "./hosted-repo";
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface BffConfig {
+type BffAppEnv = {
+  Variables: {
+    envelope: EventEnvelope;
+  };
+};
+
+const logger = getServerLogger(["bff"]);
+
+export interface BffConfig extends ClientConfig {
   port: number;
-  apiBaseUrl: string;
-  authBaseUrl: string;
-  obsBaseUrl?: string;
-  triageBaseUrl?: string;
-  grsBaseUrl?: string;
-  mcpBaseUrl?: string;
-  disableAuth?: boolean;
   fetchImpl?: FetchImpl;
   hostedRepo?: HostedRepoConfig;
   hostedRepoReader?: HostedRepoReader;
@@ -63,62 +75,6 @@ interface StatusReport {
   services: ServiceProbeResult[];
 }
 
-function joinUrl(baseUrl: string, path: string, query?: URLSearchParams): string {
-  const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
-  if (query) {
-    url.search = query.toString();
-  }
-  return url.toString();
-}
-
-function copyResponseHeaders(headers: Headers): Headers {
-  const copied = new Headers();
-  const allowed = [
-    "cache-control",
-    "connection",
-    "content-type",
-    "set-cookie",
-    "www-authenticate",
-  ];
-  for (const [key, value] of headers.entries()) {
-    if (allowed.includes(key.toLowerCase())) {
-      copied.append(key, value);
-    }
-  }
-  return copied;
-}
-
-function buildForwardHeaders(request: Request): Headers {
-  const headers = new Headers();
-  const forwarded = [
-    "accept",
-    "authorization",
-    "content-type",
-    "cookie",
-    "last-event-id",
-    "origin",
-    "x-request-id",
-  ];
-  for (const key of forwarded) {
-    const value = request.headers.get(key);
-    if (value) headers.set(key, value);
-  }
-  return headers;
-}
-
-function addHeaders(base: Headers, extra: Record<string, string>): Headers {
-  const headers = new Headers(base);
-  for (const [key, value] of Object.entries(extra)) {
-    headers.set(key, value);
-  }
-  return headers;
-}
-
-async function readJsonBody(response: Response): Promise<unknown> {
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
-}
-
 async function readBestEffortBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text.trim()) return null;
@@ -127,125 +83,6 @@ async function readBestEffortBody(response: Response): Promise<unknown> {
   } catch {
     return text;
   }
-}
-
-async function readForwardBody(request: Request): Promise<ArrayBuffer | undefined> {
-  if (request.method === "GET" || request.method === "HEAD") {
-    return undefined;
-  }
-  return request.arrayBuffer();
-}
-
-async function proxyJson(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const json = await readJsonBody(upstream);
-  return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyMutation(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const json = await readJsonBody(upstream);
-  return c.json(json, upstream.status as 200 | 201 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyText(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  const text = await upstream.text();
-  c.header("Content-Type", upstream.headers.get("content-type") ?? "text/plain; charset=utf-8");
-  return c.text(text, upstream.status as 200 | 400 | 401 | 403 | 404 | 500);
-}
-
-async function proxyStream(
-  c: any,
-  fetchImpl: FetchImpl,
-  targetUrl: string,
-  extraHeaders: Record<string, string> = {},
-): Promise<Response> {
-  const body = await readForwardBody(c.req.raw);
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: addHeaders(buildForwardHeaders(c.req.raw), extraHeaders),
-    body,
-  });
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: copyResponseHeaders(upstream.headers),
-  });
-}
-
-async function proxyAuthRequest(c: any, fetchImpl: FetchImpl, targetUrl: string): Promise<Response> {
-  const body =
-    c.req.method === "GET" || c.req.method === "HEAD" ? undefined : await c.req.raw.arrayBuffer();
-  const upstream = await fetchImpl(targetUrl, {
-    method: c.req.method,
-    headers: buildForwardHeaders(c.req.raw),
-    body,
-    redirect: "manual",
-  });
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: copyResponseHeaders(upstream.headers),
-  });
-}
-
-async function fetchSessionExchangeToken(
-  request: Request,
-  fetchImpl: FetchImpl,
-  authBaseUrl: string,
-): Promise<{ accessToken: string } | Response> {
-  const upstream = await fetchImpl(joinUrl(authBaseUrl, "/session/exchange"), {
-    method: "POST",
-    headers: buildForwardHeaders(request),
-    redirect: "manual",
-  });
-
-  const text = await upstream.text();
-  if (!upstream.ok) {
-    return new Response(text, {
-      status: upstream.status,
-      headers: copyResponseHeaders(upstream.headers),
-    });
-  }
-
-  const payload = text ? (JSON.parse(text) as { access_token?: unknown }) : null;
-  if (!payload || typeof payload.access_token !== "string") {
-    return new Response(JSON.stringify({ error: "invalid_token_response" }), {
-      status: 502,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }
-
-  return { accessToken: payload.access_token };
 }
 
 async function probeHealthEndpoint(
@@ -284,12 +121,11 @@ async function probeHealthEndpoint(
       latency_ms: Math.round(performance.now() - startedAt),
       checked_at: checkedAt,
       body,
-      error:
-        response.ok
-          ? null
-          : typeof body === "object" && body && "error" in body && typeof body.error === "string"
-            ? body.error
-            : `healthcheck returned ${response.status}`,
+      error: response.ok
+        ? null
+        : typeof body === "object" && body && "error" in body && typeof body.error === "string"
+          ? body.error
+          : `healthcheck returned ${response.status}`,
     };
   } catch (error) {
     return {
@@ -306,81 +142,17 @@ async function probeHealthEndpoint(
 }
 
 export function createApp(config: BffConfig) {
-  const app = new Hono();
   const startedAt = Date.now();
   const fetchImpl = config.fetchImpl ?? fetch;
+  const deps = { config, fetchImpl };
+  const api = makeApi(deps);
+  const auth = makeAuth(deps);
+  const obs = makeObs(deps);
+  const triage = makeTriage(deps);
 
-  app.use(
-    "*",
-    obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }) as any,
-  );
-  app.use("*", createHttpLogger({ service: "bff", app: "red" }));
-
-  app.get("/health", async (c) => {
-    const envelope = getEnvelope(c as any);
-    envelope.set({
-      route: {
-        name: "health",
-      },
-    });
-    const report = await collectHealthReport({
-      service: "bff",
-      startedAtMs: startedAt,
-      checks: {
-        auth: async () => {
-          const response = await fetchImpl(joinUrl(config.authBaseUrl, "/health"), {
-            headers: {
-              "x-request-id": envelope.requestId,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`auth upstream unhealthy: ${response.status}`);
-          }
-          const body = (await response.json()) as { status?: string };
-          return {
-            upstream: config.authBaseUrl,
-            reported_status: body.status ?? "ok",
-          };
-        },
-        api: async () => {
-          const response = await fetchImpl(joinUrl(config.apiBaseUrl, "/health"), {
-            headers: {
-              "x-request-id": envelope.requestId,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`api upstream unhealthy: ${response.status}`);
-          }
-          const body = (await response.json()) as { status?: string };
-          return {
-            upstream: config.apiBaseUrl,
-            reported_status: body.status ?? "ok",
-          };
-        },
-      },
-    });
-    envelope.set({
-      health: {
-        status: report.status,
-        checks: report.checks as unknown as ObsFields,
-      },
-    });
-    c.header("x-request-id", envelope.requestId);
-    return c.json(report, report.status === "ok" ? 200 : 503);
-  });
-
-  app.all("/api/auth/*", (c) => {
-    const incoming = new URL(c.req.url);
-    return proxyAuthRequest(
-      c,
-      fetchImpl,
-      joinUrl(config.authBaseUrl, incoming.pathname, incoming.searchParams),
-    );
-  });
-
-  const rpc = new Hono()
+  const rpc = new Hono<BffAppEnv>()
     .get("/status", async (c) => {
-      const envelope = getEnvelope(c as any);
+      const envelope = getEnvelope(c);
       const checkedAt = new Date().toISOString();
       const services = await Promise.all([
         Promise.resolve({
@@ -390,10 +162,7 @@ export function createApp(config: BffConfig) {
           http_status: 200,
           latency_ms: 0,
           checked_at: checkedAt,
-          body: {
-            service: "bff",
-            status: "ok",
-          },
+          body: { service: "bff", status: "ok" },
           error: null,
         }),
         probeHealthEndpoint(fetchImpl, "api", config.apiBaseUrl, envelope.requestId),
@@ -410,362 +179,303 @@ export function createApp(config: BffConfig) {
       };
       return c.json(report, report.overall_status === "ok" ? 200 : 503);
     })
-    .get("/me", (c) => proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/me")))
-    .get("/dev/magic-link", (c) => {
-      const query = new URLSearchParams();
-      const email = c.req.query("email");
-      if (email) query.set("email", email);
-      return proxyAuthRequest(
-        c,
-        fetchImpl,
-        joinUrl(config.authBaseUrl, "/__test__/mailbox/latest", query),
-      );
-    })
-    .post("/auth/login-attempts", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts"))
+    .get("/me", (c) => auth(c).send(($) => $.me.$get()))
+    .get("/dev/magic-link", (c) =>
+      auth(c).send(($) =>
+        $.__test__.mailbox.latest.$get({
+          query: { email: c.req.query("email") },
+        }),
+      ),
     )
+    .post("/auth/login-attempts", (c) => forwardAuthRequest(c, deps, "/login-attempts"))
     .get("/auth/login-attempts/:id", (c) =>
-      proxyAuthRequest(
-        c,
-        fetchImpl,
-        joinUrl(config.authBaseUrl, `/login-attempts/${c.req.param("id")}`),
-      )
+      auth(c).send(($) => $["login-attempts"][":id"].$get({ param: { id: c.req.param("id") } })),
     )
     .post("/auth/login-attempts/redeem", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/login-attempts/redeem"))
+      forwardAuthRequest(c, deps, "/login-attempts/redeem"),
     )
-    .post("/auth/magic-link/complete", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/magic-link/complete"))
-    )
+    .post("/auth/magic-link/complete", (c) => forwardAuthRequest(c, deps, "/magic-link/complete"))
     .post("/auth/user/two-factor/enroll", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/enroll"))
+      forwardAuthRequest(c, deps, "/user/two-factor/enroll"),
     )
     .post("/auth/user/two-factor/verify", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/two-factor/verify"))
+      forwardAuthRequest(c, deps, "/user/two-factor/verify"),
     )
-    .post("/auth/user/totp-login", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/totp-login"))
-    )
+    .post("/auth/user/totp-login", (c) => forwardAuthRequest(c, deps, "/user/totp-login"))
     .post("/auth/user/onboarding/complete", (c) =>
-      proxyAuthRequest(c, fetchImpl, joinUrl(config.authBaseUrl, "/user/onboarding/complete"))
+      forwardAuthRequest(c, deps, "/user/onboarding/complete"),
     )
     .get("/app/hosted-repo", async (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      const envelope = getEnvelope(c as any);
+      const envelope = getEnvelope(c);
       const hostedRepoReader =
-        config.hostedRepoReader
-        ?? (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
+        config.hostedRepoReader ??
+        (hostedRepoConfig ? createHostedRepoReader(hostedRepoConfig, fetchImpl) : null);
       if (!hostedRepoReader) {
         return c.json({ error: "Hosted repo app is not configured" }, 404);
       }
       return c.json(await hostedRepoReader.readSnapshot({ requestId: envelope.requestId }));
     })
-    .get("/app/hosted-repo/tree", async (c) => {
+    .get("/app/hosted-repo/tree", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
       if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
-      const ref = c.req.query("ref");
-      const envelope = getEnvelope(c as any);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const params = new URLSearchParams();
-      if (ref) params.set("ref", ref);
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/tree?${params}`, config.apiBaseUrl),
-        { headers: { "x-request-id": envelope.requestId } },
-      );
-      if (!response.ok) return c.text(await response.text().catch(() => "Unable to list tree"), response.status as any);
-      return c.json(await response.json());
+      return api(c)
+        .auth("none")
+        .as("stream")
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].tree.$get({
+            param: { owner, repo: name },
+            query: { ref: c.req.query("ref") },
+          }),
+        );
     })
-    .get("/app/hosted-repo/file", async (c) => {
+    .get("/app/hosted-repo/file", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      if (!hostedRepoConfig) {
-        return c.json({ error: "Hosted repo app is not configured" }, 404);
-      }
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const path = c.req.query("path");
-      if (!path) {
-        return c.json({ error: "Missing path query parameter" }, 400);
-      }
-      const ref = c.req.query("ref");
-      const envelope = getEnvelope(c as any);
+      if (!path) return c.json({ error: "Missing path query parameter" }, 400);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const params = new URLSearchParams({ path });
-      if (ref) params.set("ref", ref);
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/file?${params}`, config.apiBaseUrl),
-        { headers: { "x-request-id": envelope.requestId } },
-      );
-      if (!response.ok) {
-        return c.text(await response.text().catch(() => "Unable to load file"), response.status as any);
-      }
-      const body = await response.json() as { path: string; ref: string; content: string | null };
-      return c.json(body);
+      return api(c)
+        .auth("none")
+        .as("stream")
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].file.$get({
+            param: { owner, repo: name },
+            query: { path, ref: c.req.query("ref") },
+          }),
+        );
     })
-    .get("/app/hosted-repo/commits/:sha/diff", async (c) => {
+    .get("/app/hosted-repo/commits/:sha/diff", (c) => {
       const hostedRepoConfig = resolveHostedRepoConfig(config.hostedRepo, c.req.query("repo"));
-      if (!hostedRepoConfig) {
-        return c.json({ error: "Hosted repo app is not configured" }, 404);
-      }
-      const envelope = getEnvelope(c as any);
+      if (!hostedRepoConfig) return c.json({ error: "Hosted repo app is not configured" }, 404);
       const { owner, name } = splitHostedRepoId(hostedRepoConfig.repoId);
-      const sha = encodeURIComponent(c.req.param("sha"));
-      const response = await fetchImpl(
-        new URL(`/api/repos/${owner}/${name}/commits/${sha}/diff`, config.apiBaseUrl),
-        {
-          headers: {
-            "x-request-id": envelope.requestId,
+      return api(c)
+        .auth("none")
+        .as("stream")
+        .send(($) =>
+          $.api.repos[":owner"][":repo"].commits[":sha"].diff.$get({
+            param: { owner, repo: name, sha: c.req.param("sha") },
+          }),
+        );
+    })
+    .get("/velocity", (c) =>
+      api(c).send(($) => $.api.velocity.$get({ query: { hours: c.req.query("hours") } })),
+    )
+    .get("/review", (c) => api(c).send(($) => $.api.review.$get()))
+    .get("/jobs/pending", (c) => api(c).send(($) => $.api.jobs.pending.$get()))
+    .get("/repos", (c) => api(c).send(($) => $.api.repos.$get()))
+    .post("/repos", async (c) => {
+      const payload = await c.req.json().catch(() => null);
+      const parsed = repoCreateInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: "Invalid repository create payload",
+            details: parsed.error.flatten(),
           },
-        },
-      );
-      if (!response.ok) {
-        return c.text(await response.text().catch(() => "Unable to load commit diff"), response.status as any);
+          400,
+        );
       }
-      return new Response(response.body, {
-        status: response.status,
-        headers: new Headers({
-          "content-type": response.headers.get("content-type") ?? "text/plain; charset=utf-8",
-        }),
-      });
+      return api(c).send(($) => $.api.repos.$post({ json: parsed.data }));
     })
-    .get("/velocity", (c) => {
-      const query = new URLSearchParams();
-      const hours = c.req.query("hours");
-      if (hours) query.set("hours", hours);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/velocity", query), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      });
-    })
-    .get("/review", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/review"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
+    .get("/branches", (c) =>
+      api(c).send(($) => $.api.branches.$get({ query: { repo: c.req.query("repo") } })),
     )
-    .get("/jobs/pending", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/jobs/pending"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
-    )
-    .get("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
-    )
-    .post("/repos", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/repos"), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
-    )
-    .get("/branches", (c) => {
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/branches", query), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      });
-    })
     .get("/changes/:id", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}`), {
-          authorization: `Bearer ${result.accessToken}`,
-        });
-      })
+      api(c).send(($) => $.api.changes[":id"].$get({ param: { id: c.req.param("id") } })),
     )
     .get("/changes/:id/diff", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyText(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/diff`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      api(c)
+        .as("text")
+        .send(($) => $.api.changes[":id"].diff.$get({ param: { id: c.req.param("id") } })),
     )
     .post("/changes/:id/regenerate-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/regenerate-summary`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      api(c).send(($) =>
+        $.api.changes[":id"]["regenerate-summary"].$post({
+          param: { id: c.req.param("id") },
+        }),
+      ),
     )
     .post("/changes/:id/requeue-summary", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyMutation(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/requeue-summary`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      api(c).send(($) =>
+        $.api.changes[":id"]["requeue-summary"].$post({
+          param: { id: c.req.param("id") },
+        }),
+      ),
     )
     .get("/changes/:id/sessions", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/sessions`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      api(c).send(($) => $.api.changes[":id"].sessions.$get({ param: { id: c.req.param("id") } })),
     )
     .get("/changes/:id/agent-events", (c) =>
-      fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyStream(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/changes/${c.req.param("id")}/agent-events`),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      })
+      api(c)
+        .as("stream")
+        .send(($) =>
+          $.api.changes[":id"]["agent-events"].$get({ param: { id: c.req.param("id") } }),
+        ),
     )
-    .get("/sessions/:id/events", (c) => {
-      const query = new URLSearchParams();
-      const after = c.req.query("after");
-      if (after) query.set("after", after);
-      const limit = c.req.query("limit");
-      if (limit) query.set("limit", limit);
-      return fetchSessionExchangeToken(c.req.raw, fetchImpl, config.authBaseUrl).then((result) => {
-        if (result instanceof Response) return result;
-        return proxyJson(
-          c,
-          fetchImpl,
-          joinUrl(config.apiBaseUrl, `/api/sessions/${c.req.param("id")}/events`, query),
-          { authorization: `Bearer ${result.accessToken}` },
-        );
-      });
-    });
-
-  // ── triage UI data: wide events + triage runs ───────────────────────────
-  // These proxy directly to obs + triage which are internal services; no JWT
-  // handoff needed. Session check is gated by config.disableAuth (dev flag).
-  const requireSession = async (c: Parameters<typeof fetchSessionExchangeToken>[0] extends Request ? any : never) => {
-    if (config.disableAuth) return null;
-    const result = await fetchSessionExchangeToken(
-      c.req.raw,
-      fetchImpl,
-      config.authBaseUrl,
+    .get("/sessions/:id/events", (c) =>
+      api(c).send(($) =>
+        $.api.sessions[":id"].events.$get({
+          param: { id: c.req.param("id") },
+          query: {
+            after: c.req.query("after"),
+            limit: c.req.query("limit"),
+          },
+        }),
+      ),
+    )
+    // ── triage UI data: wide events + triage runs ───────────────────────────
+    // These talk to obs + triage as internal services; auth("session") gates
+    // access without injecting a Bearer (and is a no-op when disableAuth is set).
+    .get("/daemons", (c) => obs(c).send(($) => $.v1.daemons.$get()))
+    .get("/daemons/:name/memory", (c) =>
+      obs(c).send(($) =>
+        $.v1.daemons[":daemon"].memory.$get({
+          param: { daemon: c.req.param("name") },
+          query: { repo: c.req.query("repo") },
+        }),
+      ),
+    )
+    .get("/daemons/:name/runs", (c) =>
+      obs(c).send(($) =>
+        $.v1.daemons[":daemon"].runs.$get({
+          param: { daemon: c.req.param("name") },
+          query: { repo: c.req.query("repo") },
+        }),
+      ),
+    )
+    .get("/rollups", (c) =>
+      obs(c).send(($) =>
+        $.v1.rollups.$get({
+          query: {
+            service: c.req.query("service"),
+            outcome: c.req.query("outcome"),
+            since: c.req.query("since"),
+            limit: c.req.query("limit"),
+          },
+        }),
+      ),
+    )
+    .get("/rollups/stream", (c) =>
+      obs(c)
+        .as("stream")
+        .send(($) =>
+          $.v1.rollups.stream.$get({
+            query: {
+              service: c.req.query("service"),
+              outcome: c.req.query("outcome"),
+            },
+          }),
+        ),
+    )
+    .get("/rollups/:request_id", (c) =>
+      obs(c).send(($) =>
+        $.v1.rollups[":request_id"].$get({
+          param: { request_id: c.req.param("request_id") },
+        }),
+      ),
+    )
+    .get("/logs", (c) =>
+      api(c)
+        .auth("session")
+        .send(($) =>
+          $.api.logs.$get({
+            query: {
+              service: c.req.query("service"),
+              level: c.req.query("level"),
+              logger: c.req.query("logger"),
+              search: c.req.query("search"),
+              window: c.req.query("window"),
+              limit: c.req.query("limit"),
+              status_code: c.req.query("status_code"),
+              status_class: c.req.query("status_class"),
+            },
+          }),
+        ),
+    )
+    .get("/logs/stream", (c) =>
+      api(c)
+        .auth("session")
+        .as("stream")
+        .send(($) =>
+          $.api.logs.stream.$get({
+            query: {
+              service: c.req.query("service"),
+              level: c.req.query("level"),
+              logger: c.req.query("logger"),
+              search: c.req.query("search"),
+              status_class: c.req.query("status_class"),
+              history_window: c.req.query("history_window"),
+            },
+          }),
+        ),
+    )
+    .get("/triage/runs", (c) =>
+      triage(c)
+        .onError((err) => {
+          logger.warn("triage runs unavailable, returning empty list", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return c.json({ runs: [] });
+        })
+        .send(($) => $.v1.runs.$get()),
     );
-    return result instanceof Response ? result : null;
-  };
 
-  rpc
-    .get("/daemons", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/daemons"));
+  const app = new Hono<BffAppEnv>()
+    .use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }))
+    .use("*", createHttpLogger({ service: "bff", app: "red" }))
+    .get("/health", async (c) => {
+      const envelope = getEnvelope(c);
+      envelope.set({ route: { name: "health" } });
+      const report = await collectHealthReport({
+        service: "bff",
+        startedAtMs: startedAt,
+        checks: {
+          auth: async () => {
+            const response = await fetchImpl(joinUrl(config.authBaseUrl, "/health"), {
+              headers: { "x-request-id": envelope.requestId },
+            });
+            if (!response.ok) {
+              throw new Error(`auth upstream unhealthy: ${response.status}`);
+            }
+            const body = (await response.json()) as { status?: string };
+            return {
+              upstream: config.authBaseUrl,
+              reported_status: body.status ?? "ok",
+            };
+          },
+          api: async () => {
+            const response = await fetchImpl(joinUrl(config.apiBaseUrl, "/health"), {
+              headers: { "x-request-id": envelope.requestId },
+            });
+            if (!response.ok) {
+              throw new Error(`api upstream unhealthy: ${response.status}`);
+            }
+            const body = (await response.json()) as { status?: string };
+            return {
+              upstream: config.apiBaseUrl,
+              reported_status: body.status ?? "ok",
+            };
+          },
+        },
+      });
+      envelope.set({
+        health: {
+          status: report.status,
+          checks: report.checks as unknown as ObsFields,
+        },
+      });
+      c.header("x-request-id", envelope.requestId);
+      return c.json(report, report.status === "ok" ? 200 : 503);
     })
-    .get("/daemons/:name/memory", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const name = encodeURIComponent(c.req.param("name"));
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/memory`, query));
+    .all("/api/auth/*", (c) => {
+      const incoming = new URL(c.req.url);
+      return forwardAuthRequest(c, deps, incoming.pathname + incoming.search);
     })
-    .get("/daemons/:name/runs", async (c) => {
-      if (!config.obsBaseUrl) return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const name = encodeURIComponent(c.req.param("name"));
-      const query = new URLSearchParams();
-      const repo = c.req.query("repo");
-      if (repo) query.set("repo", repo);
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/daemons/${name}/runs`, query));
-    })
-    .get("/rollups", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "outcome", "since", "limit"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups", query));
-    })
-    .get("/rollups/stream", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "outcome"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyStream(c, fetchImpl, joinUrl(config.obsBaseUrl, "/v1/rollups/stream", query));
-    })
-    .get("/rollups/:request_id", async (c) => {
-      if (!config.obsBaseUrl)
-        return c.json({ error: "obs backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const id = encodeURIComponent(c.req.param("request_id"));
-      return proxyJson(c, fetchImpl, joinUrl(config.obsBaseUrl, `/v1/rollups/${id}`));
-    })
-    .get("/logs", async (c) => {
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "level", "logger", "search", "window", "limit", "status_code", "status_class"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyJson(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs", query));
-    })
-    .get("/logs/stream", async (c) => {
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      const query = new URLSearchParams();
-      for (const key of ["service", "level", "logger", "search", "status_class", "history_window"] as const) {
-        const value = c.req.query(key);
-        if (value) query.set(key, value);
-      }
-      return proxyStream(c, fetchImpl, joinUrl(config.apiBaseUrl, "/api/logs/stream", query));
-    })
-    .get("/triage/runs", async (c) => {
-      if (!config.triageBaseUrl)
-        return c.json({ error: "triage backend not configured" }, 503);
-      const gate = await requireSession(c);
-      if (gate) return gate;
-      try {
-        return await proxyJson(c, fetchImpl, joinUrl(config.triageBaseUrl, "/v1/runs"));
-      } catch (error) {
-        console.warn("[bff] triage runs unavailable, returning empty list", error);
-        return c.json({ runs: [] });
-      }
-    });
+    .route("/rpc", rpc);
 
-  app.route("/rpc", rpc);
   return app;
 }
 
-export type AppType = ReturnType<typeof createApp>;
+export type AppRouter = ReturnType<typeof createApp>;

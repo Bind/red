@@ -1,9 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
-import { startDevGitServer, runCommand } from "../core/dev-stack";
+import { runCommand, startDevGitServer } from "../core/dev-stack";
 import { buildRemoteUrl } from "./http-test-helpers";
 
 describe("git-sdk auth integration", () => {
@@ -15,8 +15,20 @@ describe("git-sdk auth integration", () => {
 
     try {
       const repoId = `red/auth-repo-${runId}`;
-      const writeRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "write");
-      const readRemote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "auth-test", "read");
+      const writeRemote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "auth-test",
+        "write",
+      );
+      const readRemote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "auth-test",
+        "read",
+      );
 
       await runCommand("git", ["init"], { cwd: writerDir });
       await runCommand("git", ["config", "user.name", "auth test"], { cwd: writerDir });
@@ -37,13 +49,23 @@ describe("git-sdk auth integration", () => {
 
       let pushError: unknown = null;
       try {
-        await runCommand("git", ["-C", readerCloneDir, "push", "origin", "HEAD:refs/heads/read-only-fail"]);
+        await runCommand("git", [
+          "-C",
+          readerCloneDir,
+          "push",
+          "origin",
+          "HEAD:refs/heads/read-only-fail",
+        ]);
       } catch (error) {
         pushError = error;
       }
 
       expect(pushError).not.toBeNull();
-      const remoteBranch = await runCommand("git", ["ls-remote", writeRemote.fetchUrl, "refs/heads/read-only-fail"]);
+      const remoteBranch = await runCommand("git", [
+        "ls-remote",
+        writeRemote.fetchUrl,
+        "refs/heads/read-only-fail",
+      ]);
       expect(remoteBranch.stdout).toBe("");
     } finally {
       await rm(writerDir, { recursive: true, force: true });

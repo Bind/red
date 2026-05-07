@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createCompleteTool, type CompleteCapture } from "../tools/complete";
+import { type CompleteCapture, createCompleteTool } from "../tools/complete";
 
 describe("complete tool", () => {
   test("captures payload and invokes onComplete callback", async () => {

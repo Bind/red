@@ -1,7 +1,7 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { CompleteFinding } from "./schema";
 
 export const DEFAULT_MEMORY_DIRNAME = ".daemons-cache";
@@ -122,7 +122,9 @@ export async function loadMemorySnapshot(
   const changedFiles: CheckedFileRecord[] = [];
   const missingFiles: CheckedFileRecord[] = [];
   const currentInventory = await collectScopeInventory(scopeRoot);
-  const previousInventory = new Map(baseRecord.lastRun.fileInventory.map((entry) => [entry.path, entry]));
+  const previousInventory = new Map(
+    baseRecord.lastRun.fileInventory.map((entry) => [entry.path, entry]),
+  );
   const currentInventoryByPath = new Map(currentInventory.map((entry) => [entry.path, entry]));
   const newFiles = currentInventory.filter((entry) => !previousInventory.has(entry.path));
   const changedScopeFiles = currentInventory.filter((entry) => {
@@ -155,7 +157,9 @@ export async function loadMemorySnapshot(
   );
 
   const activeTracked = Object.fromEntries(
-    Object.entries(baseRecord.tracked).filter(([subject]) => !staleTrackedSubjects.includes(subject)),
+    Object.entries(baseRecord.tracked).filter(
+      ([subject]) => !staleTrackedSubjects.includes(subject),
+    ),
   );
 
   return {
@@ -214,10 +218,12 @@ export async function saveMemoryRecord(
 
   const location = await ctx.backend.saveSnapshot(normalized);
   if (normalized.commit) {
-    const existing = (await ctx.backend.loadIndex(normalized.daemon)) ?? createEmptyIndex({
-      daemon: normalized.daemon,
-      repoId: normalized.repoId,
-    });
+    const existing =
+      (await ctx.backend.loadIndex(normalized.daemon)) ??
+      createEmptyIndex({
+        daemon: normalized.daemon,
+        repoId: normalized.repoId,
+      });
     const recentCommits = [
       { commit: normalized.commit, createdAt: normalized.updatedAt },
       ...existing.recentCommits.filter((entry) => entry.commit !== normalized.commit),
@@ -259,7 +265,7 @@ export async function createDaemonMemoryStore(
         .filter((entry) => wanted.has(entry.subject))
         .sort((a, b) => a.subject.localeCompare(b.subject));
     },
-    async record(entry) {
+    record(entry) {
       state = {
         ...state,
         updatedAt: new Date().toISOString(),
@@ -268,8 +274,9 @@ export async function createDaemonMemoryStore(
           [entry.subject]: normalizeTrackEntry(entry),
         },
       };
+      return Promise.resolve();
     },
-    async invalidate(subjects) {
+    invalidate(subjects) {
       const nextTracked = { ...state.tracked };
       let removed = 0;
       for (const subject of subjects) {
@@ -285,7 +292,7 @@ export async function createDaemonMemoryStore(
           tracked: nextTracked,
         };
       }
-      return removed;
+      return Promise.resolve(removed);
     },
     snapshot() {
       return structuredClone(state);
@@ -367,7 +374,9 @@ export function buildMemoryPrompt(snapshot: DaemonMemorySnapshot | null): string
   if (previousFindings.length > 0) {
     lines.push("Previous findings:");
     for (const finding of previousFindings) {
-      lines.push(`- ${finding.invariant}: ${finding.status}${finding.target ? ` (${finding.target})` : ""}`);
+      lines.push(
+        `- ${finding.invariant}: ${finding.status}${finding.target ? ` (${finding.target})` : ""}`,
+      );
     }
   }
 
@@ -613,7 +622,7 @@ async function resolveMemoryContext(
 ): Promise<ResolvedMemoryContext> {
   const repoRoot = await findRepoRoot(scopeRoot);
   const memoryDir = await resolveMemoryDir(scopeRoot, explicitDir);
-  const repoId = explicitRepoId ?? await inferRepoId(repoRoot);
+  const repoId = explicitRepoId ?? (await inferRepoId(repoRoot));
   const currentCommit = await getCurrentCommit(repoRoot).catch(() => null);
   const backend = createMemoryBackend(memoryDir, repoId);
   return {
@@ -637,11 +646,21 @@ async function loadNearestRecord(
     const index = await ctx.backend.loadIndex(daemonName);
     if (index && index.recentCommits.length > 0) {
       const available = new Set(index.recentCommits.map((entry) => entry.commit));
-      const ancestors = await listAncestorCommits(ctx.repoRoot, ctx.currentCommit, DEFAULT_ANCESTOR_LIMIT);
+      const ancestors = await listAncestorCommits(
+        ctx.repoRoot,
+        ctx.currentCommit,
+        DEFAULT_ANCESTOR_LIMIT,
+      );
       for (const ancestor of ancestors) {
         if (!available.has(ancestor)) continue;
         const raw = await ctx.backend.loadSnapshot(daemonName, ancestor);
-        const normalized = normalizeMemoryRecord(raw, daemonName, scopeRoot, ctx.repoRoot, ctx.repoId);
+        const normalized = normalizeMemoryRecord(
+          raw,
+          daemonName,
+          scopeRoot,
+          ctx.repoRoot,
+          ctx.repoId,
+        );
         if (normalized) return normalized;
       }
     }
@@ -739,7 +758,10 @@ function createR2MemoryBackend(repoId: string): MemoryBackend {
       secretAccessKey,
     },
   });
-  const prefix = (process.env.AI_DAEMONS_MEMORY_PREFIX ?? DEFAULT_MEMORY_PREFIX).replace(/\/+$/, "");
+  const prefix = (process.env.AI_DAEMONS_MEMORY_PREFIX ?? DEFAULT_MEMORY_PREFIX).replace(
+    /\/+$/,
+    "",
+  );
 
   function keyForDaemon(daemonName: string, suffix: string): string {
     return `${prefix}/${repoId}/${daemonName}/${suffix}`;

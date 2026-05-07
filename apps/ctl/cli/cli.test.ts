@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { parseArgs, run } from "./index";
 
 describe("parseArgs", () => {
@@ -29,7 +29,6 @@ describe("parseArgs", () => {
     const ctx = parseArgs(["--api-url", "http://localhost:3000///"]);
     expect(ctx.apiUrl).toBe("http://localhost:3000");
   });
-
 });
 
 describe("run", () => {

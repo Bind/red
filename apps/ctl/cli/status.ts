@@ -16,6 +16,14 @@ interface ChangeResponse {
   updated_at: string;
 }
 
+function writeStdout(line = ""): void {
+  process.stdout.write(`${line}\n`);
+}
+
+function writeStderr(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 export async function statusCommand(ctx: CliContext): Promise<number> {
   try {
     const [velocity, reviewQueue] = await Promise.all([
@@ -24,43 +32,43 @@ export async function statusCommand(ctx: CliContext): Promise<number> {
     ]);
 
     if (ctx.format === "json") {
-      console.log(JSON.stringify({ velocity, review_queue: reviewQueue }, null, 2));
+      writeStdout(JSON.stringify({ velocity, review_queue: reviewQueue }, null, 2));
       return 0;
     }
 
     // Text output
-    console.log("red status");
-    console.log("═".repeat(50));
-    console.log();
+    writeStdout("red status");
+    writeStdout("═".repeat(50));
+    writeStdout();
 
     // Velocity
-    console.log("Queue summary (24h):");
-    console.log(`  Summarized:      ${velocity.summarized}`);
-    console.log(`  Pending review:  ${velocity.pending_review}`);
-    console.log();
+    writeStdout("Queue summary (24h):");
+    writeStdout(`  Summarized:      ${velocity.summarized}`);
+    writeStdout(`  Pending review:  ${velocity.pending_review}`);
+    writeStdout();
 
     // Review queue
     if (reviewQueue.length === 0) {
-      console.log("Review queue: empty");
+      writeStdout("Review queue: empty");
     } else {
-      console.log(`Review queue (${reviewQueue.length}):`);
-      console.log(
+      writeStdout(`Review queue (${reviewQueue.length}):`);
+      writeStdout(
         "  " +
           padRight("ID", 6) +
           padRight("Repo", 25) +
           padRight("Branch", 20) +
           padRight("Confidence", 14) +
-          padRight("By", 8)
+          padRight("By", 8),
       );
-      console.log("  " + "─".repeat(73));
+      writeStdout(`  ${"─".repeat(73)}`);
       for (const c of reviewQueue) {
-        console.log(
+        writeStdout(
           "  " +
             padRight(String(c.id), 6) +
             padRight(truncate(c.repo, 23), 25) +
             padRight(truncate(c.branch, 18), 20) +
             padRight(c.confidence ?? "—", 14) +
-            padRight(c.created_by, 8)
+            padRight(c.created_by, 8),
         );
       }
     }
@@ -68,8 +76,8 @@ export async function statusCommand(ctx: CliContext): Promise<number> {
     return 0;
   } catch (err) {
     if (err instanceof ApiError) {
-      console.error(`Error: could not reach red API at ${ctx.apiUrl}`);
-      console.error(`  ${err.message}`);
+      writeStderr(`Error: could not reach red API at ${ctx.apiUrl}`);
+      writeStderr(`  ${err.message}`);
       return 1;
     }
     throw err;
@@ -80,7 +88,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   let res: Response;
   try {
     res = await fetch(url);
-  } catch (err) {
+  } catch {
     throw new ApiError(`Connection refused — is red running? (${url})`);
   }
   if (!res.ok) {
@@ -101,5 +109,5 @@ function padRight(str: string, len: number): string {
 }
 
 function truncate(str: string, max: number): string {
-  return str.length <= max ? str : str.slice(0, max - 1) + "…";
+  return str.length <= max ? str : `${str.slice(0, max - 1)}…`;
 }

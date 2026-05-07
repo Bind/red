@@ -37,10 +37,7 @@
     },
     {
       "text": "Pin the `codex-runner` image to `@openai/codex@0.117.0` and change the runner script to write JSON output to `/output/result.json`, fetch the requested base/head refs, and stream stderr progress from the container.",
-      "files": [
-        "codex-runner/Dockerfile",
-        "codex-runner/run.sh"
-      ],
+      "files": ["codex-runner/Dockerfile", "codex-runner/run.sh"],
       "type": "config"
     },
     {

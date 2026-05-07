@@ -13,6 +13,7 @@ MINIO_PREFIX="${MINIO_PREFIX:-claw-runs}"
 MINIO_API_PORT="${MINIO_API_PORT:-9003}"
 MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9002}"
 LOKI_PORT="${LOKI_PORT:-3100}"
+GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 LOKI_URL="${LOKI_URL:-http://loki:3100}"
 WIDE_EVENTS_HOST="${WIDE_EVENTS_HOST:-0.0.0.0}"
 WIDE_EVENTS_PORT="${WIDE_EVENTS_PORT:-4090}"
@@ -104,6 +105,7 @@ MINIO_PREFIX=$MINIO_PREFIX
 MINIO_API_PORT=$MINIO_API_PORT
 MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
 LOKI_PORT=$LOKI_PORT
+GATEWAY_PORT=$GATEWAY_PORT
 LOKI_URL=$LOKI_URL
 WIDE_EVENTS_HOST=$WIDE_EVENTS_HOST
 WIDE_EVENTS_PORT=$WIDE_EVENTS_PORT
@@ -185,13 +187,13 @@ if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
     .
 
   echo "Building Docker-backed dev services..."
-  docker compose --env-file .env -f "$COMPOSE_FILE" build grs ctl
+  docker compose --env-file .env -f "$COMPOSE_FILE" build gateway grs ctl
 else
   echo "Skipping image builds (SKIP_IMAGE_BUILD=true)"
 fi
 
 echo "Starting dev stack..."
-docker compose --env-file .env -f "$COMPOSE_FILE" up -d s3 init obs grs db-auth auth ctl bff web
+docker compose --env-file .env -f "$COMPOSE_FILE" up -d s3 init obs grs db-auth auth ctl bff web triage gateway
 
 wait_for_health() {
   local url="$1"
@@ -228,11 +230,14 @@ seed_dev_repo() {
 wait_for_health "http://127.0.0.1:${AUTH_PORT:-4020}/health" "auth"
 wait_for_health "http://127.0.0.1:${GIT_SERVER_PUBLIC_PORT:-9080}/health" "grs"
 wait_for_health "http://127.0.0.1:3000/health" "ctl"
+wait_for_health "http://127.0.0.1:${GATEWAY_PORT}/health" "gateway"
 seed_dev_repo
 
 echo ""
 echo "=== Setup complete ==="
-echo "UI:      http://localhost:5173"
+echo "UI:      http://localhost:$GATEWAY_PORT"
+echo "Web:     http://localhost:5173"
+echo "Gateway: http://localhost:$GATEWAY_PORT"
 echo "CTL:     http://localhost:3000"
 echo "BFF:     http://localhost:3001"
 echo "Auth:    http://localhost:4020"

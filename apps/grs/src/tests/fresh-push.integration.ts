@@ -1,9 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
-import { startDevGitServer, runCommand, runCommandWithRetry } from "../core/dev-stack";
+import { runCommand, runCommandWithRetry, startDevGitServer } from "../core/dev-stack";
 import { buildRemoteUrl } from "./http-test-helpers";
 
 describe("native smart-http integration", () => {
@@ -14,7 +14,13 @@ describe("native smart-http integration", () => {
 
     try {
       const repoId = `red/fresh-push-${runId}`;
-      const remote = buildRemoteUrl(server.publicUrl, server.authTokenSecret, repoId, "fresh-push-test", "write");
+      const remote = buildRemoteUrl(
+        server.publicUrl,
+        server.authTokenSecret,
+        repoId,
+        "fresh-push-test",
+        "write",
+      );
 
       await runCommand("git", ["init"], { cwd: repoDir });
       await runCommand("git", ["config", "user.name", "fresh push"], { cwd: repoDir });

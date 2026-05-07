@@ -1,5 +1,5 @@
-import { Type, type Static } from "@mariozechner/pi-ai";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import { type Static, Type } from "@mariozechner/pi-ai";
 
 export const ROUTE_DECISION_TOOL_NAME = "route_decision";
 
@@ -29,13 +29,13 @@ export function createRouteDecisionTool(
     description:
       "Submit the structured daemon routing decision for this file. Call this once before complete.",
     parameters: RouteDecisionParams,
-    async execute(_toolCallId, params: Static<typeof RouteDecisionParams>) {
+    execute(_toolCallId, params: Static<typeof RouteDecisionParams>) {
       capture.payload = {
         selected_daemons: [...new Set(params.selected_daemons)].sort((a, b) => a.localeCompare(b)),
         rationale: params.rationale,
         confidence: params.confidence,
       };
-      return {
+      return Promise.resolve({
         content: [
           {
             type: "text" as const,
@@ -43,7 +43,7 @@ export function createRouteDecisionTool(
           },
         ],
         details: capture.payload,
-      };
+      });
     },
   };
 }

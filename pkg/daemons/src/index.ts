@@ -1,77 +1,77 @@
-export { loadDaemons, resolveDaemon, type DaemonSpec, type LoadResult } from "./loader";
 export {
-  runDaemon,
-  runSpec,
-  COMPLETE_TOOL_INSTRUCTIONS,
-  type RunOptions,
-  type RunResult,
-  type RunSuccess,
-  type RunFailure,
-} from "./runner";
+  CodexAccessTokenManager,
+  type CodexAuthSource,
+  createFileCodexAuthSource,
+  createInMemoryCodexAuthSource,
+  defaultCodexAuthPath,
+  type LoginCodexOptions,
+  loginAndStoreCodexAuth,
+} from "./auth";
+export { type DaemonSpec, type LoadResult, loadDaemons, resolveDaemon } from "./loader";
 export {
-  DaemonFrontmatter,
-  CompletePayload,
-  CompleteFinding,
-  type CompletePayload as CompletePayloadT,
-  type CompleteFinding as CompleteFindingT,
-  type DaemonFrontmatter as DaemonFrontmatterT,
-} from "./schema";
-export {
-  createWideEvent,
-  stdoutSink,
-  memorySink,
-  type WideEvent,
-  type WideEventSink,
-} from "./wide-events";
-export {
-  DEFAULT_MEMORY_DIRNAME,
   buildMemoryPrompt,
+  type CheckedFileRecord,
   collectCheckedFiles,
   createDaemonMemoryStore,
   createEmptyMemoryRecord,
+  type DaemonMemoryRecord,
+  type DaemonMemorySnapshot,
+  type DaemonMemoryStore,
+  DEFAULT_MEMORY_DIRNAME,
   findRepoRoot,
   loadLatestMemoryRecord,
   loadMemorySnapshot,
   normalizeCheckedPath,
   resolveMemoryDir,
   saveMemoryRecord,
-  type CheckedFileRecord,
-  type DaemonMemoryRecord,
-  type DaemonMemorySnapshot,
-  type DaemonMemoryStore,
   type TrackEntry,
 } from "./memory";
 export {
-  loadDaemonRun,
-  listDaemonRuns,
-  saveDaemonRun,
-  type DaemonRunIndex,
-  type DaemonRunIndexEntry,
-  type DaemonRunRecord,
-} from "./run-history";
-export type {
-  AgentProvider,
-  ProviderRunOptions,
-  ProviderRunResult,
-  ProviderRunSuccess,
-  ProviderRunFailure,
-  ProviderTokenUsage,
-  ProviderRunCallbacks,
-} from "./providers/types";
-export {
-  createPiProvider,
   CODEX_PROVIDER_ID,
+  createPiProvider,
   DEFAULT_CODEX_MODEL,
   type PiProviderOptions,
 } from "./providers/pi";
+export type {
+  AgentProvider,
+  ProviderRunCallbacks,
+  ProviderRunFailure,
+  ProviderRunOptions,
+  ProviderRunResult,
+  ProviderRunSuccess,
+  ProviderTokenUsage,
+} from "./providers/types";
 export {
-  createFileCodexAuthSource,
-  createInMemoryCodexAuthSource,
-  CodexAccessTokenManager,
-  defaultCodexAuthPath,
-  loginAndStoreCodexAuth,
-  type CodexAuthSource,
-  type LoginCodexOptions,
-} from "./auth";
-export { COMPLETE_TOOL_NAME, createCompleteTool, type CompleteCapture } from "./tools/complete";
-export { TRACK_TOOL_NAME, createTrackTool } from "./tools/track";
+  type DaemonRunIndex,
+  type DaemonRunIndexEntry,
+  type DaemonRunRecord,
+  listDaemonRuns,
+  loadDaemonRun,
+  saveDaemonRun,
+} from "./run-history";
+export {
+  COMPLETE_TOOL_INSTRUCTIONS,
+  type RunFailure,
+  type RunOptions,
+  type RunResult,
+  type RunSuccess,
+  runDaemon,
+  runSpec,
+} from "./runner";
+export {
+  CompleteFinding,
+  type CompleteFinding as CompleteFindingT,
+  CompletePayload,
+  type CompletePayload as CompletePayloadT,
+  DaemonFrontmatter,
+  type DaemonFrontmatter as DaemonFrontmatterT,
+} from "./schema";
+export { COMPLETE_TOOL_NAME, type CompleteCapture, createCompleteTool } from "./tools/complete";
+export { createTrackTool, TRACK_TOOL_NAME } from "./tools/track";
+export {
+  createWideEvent,
+  memorySink,
+  stdoutSink,
+  type WideEvent,
+  type WideEventSink,
+} from "./wide-events";

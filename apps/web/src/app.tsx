@@ -1,17 +1,17 @@
-import { BrowserRouter, Navigate, Routes, Route } from "react-router";
-import { Layout } from "@/components/layout";
-import { Dashboard } from "@/routes/dashboard";
-import { HostedRepoPage } from "@/routes/hosted-repo";
-import { HostedRepoCommitPage } from "@/routes/hosted-repo-commit";
-import { ChangeDetailPage } from "@/routes/change";
-import { TriagePage } from "@/routes/triage";
-import { StatusPage } from "@/routes/status";
-import { DaemonPlaygroundPage } from "@/routes/daemon-playground";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { Demo } from "@/components/demo";
+import { Layout } from "@/components/layout";
 import { AuthSessionProvider } from "@/lib/auth";
 import { AuthEnrollPage } from "@/routes/auth-enroll";
 import { MagicLinkPage } from "@/routes/auth-magic-link";
 import { AuthYubikeyPage } from "@/routes/auth-yubikey";
+import { ChangeDetailPage } from "@/routes/change";
+import { DaemonPlaygroundPage } from "@/routes/daemon-playground";
+import { Dashboard } from "@/routes/dashboard";
+import { HostedRepoPage } from "@/routes/hosted-repo";
+import { HostedRepoCommitPage } from "@/routes/hosted-repo-commit";
+import { StatusPage } from "@/routes/status";
+import { TriagePage } from "@/routes/triage";
 
 export function App() {
   return (

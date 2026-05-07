@@ -1,6 +1,8 @@
 import { relative } from "node:path";
-import { resolveDaemon, type DaemonSpec } from "./loader";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { TSchema } from "@mariozechner/pi-ai";
 import { createFileCodexAuthSource } from "./auth";
+import { type DaemonSpec, resolveDaemon } from "./loader";
 import {
   buildMemoryPrompt,
   collectCheckedFiles,
@@ -11,13 +13,9 @@ import {
   normalizeCheckedPath,
   saveMemoryRecord,
 } from "./memory";
-import { saveDaemonRun } from "./run-history";
-import {
-  createPiProvider,
-  DEFAULT_OPENROUTER_MODEL,
-  OPENROUTER_PROVIDER_ID,
-} from "./providers/pi";
+import { createPiProvider, DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "./providers/pi";
 import type { AgentProvider, ProviderRunFailure } from "./providers/types";
+import { saveDaemonRun } from "./run-history";
 import type { CompletePayload } from "./schema";
 import { createTrackTool } from "./tools/track";
 import { createWideEvent, stdoutSink, type WideEvent, type WideEventSink } from "./wide-events";
@@ -179,7 +177,7 @@ export async function runSpec(spec: DaemonSpec, opts: RunOptions = {}): Promise<
     initialInput: opts.input ?? "Begin your run.",
     maxTurns,
     maxWallclockMs,
-    extraTools: [createTrackTool(memoryStore, runId)],
+    extraTools: [createTrackTool(memoryStore, runId) as unknown as AgentTool<TSchema>],
     onTurnStart(turn) {
       emit({
         kind: "daemon.turn.started",

@@ -2,12 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadDaemonRun, listDaemonRuns } from "../run-history";
-import type {
-  AgentProvider,
-  ProviderRunOptions,
-  ProviderRunResult,
-} from "../providers/types";
+import type { AgentProvider, ProviderRunOptions, ProviderRunResult } from "../providers/types";
+import { listDaemonRuns, loadDaemonRun } from "../run-history";
 import { runDaemon } from "../runner";
 import type { CompletePayload } from "../schema";
 import { memorySink } from "../wide-events";
@@ -27,11 +23,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function writeDaemon(
-  name: string,
-  description: string,
-  body = "do work",
-): Promise<void> {
+async function writeDaemon(name: string, description: string, body = "do work"): Promise<void> {
   await writeFile(
     join(dir, `${name}.daemon.md`),
     `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`,
@@ -67,8 +59,7 @@ function mockProvider(scenario: MockScenario): AgentProvider {
         }
         tokens.input += perTurnTokens.input;
         tokens.output += perTurnTokens.output;
-        const completeCalled =
-          scenario.outcome.kind === "complete" && i === turns;
+        const completeCalled = scenario.outcome.kind === "complete" && i === turns;
         opts.onTurnEnd?.(i, { tokens: perTurnTokens, completeCalled });
       }
       if (scenario.outcome.kind === "complete") {
@@ -118,9 +109,7 @@ describe("runner", () => {
           kind: "complete",
           payload: {
             summary: "all good",
-            findings: [
-              { invariant: "readme_just_recipe_exists", target: "install", status: "ok" },
-            ],
+            findings: [{ invariant: "readme_just_recipe_exists", target: "install", status: "ok" }],
           },
         },
       }),
@@ -212,10 +201,7 @@ describe("runner", () => {
       root: dir,
       provider: mockProvider({
         turns: 2,
-        toolCallsPerTurn: [
-          [{ name: "read" }],
-          [{ name: "read" }, { name: "complete" }],
-        ],
+        toolCallsPerTurn: [[{ name: "read" }], [{ name: "read" }, { name: "complete" }]],
         outcome: { kind: "complete", payload: { summary: "ok", findings: [] } },
       }),
       emit,
@@ -263,7 +249,9 @@ describe("runner", () => {
       },
     });
 
-    expect(capturedSystemPrompt).toContain("Runner-managed memory from the nearest verified commit snapshot is available.");
+    expect(capturedSystemPrompt).toContain(
+      "Runner-managed memory from the nearest verified commit snapshot is available.",
+    );
     expect(capturedSystemPrompt).toContain("Previously checked and unchanged:");
     expect(capturedSystemPrompt).toContain("notes.txt");
   });
@@ -329,7 +317,13 @@ describe("runner", () => {
 
       const runs = await listDaemonRuns("history-no-git", dir, memoryDir, "Bind/red");
       expect(runs).toHaveLength(1);
-      const record = await loadDaemonRun("history-no-git", dir, result.runId, memoryDir, "Bind/red");
+      const record = await loadDaemonRun(
+        "history-no-git",
+        dir,
+        result.runId,
+        memoryDir,
+        "Bind/red",
+      );
       expect(record).not.toBeNull();
       expect(record?.repoId).toBe("Bind/red");
       expect(record?.commit).toBe(process.env.GIT_COMMIT ?? null);

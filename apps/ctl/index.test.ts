@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
-import { createApp, type AppConfig } from "./index";
+import { describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type AppConfig, createApp } from "./index";
 
 const testConfig: AppConfig = {
   port: 0,
@@ -85,64 +85,69 @@ describe("App integration", () => {
     const originalLokiUrl = process.env.LOKI_URL;
     process.env.LOKI_URL = "http://loki.test";
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (url.startsWith("http://loki.test/loki/api/v1/query_range")) {
-        return new Response(JSON.stringify({
-          data: {
-            result: [
-              {
-                stream: {
-                  app: "red",
-                  service: "api",
-                  level: "info",
-                  logger: "red.api.http",
+        return new Response(
+          JSON.stringify({
+            data: {
+              result: [
+                {
+                  stream: {
+                    app: "red",
+                    service: "api",
+                    level: "info",
+                    logger: "red.api.http",
+                  },
+                  values: [
+                    [
+                      "1714521000000000000",
+                      JSON.stringify({
+                        timestamp: "2026-04-30T12:30:00.000Z",
+                        level: "info",
+                        category: ["red", "api", "http"],
+                        message: "request complete",
+                        properties: {
+                          method: "GET",
+                          path: "/api/review",
+                          status: 200,
+                          response_time_ms: 12.5,
+                          request_id: "req-1",
+                        },
+                      }),
+                    ],
+                    [
+                      "1714521060000000000",
+                      JSON.stringify({
+                        timestamp: "2026-04-30T12:31:00.000Z",
+                        level: "error",
+                        category: ["red", "api", "http"],
+                        message: "request failed",
+                        properties: {
+                          method: "POST",
+                          path: "/api/daemon-review/playground",
+                          status: 500,
+                          response_time_ms: 87.2,
+                          request_id: "req-2",
+                        },
+                      }),
+                    ],
+                  ],
                 },
-                values: [
-                  [
-                    "1714521000000000000",
-                    JSON.stringify({
-                      timestamp: "2026-04-30T12:30:00.000Z",
-                      level: "info",
-                      category: ["red", "api", "http"],
-                      message: "request complete",
-                      properties: {
-                        method: "GET",
-                        path: "/api/review",
-                        status: 200,
-                        response_time_ms: 12.5,
-                        request_id: "req-1",
-                      },
-                    }),
-                  ],
-                  [
-                    "1714521060000000000",
-                    JSON.stringify({
-                      timestamp: "2026-04-30T12:31:00.000Z",
-                      level: "error",
-                      category: ["red", "api", "http"],
-                      message: "request failed",
-                      properties: {
-                        method: "POST",
-                        path: "/api/daemon-review/playground",
-                        status: 500,
-                        response_time_ms: 87.2,
-                        request_id: "req-2",
-                      },
-                    }),
-                  ],
-                ],
-              },
-            ],
-          },
-        }));
+              ],
+            },
+          }),
+        );
       }
       return originalFetch(input as RequestInfo | URL);
     }) as typeof globalThis.fetch;
 
     try {
-      const res = await app.fetch(new Request("http://localhost/api/logs?logger=http&window=1h&limit=10"));
+      const res = await app.fetch(
+        new Request("http://localhost/api/logs?logger=http&window=1h&limit=10"),
+      );
       expect(res.status).toBe(200);
-      const json = await res.json() as {
+      const json = (await res.json()) as {
         entries: Array<{ service: string; status: number | null; path: string | null }>;
         summary: {
           total: number;
@@ -175,18 +180,20 @@ describe("App integration", () => {
 
     const first = createApp({ ...testConfig, dbPath });
 
-    const createResponse = await first.app.fetch(new Request("http://localhost/api/repos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        owner: "red",
-        name: "dashboard-demo",
-        default_branch: "main",
-        visibility: "private",
+    const createResponse = await first.app.fetch(
+      new Request("http://localhost/api/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner: "red",
+          name: "dashboard-demo",
+          default_branch: "main",
+          visibility: "private",
+        }),
       }),
-    }));
+    );
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as {
+    const created = (await createResponse.json()) as {
       full_name: string;
       default_branch: string;
       visibility: string;
@@ -212,16 +219,18 @@ describe("App integration", () => {
     const { app } = createApp(testConfig);
     const res = await app.fetch(new Request("http://localhost/api/claw/actions"));
     expect(res.status).toBe(200);
-    const json = await res.json() as Array<{ id: string; promptHash: string }>;
+    const json = (await res.json()) as Array<{ id: string; promptHash: string }>;
     expect(json.some((action) => action.id === "generate-summary")).toBe(true);
     expect(json.every((action) => action.promptHash.length > 0)).toBe(true);
   });
 
   test("claw prompt endpoint returns prompt details", async () => {
     const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/claw/actions/generate-summary/prompt"));
+    const res = await app.fetch(
+      new Request("http://localhost/api/claw/actions/generate-summary/prompt"),
+    );
     expect(res.status).toBe(200);
-    const json = await res.json() as { id: string; prompt: string; promptHash: string };
+    const json = (await res.json()) as { id: string; prompt: string; promptHash: string };
     expect(json.id).toBe("generate-summary");
     expect(json.prompt).toContain('You are reviewing a change on branch "{{branch}}"');
     expect(json.promptHash.length).toBeGreaterThan(0);
@@ -231,7 +240,7 @@ describe("App integration", () => {
     const { app } = createApp(testConfig);
     const res = await app.fetch(new Request("http://localhost/api/claw/runs"));
     expect(res.status).toBe(200);
-    const json = await res.json() as unknown[];
+    const json = (await res.json()) as unknown[];
     expect(Array.isArray(json)).toBe(true);
   });
 
@@ -243,7 +252,9 @@ describe("App integration", () => {
 
   test("missing claw artifact returns 404", async () => {
     const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/claw/runs/missing-run/artifacts/result"));
+    const res = await app.fetch(
+      new Request("http://localhost/api/claw/runs/missing-run/artifacts/result"),
+    );
     expect(res.status).toBe(404);
   });
 
@@ -265,13 +276,20 @@ describe("App integration", () => {
       head_sha: "abc123",
       created_by: "human",
       delivery_id: "delivery-1",
-      diff_stats: JSON.stringify({ files_changed: 1, additions: 1, deletions: 0, files: ["test-file.txt"] }),
+      diff_stats: JSON.stringify({
+        files_changed: 1,
+        additions: 1,
+        deletions: 0,
+        files: ["test-file.txt"],
+      }),
     });
     changes.updateStatus(change.id, "scored");
 
-    const res = await app.fetch(new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
-      method: "POST",
-    }));
+    const res = await app.fetch(
+      new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
+        method: "POST",
+      }),
+    );
 
     expect(res.status).toBe(200);
     expect(changes.getById(change.id)?.status).toBe("summarizing");
@@ -291,12 +309,19 @@ describe("App integration", () => {
       head_sha: "abc123",
       created_by: "human",
       delivery_id: "delivery-2",
-      diff_stats: JSON.stringify({ files_changed: 1, additions: 1, deletions: 0, files: ["test-file.txt"] }),
+      diff_stats: JSON.stringify({
+        files_changed: 1,
+        additions: 1,
+        deletions: 0,
+        files: ["test-file.txt"],
+      }),
     });
 
-    const res = await app.fetch(new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
-      method: "POST",
-    }));
+    const res = await app.fetch(
+      new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
+        method: "POST",
+      }),
+    );
 
     expect(res.status).toBe(400);
     db.close();
@@ -304,20 +329,22 @@ describe("App integration", () => {
 
   test("local ref-update ingestion endpoint creates a change", async () => {
     const { app, changes } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/ingest/ref-update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        repo: "owner/repo",
-        branch: "feature/local",
-        base_branch: "main",
-        head_sha: "sha-local-1",
-        created_by: "human",
+    const res = await app.fetch(
+      new Request("http://localhost/api/ingest/ref-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo: "owner/repo",
+          branch: "feature/local",
+          base_branch: "main",
+          head_sha: "sha-local-1",
+          created_by: "human",
+        }),
       }),
-    }));
+    );
 
     expect(res.status).toBe(201);
-    const json = await res.json() as { status: string; change_id: number };
+    const json = (await res.json()) as { status: string; change_id: number };
     expect(json.status).toBe("accepted");
     expect(changes.getById(json.change_id)?.branch).toBe("feature/local");
   });

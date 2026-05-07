@@ -12,8 +12,8 @@ const worker = new LocalWorker("worker-default", config, store, queue, backend);
 const jobs = new LocalJobsService(store, queue, worker);
 const app = createApp(config, jobs);
 
-console.log(
-  JSON.stringify({
+process.stdout.write(
+  `${JSON.stringify({
     service: "ci-runner-lab",
     mode: config.mode,
     host: config.hostname,
@@ -21,7 +21,7 @@ console.log(
     stateFile: config.runsFile,
     workDir: config.workDir,
     workerId: "worker-default",
-  }),
+  })}\n`,
 );
 
 export default {

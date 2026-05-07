@@ -40,15 +40,30 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     };
   }
 
-  async getDiff(owner: string, repo: string, base: string, head: string, requestId?: string): Promise<string> {
+  async getDiff(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+    requestId?: string,
+  ): Promise<string> {
     const result = await this.readJson<GitServerComparePayload>(
-      this.repoUrl(owner, repo, `/compare?${new URLSearchParams({ base, head, patch: "1" }).toString()}`),
+      this.repoUrl(
+        owner,
+        repo,
+        `/compare?${new URLSearchParams({ base, head, patch: "1" }).toString()}`,
+      ),
       requestId,
     );
     return result.patch ?? "";
   }
 
-  async getCommitDiff(owner: string, repo: string, sha: string, requestId?: string): Promise<string> {
+  async getCommitDiff(
+    owner: string,
+    repo: string,
+    sha: string,
+    requestId?: string,
+  ): Promise<string> {
     const result = await this.readJson<{ patch?: string }>(
       this.repoUrl(owner, repo, `/commits/${encodeURIComponent(sha)}/diff`),
       requestId,
@@ -70,7 +85,7 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     return payload.content;
   }
 
-  async listCommits(
+  listCommits(
     owner: string,
     repo: string,
     ref?: string,
@@ -96,7 +111,7 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
     };
   }
 
-  async listBranches(owner: string, repo: string, requestId?: string): Promise<BranchInfo[]> {
+  listBranches(owner: string, repo: string, requestId?: string): Promise<BranchInfo[]> {
     return this.readJson<BranchInfo[]>(this.repoUrl(owner, repo, "/branches"), requestId);
   }
 
@@ -117,7 +132,9 @@ export class GitServerHttpRepositoryProvider implements RepositoryProvider {
   private async readJson<T>(url: string, requestId?: string): Promise<T> {
     const headers = new Headers();
     if (this.options.username || this.options.password) {
-      const encoded = Buffer.from(`${this.options.username ?? ""}:${this.options.password ?? ""}`).toString("base64");
+      const encoded = Buffer.from(
+        `${this.options.username ?? ""}:${this.options.password ?? ""}`,
+      ).toString("base64");
       headers.set("Authorization", `Basic ${encoded}`);
     }
     if (requestId) {

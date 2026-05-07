@@ -1,24 +1,43 @@
+import { FileTree } from "@pierre/trees/react";
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Code,
+  Copy,
+  Database,
+  FileText,
+  GitBranch,
+  GitCommit,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { FileTree } from "@pierre/trees/react";
 import { MarkdownContent } from "@/components/markdown-content";
-import {
-  GitBranch, GitCommit, Clock, ShieldCheck, FileText,
-  Code, Check, Copy, ChevronDown, ChevronRight, Bot, Database,
-} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  fetchHostedRepoSnapshot, fetchHostedRepoFile,
-  fetchHostedRepoTree, fetchReviewQueue, fetchDaemonMemory,
-  type HostedRepoSnapshot, type Change, type DaemonMemory,
+  type Change,
+  type DaemonMemory,
+  fetchDaemonMemory,
+  fetchHostedRepoFile,
+  fetchHostedRepoSnapshot,
+  fetchHostedRepoTree,
+  fetchReviewQueue,
+  type HostedRepoSnapshot,
 } from "@/lib/api";
 
 // ─── options ────────────────────────────────────────────────────────────────
@@ -48,11 +67,41 @@ interface MockIssue {
 }
 
 const MOCK_ISSUES: MockIssue[] = [
-  { id: 1, title: "Triage view doesn't show log lines for long-running daemons", status: "open", label: "bug", createdAt: "2026-04-28T10:00:00Z" },
-  { id: 2, title: "Branch picker should re-fetch commits when branch changes", status: "open", label: "enhancement", createdAt: "2026-04-27T14:30:00Z" },
-  { id: 3, title: "Add file content endpoint for non-markdown files", status: "closed", label: "enhancement", createdAt: "2026-04-25T09:00:00Z" },
-  { id: 4, title: "Daemon memory view should surface stale tracked subjects", status: "open", label: "feature", createdAt: "2026-04-24T16:00:00Z" },
-  { id: 5, title: "Review queue filter by confidence level", status: "open", label: "feature", createdAt: "2026-04-23T11:00:00Z" },
+  {
+    id: 1,
+    title: "Triage view doesn't show log lines for long-running daemons",
+    status: "open",
+    label: "bug",
+    createdAt: "2026-04-28T10:00:00Z",
+  },
+  {
+    id: 2,
+    title: "Branch picker should re-fetch commits when branch changes",
+    status: "open",
+    label: "enhancement",
+    createdAt: "2026-04-27T14:30:00Z",
+  },
+  {
+    id: 3,
+    title: "Add file content endpoint for non-markdown files",
+    status: "closed",
+    label: "enhancement",
+    createdAt: "2026-04-25T09:00:00Z",
+  },
+  {
+    id: 4,
+    title: "Daemon memory view should surface stale tracked subjects",
+    status: "open",
+    label: "feature",
+    createdAt: "2026-04-24T16:00:00Z",
+  },
+  {
+    id: 5,
+    title: "Review queue filter by confidence level",
+    status: "open",
+    label: "feature",
+    createdAt: "2026-04-23T11:00:00Z",
+  },
 ];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -67,13 +116,6 @@ function timeAgo(dateStr: string | null): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-function parseDiffFiles(diff: string): string[] {
-  return diff.split(/(?=^diff --git )/m).filter(Boolean).flatMap((chunk) => {
-    const header = chunk.match(/^diff --git (?:a\/|\/dev\/null)(.+?) (?:b\/)(.+)$/m);
-    return header ? [header[2]] : [];
-  });
 }
 
 // ─── clone popover ───────────────────────────────────────────────────────────
@@ -95,7 +137,8 @@ function ClonePopover({ owner, repo }: { owner: string; repo: string }) {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2.5 text-xs">
-          <Code className="h-3.5 w-3.5" />Clone
+          <Code className="h-3.5 w-3.5" />
+          Clone
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 gap-0 p-0">
@@ -104,12 +147,26 @@ function ClonePopover({ owner, repo }: { owner: string; repo: string }) {
         </div>
         <div className="space-y-1 p-2">
           {(["https", "ssh", "cli"] as const).map((key) => (
-            <div key={key} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/40">
-              <span className="w-10 shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{key}</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">{urls[key]}</span>
-              <button type="button" onClick={() => copy(key, urls[key])}
-                className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground">
-                {copied === key ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+            <div
+              key={key}
+              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/40"
+            >
+              <span className="w-10 shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {key}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">
+                {urls[key]}
+              </span>
+              <button
+                type="button"
+                onClick={() => copy(key, urls[key])}
+                className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {copied === key ? (
+                  <Check className="h-3.5 w-3.5 text-primary" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
               </button>
             </div>
           ))}
@@ -131,24 +188,38 @@ function PullRequestsTab({ repoFullName }: { repoFullName: string }) {
   const [changes, setChanges] = useState<Change[] | null>(null);
 
   useEffect(() => {
-    fetchReviewQueue().then((all) =>
-      setChanges(all.filter((c) => c.repo === repoFullName))
-    ).catch(() => setChanges([]));
+    fetchReviewQueue()
+      .then((all) => setChanges(all.filter((c) => c.repo === repoFullName)))
+      .catch(() => setChanges([]));
   }, [repoFullName]);
 
   if (!changes) {
-    return <div className="space-y-2 p-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-md" />)}</div>;
+    const loadingKeys = ["pr-skeleton-1", "pr-skeleton-2", "pr-skeleton-3"];
+    return (
+      <div className="space-y-2 p-4">
+        {loadingKeys.map((key) => (
+          <Skeleton key={key} className="h-14 rounded-md" />
+        ))}
+      </div>
+    );
   }
 
   if (changes.length === 0) {
-    return <p className="p-6 text-sm text-muted-foreground">No pull requests in the review queue for this repo.</p>;
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        No pull requests in the review queue for this repo.
+      </p>
+    );
   }
 
   return (
     <div className="divide-y divide-border">
       {changes.map((c) => (
-        <Link key={c.id} to={`/changes/${c.id}`}
-          className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
+        <Link
+          key={c.id}
+          to={`/changes/${c.id}`}
+          className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
+        >
           <GitCommit className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -195,13 +266,21 @@ function IssuesTab() {
     <div>
       <div className="flex items-center gap-3 border-b border-border px-4 py-2">
         {(["open", "closed"] as const).map((f) => (
-          <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`text-xs transition-colors ${filter === f ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={`text-xs transition-colors ${filter === f ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
             {f.charAt(0).toUpperCase() + f.slice(1)}{" "}
-            <span className="text-muted-foreground">({MOCK_ISSUES.filter((i) => i.status === f).length})</span>
+            <span className="text-muted-foreground">
+              ({MOCK_ISSUES.filter((i) => i.status === f).length})
+            </span>
           </button>
         ))}
-        <Badge variant="secondary" className="ml-auto text-[10px]">mock data</Badge>
+        <Badge variant="secondary" className="ml-auto text-[10px]">
+          mock data
+        </Badge>
       </div>
       {visible.length === 0 ? (
         <p className="p-6 text-sm text-muted-foreground">No {filter} issues.</p>
@@ -213,10 +292,14 @@ function IssuesTab() {
               <div className="min-w-0 flex-1">
                 <span className="text-sm text-foreground">{issue.title}</span>
                 <div className="mt-1 flex items-center gap-2">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${labelColors[issue.label] ?? "text-muted-foreground bg-muted"}`}>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${labelColors[issue.label] ?? "text-muted-foreground bg-muted"}`}
+                  >
                     {issue.label}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">opened {timeAgo(issue.createdAt)}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    opened {timeAgo(issue.createdAt)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -234,22 +317,33 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchDaemonMemory(name, repoId).then(setMemory).catch(() => setMemory(null));
+    fetchDaemonMemory(name, repoId)
+      .then(setMemory)
+      .catch(() => setMemory(null));
   }, [name, repoId]);
 
   if (memory === "loading") {
-    return <div className="space-y-2 p-4"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-1/2" /></div>;
+    return (
+      <div className="space-y-2 p-4">
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+    );
   }
 
   if (!memory) {
-    return <p className="px-4 py-3 text-xs text-muted-foreground">No memory recorded yet for this daemon.</p>;
+    return (
+      <p className="px-4 py-3 text-xs text-muted-foreground">
+        No memory recorded yet for this daemon.
+      </p>
+    );
   }
 
   const trackedEntries = Object.values(memory.tracked ?? {});
-  const orderedTrackedEntries = [...trackedEntries].sort((a, b) => a.subject.localeCompare(b.subject));
-  const allTrackedFiles = Array.from(
-    new Set(trackedEntries.flatMap((e) => e.depends_on))
-  ).sort();
+  const orderedTrackedEntries = [...trackedEntries].sort((a, b) =>
+    a.subject.localeCompare(b.subject),
+  );
+  const allTrackedFiles = Array.from(new Set(trackedEntries.flatMap((e) => e.depends_on))).sort();
 
   return (
     <div className="space-y-4 px-4 py-3">
@@ -282,7 +376,10 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
             {orderedTrackedEntries.map((entry) => {
               const open = expandedSubject === entry.subject;
               return (
-                <div key={entry.subject} className="overflow-hidden rounded-sm border border-border/50">
+                <div
+                  key={entry.subject}
+                  className="overflow-hidden rounded-sm border border-border/50"
+                >
                   <button
                     type="button"
                     onClick={() => setExpandedSubject(open ? null : entry.subject)}
@@ -333,7 +430,9 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
                             {entry.depends_on.map((file) => (
                               <div key={file} className="flex items-center gap-1.5">
                                 <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                <span className="font-mono text-[11px] text-foreground">{file}</span>
+                                <span className="font-mono text-[11px] text-foreground">
+                                  {file}
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -354,13 +453,21 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
             Last run findings
           </p>
           <div className="space-y-1">
-            {memory.lastRun.findings.map((f, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                <span className={`mt-0.5 shrink-0 font-medium ${
-                  f.status === "ok" ? "text-green-500" :
-                  f.status === "healed" ? "text-yellow-500" :
-                  f.status === "violation_persists" ? "text-red-500" : "text-muted-foreground"
-                }`}>{f.status.replace(/_/g, " ")}</span>
+            {memory.lastRun.findings.map((f) => (
+              <div key={`${f.status}-${f.invariant}`} className="flex items-start gap-2 text-xs">
+                <span
+                  className={`mt-0.5 shrink-0 font-medium ${
+                    f.status === "ok"
+                      ? "text-green-500"
+                      : f.status === "healed"
+                        ? "text-yellow-500"
+                        : f.status === "violation_persists"
+                          ? "text-red-500"
+                          : "text-muted-foreground"
+                  }`}
+                >
+                  {f.status.replace(/_/g, " ")}
+                </span>
                 <span className="text-muted-foreground">{f.invariant}</span>
               </div>
             ))}
@@ -400,27 +507,45 @@ function DaemonsTab({ repoId, defaultBranch }: { repoId: string; defaultBranch: 
   }, [repoId, defaultBranch]);
 
   if (!daemons) {
-    return <div className="space-y-2 p-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-md" />)}</div>;
+    const daemonLoadingKeys = ["daemon-skeleton-1", "daemon-skeleton-2", "daemon-skeleton-3"];
+    return (
+      <div className="space-y-2 p-4">
+        {daemonLoadingKeys.map((key) => (
+          <Skeleton key={key} className="h-12 rounded-md" />
+        ))}
+      </div>
+    );
   }
 
   if (daemons.length === 0) {
-    return <p className="p-6 text-sm text-muted-foreground">No <code className="font-mono text-xs">*.daemon.md</code> files found in this repo.</p>;
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        No <code className="font-mono text-xs">*.daemon.md</code> files found in this repo.
+      </p>
+    );
   }
 
   return (
     <div className="divide-y divide-border">
       {daemons.map((d) => (
         <div key={d.path}>
-          <button type="button" onClick={() => setExpanded(expanded === d.path ? null : d.path)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30">
+          <button
+            type="button"
+            onClick={() => setExpanded(expanded === d.path ? null : d.path)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+          >
             <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="text-sm text-foreground">{d.name}</div>
-              <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{d.path}</div>
+              <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                {d.path}
+              </div>
             </div>
-            {expanded === d.path
-              ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+            {expanded === d.path ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
           </button>
           {expanded === d.path && (
             <div className="border-t border-border/50 bg-muted/20">
@@ -446,7 +571,12 @@ function CITab() {
 // ─── code tab ────────────────────────────────────────────────────────────────
 
 function CodeTab({
-  snapshot, owner, repo, repoId, tree, activeBranch,
+  snapshot,
+  owner,
+  repo,
+  repoId,
+  tree,
+  activeBranch,
 }: {
   snapshot: HostedRepoSnapshot;
   owner: string;
@@ -462,14 +592,29 @@ function CodeTab({
   const files = tree ?? [];
 
   useEffect(() => {
-    if (!selectedFile) { setFileContent(null); return; }
+    if (!selectedFile) {
+      setFileContent(null);
+      return;
+    }
     let cancelled = false;
     setFileLoading(true);
     setFileContent(null);
     fetchHostedRepoFile(selectedFile, activeBranch, repoId)
-      .then((c) => { if (!cancelled) { setFileContent(c); setFileLoading(false); } })
-      .catch(() => { if (!cancelled) { setFileContent(null); setFileLoading(false); } });
-    return () => { cancelled = true; };
+      .then((c) => {
+        if (!cancelled) {
+          setFileContent(c);
+          setFileLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFileContent(null);
+          setFileLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedFile, repoId, activeBranch]);
 
   const latestCommit = snapshot.commits[0];
@@ -480,25 +625,35 @@ function CodeTab({
       <div className="w-[260px] shrink-0 border-r border-border">
         <div className="bg-depth-subtle flex items-center gap-2 border-b border-border px-3 py-2">
           {latestCommit ? (
-            <Link to={`/bind/${owner}/${repo}/commits/${latestCommit.sha}`}
-              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground">
+            <Link
+              to={`/bind/${owner}/${repo}/commits/${latestCommit.sha}`}
+              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            >
               {latestCommit.sha.slice(0, 7)}
             </Link>
           ) : null}
-          <span className="truncate text-[11px] text-muted-foreground">{latestCommit?.message ?? ""}</span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            {latestCommit?.message ?? ""}
+          </span>
         </div>
-        <button type="button" onClick={() => setSelectedFile(null)}
-          className={`flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40 ${selectedFile === null ? "bg-muted/40 text-foreground" : "text-muted-foreground"}`}>
+        <button
+          type="button"
+          onClick={() => setSelectedFile(null)}
+          className={`flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40 ${selectedFile === null ? "bg-muted/40 text-foreground" : "text-muted-foreground"}`}
+        >
           <FileText className="h-3.5 w-3.5 shrink-0" />
           {snapshot.readme?.path ?? "README.md"}
         </button>
         {files.length > 0 ? (
-          <FileTree options={treeOptions} files={files}
+          <FileTree
+            options={treeOptions}
+            files={files}
             selectedItems={selectedFile ? [selectedFile] : []}
             onSelection={(items) => {
               const next = items.find((item) => !item.isFolder)?.path ?? null;
               if (next) setSelectedFile(next);
-            }} />
+            }}
+          />
         ) : (
           <div className="px-3 py-4 text-xs text-muted-foreground">
             {tree === null ? "Loading files…" : "No files found."}
@@ -512,24 +667,32 @@ function CodeTab({
           <span className="font-mono text-xs font-medium">
             {selectedFile ?? snapshot.readme?.path ?? "README.md"}
           </span>
-          <Badge variant="outline" className="ml-auto h-4 px-1.5 text-[10px]">{activeBranch}</Badge>
+          <Badge variant="outline" className="ml-auto h-4 px-1.5 text-[10px]">
+            {activeBranch}
+          </Badge>
         </div>
         {selectedFile ? (
           fileLoading ? (
-            <div className="p-6"><Skeleton className="mb-2 h-4 w-3/4" /><Skeleton className="mb-2 h-4 w-1/2" /><Skeleton className="h-4 w-2/3" /></div>
+            <div className="p-6">
+              <Skeleton className="mb-2 h-4 w-3/4" />
+              <Skeleton className="mb-2 h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
           ) : fileContent !== null ? (
             selectedFile.endsWith(".md") ? (
               <MarkdownContent content={fileContent} />
             ) : (
-              <pre className="overflow-x-auto p-6 font-mono text-xs leading-relaxed text-foreground">{fileContent}</pre>
+              <pre className="overflow-x-auto p-6 font-mono text-xs leading-relaxed text-foreground">
+                {fileContent}
+              </pre>
             )
           ) : (
             <p className="p-6 text-xs text-muted-foreground">Unable to load file content.</p>
           )
+        ) : snapshot.readme ? (
+          <MarkdownContent content={snapshot.readme.content} />
         ) : (
-          snapshot.readme
-            ? <MarkdownContent content={snapshot.readme.content} />
-            : <p className="p-6 text-xs text-muted-foreground">No README available.</p>
+          <p className="p-6 text-xs text-muted-foreground">No README available.</p>
         )}
       </div>
     </div>
@@ -548,11 +711,25 @@ export function HostedRepoPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!repoId) { setError("Missing repo id"); return () => { cancelled = true; }; }
+    if (!repoId) {
+      setError("Missing repo id");
+      return () => {
+        cancelled = true;
+      };
+    }
     fetchHostedRepoSnapshot(repoId)
-      .then((data) => { if (!cancelled) { setSnapshot(data); setError(null); } })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load repo"); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (!cancelled) {
+          setSnapshot(data);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load repo");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [repoId]);
 
   useEffect(() => {
@@ -561,9 +738,15 @@ export function HostedRepoPage() {
     setTree(null);
     const branch = selectedBranch ?? snapshot.repo.default_branch;
     fetchHostedRepoTree(branch, repoId)
-      .then((files) => { if (!cancelled) setTree(files); })
-      .catch(() => { if (!cancelled) setTree([]); });
-    return () => { cancelled = true; };
+      .then((files) => {
+        if (!cancelled) setTree(files);
+      })
+      .catch(() => {
+        if (!cancelled) setTree([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [repoId, snapshot, selectedBranch]);
 
   if (!snapshot && !error) {
@@ -593,7 +776,9 @@ export function HostedRepoPage() {
       {!snapshot.availability.reachable && (
         <Alert>
           <AlertTitle>Repo not reachable</AlertTitle>
-          <AlertDescription>{snapshot.availability.error ?? "The BFF could not reach the hosted repo."}</AlertDescription>
+          <AlertDescription>
+            {snapshot.availability.error ?? "The BFF could not reach the hosted repo."}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -608,7 +793,9 @@ export function HostedRepoPage() {
             {snapshot.branches.map((b) => (
               <SelectItem key={b.name} value={b.name} className="font-mono text-xs">
                 {b.name}
-                {b.protected && <ShieldCheck className="ml-1.5 inline h-3 w-3 text-muted-foreground" />}
+                {b.protected && (
+                  <ShieldCheck className="ml-1.5 inline h-3 w-3 text-muted-foreground" />
+                )}
               </SelectItem>
             ))}
           </SelectContent>
@@ -620,12 +807,18 @@ export function HostedRepoPage() {
         {activeBranchData && (
           <>
             <span className="text-muted-foreground/40">·</span>
-            <Link to={`/bind/${owner}/${repo}/commits/${activeBranchData.sha}`}
-              className="flex items-center gap-1 transition-colors hover:text-foreground">
+            <Link
+              to={`/bind/${owner}/${repo}/commits/${activeBranchData.sha}`}
+              className="flex items-center gap-1 transition-colors hover:text-foreground"
+            >
               <GitCommit className="h-3 w-3 text-muted-foreground" />
-              <span className="font-mono text-[11px] text-muted-foreground">{activeBranchData.sha.slice(0, 7)}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {activeBranchData.sha.slice(0, 7)}
+              </span>
             </Link>
-            <span className="max-w-sm truncate text-[11px] text-muted-foreground">{activeBranchData.message}</span>
+            <span className="max-w-sm truncate text-[11px] text-muted-foreground">
+              {activeBranchData.message}
+            </span>
           </>
         )}
 
@@ -644,16 +837,30 @@ export function HostedRepoPage() {
       <Tabs defaultValue="code">
         <TabsList className="h-8 rounded-none border-b border-border bg-transparent px-0 w-full justify-start gap-0">
           {(["code", "pull-requests", "issues", "ci", "daemons"] as const).map((t) => (
-            <TabsTrigger key={t} value={t}
-              className="h-8 rounded-none border-b-2 border-transparent px-3 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              {t === "pull-requests" ? "Pull Requests" : t === "ci" ? "CI" : t.charAt(0).toUpperCase() + t.slice(1)}
+            <TabsTrigger
+              key={t}
+              value={t}
+              className="h-8 rounded-none border-b-2 border-transparent px-3 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              {t === "pull-requests"
+                ? "Pull Requests"
+                : t === "ci"
+                  ? "CI"
+                  : t.charAt(0).toUpperCase() + t.slice(1)}
             </TabsTrigger>
           ))}
         </TabsList>
 
         <div className="overflow-hidden rounded-b-md rounded-tr-md border border-t-0 border-border">
           <TabsContent value="code" className="m-0">
-            <CodeTab snapshot={snapshot} owner={owner} repo={repo} repoId={repoId} tree={tree} activeBranch={activeBranch} />
+            <CodeTab
+              snapshot={snapshot}
+              owner={owner}
+              repo={repo}
+              repoId={repoId}
+              tree={tree}
+              activeBranch={activeBranch}
+            />
           </TabsContent>
           <TabsContent value="pull-requests" className="m-0">
             <PullRequestsTab repoFullName={snapshot.repo.full_name} />

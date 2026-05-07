@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { Link, Outlet } from "react-router";
 import { Badge } from "@/components/ui/badge";
 
@@ -14,16 +14,20 @@ export function useHeaderContent() {
 export function Layout() {
   const [pendingJobs, setPendingJobs] = useState<number | null>(null);
   const [headerContent, setHeaderContent] = useState<ReactNode | null>(null);
-  const { status, me, error } = useAuthSession();
+  const { me, error } = useAuthSession();
 
   const setHeader = useCallback((node: ReactNode | null) => {
     setHeaderContent(node);
   }, []);
 
   useEffect(() => {
-    fetchPendingJobs().then((data) => setPendingJobs(data.pending)).catch(() => {});
+    fetchPendingJobs()
+      .then((data) => setPendingJobs(data.pending))
+      .catch(() => {});
     const interval = setInterval(() => {
-      fetchPendingJobs().then((data) => setPendingJobs(data.pending)).catch(() => {});
+      fetchPendingJobs()
+        .then((data) => setPendingJobs(data.pending))
+        .catch(() => {});
     }, 10000);
     return () => clearInterval(interval);
   }, []);
@@ -37,10 +41,18 @@ export function Layout() {
               red
             </Link>
             <nav className="flex items-center gap-3 text-xs text-muted-foreground">
-              <Link to="/bind/red" className="transition-colors hover:text-foreground">repo</Link>
-              <Link to="/triage" className="transition-colors hover:text-foreground">triage</Link>
-              <Link to="/status" className="transition-colors hover:text-foreground">status</Link>
-              <Link to="/playground/daemons" className="transition-colors hover:text-foreground">playground</Link>
+              <Link to="/bind/red" className="transition-colors hover:text-foreground">
+                repo
+              </Link>
+              <Link to="/triage" className="transition-colors hover:text-foreground">
+                triage
+              </Link>
+              <Link to="/status" className="transition-colors hover:text-foreground">
+                status
+              </Link>
+              <Link to="/playground/daemons" className="transition-colors hover:text-foreground">
+                playground
+              </Link>
             </nav>
             <div className="ml-auto flex items-center gap-2">
               {pendingJobs !== null && pendingJobs > 0 && (

@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import { isPrivateUrl, NotificationSender } from "./notify";
+import { describe, expect, test } from "bun:test";
 import type { Change, NotificationConfig } from "../types";
+import { isPrivateUrl, NotificationSender } from "./notify";
 
 describe("isPrivateUrl", () => {
   test("blocks localhost", () => {
@@ -77,9 +77,7 @@ describe("NotificationSender", () => {
   });
 
   test("blocks private URLs with SSRF error", async () => {
-    const configs: NotificationConfig[] = [
-      { url: "http://localhost:8080/hook", events: ["all"] },
-    ];
+    const configs: NotificationConfig[] = [{ url: "http://localhost:8080/hook", events: ["all"] }];
     const results = await sender.send(configs, makeChange(), "change_ready");
     expect(results).toHaveLength(1);
     expect(results[0].success).toBe(false);
@@ -101,7 +99,7 @@ describe("NotificationSender", () => {
     const results = await sender.send(
       configs,
       makeChange({ confidence: "critical" }),
-      "change_critical"
+      "change_critical",
     );
     expect(results).toHaveLength(1);
   });

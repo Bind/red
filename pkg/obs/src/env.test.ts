@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  FileNdjsonSink,
-  HttpBatchSink,
-  createObsSinkFromEnv,
-} from "./collector";
+import { createObsSinkFromEnv, FileNdjsonSink, HttpBatchSink } from "./collector";
 import { ConsoleJsonSink } from "./core";
 
 describe("createObsSinkFromEnv", () => {

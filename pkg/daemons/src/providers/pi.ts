@@ -1,16 +1,16 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@mariozechner/pi-agent-core";
 import {
+  type Api,
+  type AssistantMessage,
   getEnvApiKey,
   getModel,
-  streamSimple,
-  type Api,
-  type Model,
-  type AssistantMessage,
   type Message,
+  type Model,
+  streamSimple,
 } from "@mariozechner/pi-ai";
 import { createCodingTools } from "@mariozechner/pi-coding-agent";
 import { CodexAccessTokenManager, type CodexAuthSource } from "../auth";
-import { createCompleteTool, COMPLETE_TOOL_NAME, type CompleteCapture } from "../tools/complete";
+import { COMPLETE_TOOL_NAME, type CompleteCapture, createCompleteTool } from "../tools/complete";
 import type {
   AgentProvider,
   ProviderRunFailure,
@@ -59,10 +59,10 @@ function resolveModel(opts: PiProviderOptions): Model<Api> {
   }
 
   if (providerId === OPENROUTER_PROVIDER_ID && modelId === OPENROUTER_FALLBACK_MODEL) {
-    return getModel(OPENROUTER_PROVIDER_ID as any, OPENROUTER_FALLBACK_MODEL as any) as Model<Api>;
+    return getTypedModel(OPENROUTER_PROVIDER_ID, OPENROUTER_FALLBACK_MODEL);
   }
 
-  return getModel(providerId as any, modelId as any) as Model<Api>;
+  return getTypedModel(providerId, modelId);
 }
 
 function shouldFallbackOpenRouterModel(message: string): boolean {
@@ -127,9 +127,8 @@ async function runOnce(
   let terminalTurnObserved = false;
 
   const agent = new Agent({
-    streamFn: (m, context, streamOptions) =>
-      streamSimple(m, context, streamOptions),
-    getApiKey: async (provider) => {
+    streamFn: (m, context, streamOptions) => streamSimple(m, context, streamOptions),
+    getApiKey: (provider) => {
       if (provider === CODEX_PROVIDER_ID || provider === "openai-codex-responses") {
         if (!tokenManager) {
           throw new Error("Codex OAuth auth source is required for openai-codex providers");
@@ -255,6 +254,13 @@ async function runOnce(
   };
 }
 
+function getTypedModel(providerId: string, modelId: string): Model<Api> {
+  return getModel(
+    providerId as Parameters<typeof getModel>[0],
+    modelId as Parameters<typeof getModel>[1],
+  ) as Model<Api>;
+}
+
 function extractUsage(message: unknown): ProviderTokenUsage {
   if (!message || typeof message !== "object") return { input: 0, output: 0 };
   const m = message as AssistantMessage;
@@ -273,7 +279,11 @@ function extractProviderError(message: unknown): string | undefined {
   if (!raw) return "provider returned an error turn";
 
   try {
-    const parsed = JSON.parse(raw) as { detail?: string; error?: { message?: string }; message?: string };
+    const parsed = JSON.parse(raw) as {
+      detail?: string;
+      error?: { message?: string };
+      message?: string;
+    };
     return parsed.detail ?? parsed.error?.message ?? parsed.message ?? raw;
   } catch {
     return raw;
@@ -285,7 +295,8 @@ function snapshotAgentState(
   systemPrompt: string,
 ): { systemPrompt: string; messages: unknown[] } {
   return {
-    systemPrompt: typeof agent.state.systemPrompt === "string" ? agent.state.systemPrompt : systemPrompt,
+    systemPrompt:
+      typeof agent.state.systemPrompt === "string" ? agent.state.systemPrompt : systemPrompt,
     messages: Array.isArray(agent.state.messages) ? [...agent.state.messages] : [],
   };
 }

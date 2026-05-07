@@ -110,14 +110,10 @@ export function toCollectorWideEvent(
     duration_ms: event.duration_ms,
     outcome: event.outcome,
     status_code: event.status_code,
-    route_name:
-      isPlainObject(route) && typeof route.name === "string" ? route.name : undefined,
-    error_name:
-      isPlainObject(error) && typeof error.name === "string" ? error.name : undefined,
+    route_name: isPlainObject(route) && typeof route.name === "string" ? route.name : undefined,
+    error_name: isPlainObject(error) && typeof error.name === "string" ? error.name : undefined,
     error_message:
-      isPlainObject(error) && typeof error.message === "string"
-        ? error.message
-        : undefined,
+      isPlainObject(error) && typeof error.message === "string" ? error.message : undefined,
     data: event.data as Record<string, unknown>,
   };
 }
@@ -244,9 +240,7 @@ export class HttpBatchSink implements FlushableEventSink {
   }
 }
 
-export function createObsSinkFromEnv(
-  options: CollectorSinkEnvOptions,
-): EventSink {
+export function createObsSinkFromEnv(options: CollectorSinkEnvOptions): EventSink {
   const env = options.env ?? process.env;
   const mode = envString(env.OBS_SINK_MODE) ?? "console";
 
@@ -269,9 +263,7 @@ export function createObsSinkFromEnv(
   if (mode === "collector") {
     const baseUrl = envString(env.WIDE_EVENTS_COLLECTOR_URL);
     if (!baseUrl) {
-      throw new Error(
-        "WIDE_EVENTS_COLLECTOR_URL is required when OBS_SINK_MODE=collector",
-      );
+      throw new Error("WIDE_EVENTS_COLLECTOR_URL is required when OBS_SINK_MODE=collector");
     }
     const endpoint = baseUrl.endsWith("/v1/events")
       ? baseUrl
@@ -286,12 +278,8 @@ export function createObsSinkFromEnv(
         instance_id: options.instanceId ?? envString(env.OBS_INSTANCE_ID),
       },
       authToken: envString(env.OBS_AUTH_TOKEN),
-      flushIntervalMs: flushIntervalMs
-        ? Number.parseInt(flushIntervalMs, 10)
-        : undefined,
-      maxBatchSize: maxBatchSize
-        ? Number.parseInt(maxBatchSize, 10)
-        : undefined,
+      flushIntervalMs: flushIntervalMs ? Number.parseInt(flushIntervalMs, 10) : undefined,
+      maxBatchSize: maxBatchSize ? Number.parseInt(maxBatchSize, 10) : undefined,
     });
   }
 

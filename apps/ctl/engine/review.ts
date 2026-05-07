@@ -59,23 +59,25 @@ export class ScoringEngine {
     // Check for critical thresholds
     if (totalLines > this.config.criticalLinesThreshold) {
       level = "critical";
-      reasons.push(`${totalLines} lines changed (threshold: ${this.config.criticalLinesThreshold})`);
+      reasons.push(
+        `${totalLines} lines changed (threshold: ${this.config.criticalLinesThreshold})`,
+      );
     }
 
     if (diff.files_changed > this.config.criticalFilesThreshold) {
       level = "critical";
-      reasons.push(`${diff.files_changed} files changed (threshold: ${this.config.criticalFilesThreshold})`);
+      reasons.push(
+        `${diff.files_changed} files changed (threshold: ${this.config.criticalFilesThreshold})`,
+      );
     }
 
     // Check for sensitive file patterns
     const sensitiveFiles = diff.files.filter((f) =>
-      this.config.sensitivePatterns.some((p) => matchGlob(p, f.filename))
+      this.config.sensitivePatterns.some((p) => matchGlob(p, f.filename)),
     );
     if (sensitiveFiles.length > 0) {
       if (level !== "critical") level = "needs_review";
-      reasons.push(
-        `Sensitive files: ${sensitiveFiles.map((f) => f.filename).join(", ")}`
-      );
+      reasons.push(`Sensitive files: ${sensitiveFiles.map((f) => f.filename).join(", ")}`);
     }
 
     // Check for deletions-heavy changes (more deletions than additions)
@@ -88,11 +90,15 @@ export class ScoringEngine {
     if (level === "safe") {
       if (totalLines > this.config.safeLinesThreshold) {
         level = "needs_review";
-        reasons.push(`${totalLines} lines changed (safe threshold: ${this.config.safeLinesThreshold})`);
+        reasons.push(
+          `${totalLines} lines changed (safe threshold: ${this.config.safeLinesThreshold})`,
+        );
       }
       if (diff.files_changed > this.config.safeFilesThreshold) {
         level = "needs_review";
-        reasons.push(`${diff.files_changed} files changed (safe threshold: ${this.config.safeFilesThreshold})`);
+        reasons.push(
+          `${diff.files_changed} files changed (safe threshold: ${this.config.safeFilesThreshold})`,
+        );
       }
     }
 
@@ -131,6 +137,5 @@ export function matchGlob(pattern: string, filepath: string): boolean {
     }
   }
   const regex = parts.join("");
-  return new RegExp(`^${regex}$`).test(filepath) ||
-    new RegExp(`(^|/)${regex}$`).test(filepath);
+  return new RegExp(`^${regex}$`).test(filepath) || new RegExp(`(^|/)${regex}$`).test(filepath);
 }

@@ -10,7 +10,7 @@ export interface ObsMiddlewareOptions {
 
 export function obsMiddleware(
   options: ObsMiddlewareOptions,
-): MiddlewareHandler<{ Variables: { envelope: EventEnvelope } }, any, any> {
+): MiddlewareHandler<{ Variables: { envelope: EventEnvelope } }> {
   const requestIdHeader = options.requestIdHeader ?? "x-request-id";
 
   return async (c, next) => {
@@ -46,7 +46,9 @@ export function obsMiddleware(
       try {
         await options.sink.emit(envelope.finish(response, caughtError));
       } catch (sinkError) {
-        console.error(sinkError instanceof Error ? sinkError.message : String(sinkError));
+        process.stderr.write(
+          `${sinkError instanceof Error ? sinkError.message : String(sinkError)}\n`,
+        );
       }
     }
   };
@@ -65,8 +67,6 @@ function normalizeRouteName(path: string): string | null {
   return trimmed.replace(/^\/+/, "") || "/";
 }
 
-export function getEnvelope(
-  c: Context<any, any, any>,
-): EventEnvelope {
+export function getEnvelope(c: Context<{ Variables: { envelope: EventEnvelope } }>): EventEnvelope {
   return c.get("envelope") as EventEnvelope;
 }

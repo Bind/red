@@ -11,8 +11,8 @@ const app = createApp({ config, mcp });
 const logger = getServerLogger(["mcp"]);
 
 logger.info("mcp listening on {url}", {
-	url: `http://0.0.0.0:${config.port}`,
-	auth: config.disableAuth ? "DISABLED" : "oauth",
+  url: `http://0.0.0.0:${config.port}`,
+  auth: config.disableAuth ? "DISABLED" : "oauth",
 });
 
 Bun.serve({ port: config.port, fetch: app.fetch });

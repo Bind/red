@@ -1,12 +1,12 @@
-import type { ChangeQueries, EventQueries, JobQueries, SessionQueries } from "../db/queries";
-import type { SummaryGenerator, SummaryInput } from "../engine/summary";
-import type { DiffStats, Job, NotificationConfig } from "../types";
 import type { AgentRuntimeEvent } from "../claw/runtime";
+import type { ChangeQueries, EventQueries, JobQueries, SessionQueries } from "../db/queries";
 import type { EventBus } from "../engine/event-bus";
+import type { ScoringEngine } from "../engine/review";
+import type { ChangeStateMachine } from "../engine/state-machine";
+import type { SummaryGenerator, SummaryInput } from "../engine/summary";
 import type { RepositoryProvider } from "../repo/repository-provider";
-import { ScoringEngine } from "../engine/review";
-import { ChangeStateMachine } from "../engine/state-machine";
-import { NotificationSender } from "./notify";
+import type { DiffStats, Job, NotificationConfig } from "../types";
+import type { NotificationSender } from "./notify";
 
 export interface WorkerDeps {
   changes: ChangeQueries;
@@ -52,7 +52,7 @@ export class JobWorker {
 
   constructor(
     private deps: WorkerDeps,
-    config: Partial<WorkerConfig> = {}
+    config: Partial<WorkerConfig> = {},
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -122,7 +122,10 @@ export class JobWorker {
 
     // Fetch diff stats
     const diffStats = await this.deps.repositoryProvider.compareDiff(
-      owner, repo, change.base_branch, change.head_sha
+      owner,
+      repo,
+      change.base_branch,
+      change.head_sha,
     );
 
     // Score
@@ -162,15 +165,22 @@ export class JobWorker {
 
     // Fetch the actual diff text for the summary generator
     const diff = await this.deps.repositoryProvider.getDiff(
-      owner, repo, change.base_branch, change.head_sha
+      owner,
+      repo,
+      change.base_branch,
+      change.head_sha,
     );
 
     // Get commit messages from change events or use a placeholder
     const events = this.deps.events.listByChangeId(change.id);
     const pushEvent = events.find((e) => e.event_type === "push_received");
     const commitMessages = pushEvent?.metadata
-      ? [JSON.parse(pushEvent.metadata).commits + " commit(s)"]
+      ? [`${readCommitCount(pushEvent.metadata)} commit(s)`]
       : [];
+    const confidence = change.confidence;
+    if (!confidence) {
+      throw new Error(`Change ${change.id} missing confidence before summary generation`);
+    }
 
     const input: SummaryInput = {
       repo: change.repo,
@@ -181,7 +191,7 @@ export class JobWorker {
       jobId: job.id,
       diff,
       diffStats: payload.diff_stats,
-      confidence: change.confidence!,
+      confidence,
       commitMessages,
     };
 
@@ -197,29 +207,32 @@ export class JobWorker {
     const startTime = Date.now();
 
     const onEvent = (event: AgentRuntimeEvent) => {
-      if (session) {
-        const persistedEvent = this.deps.sessions!.appendEvent(session.id, event);
+      const sessionQueries = this.deps.sessions;
+      if (session && sessionQueries) {
+        const persistedEvent = sessionQueries.appendEvent(session.id, event);
         if (event.runtimeSessionId && !session.runtime_session_id) {
-          this.deps.sessions!.attachRuntimeSessionId(session.id, event.runtimeSessionId);
+          sessionQueries.attachRuntimeSessionId(session.id, event.runtimeSessionId);
           session.runtime_session_id = event.runtimeSessionId;
         }
         this.deps.eventBus?.emit(change.id, persistedEvent);
-        return;
       }
     };
 
-    let summary;
+    let summary: Awaited<ReturnType<SummaryGenerator["generate"]>>;
     try {
-      summary = await this.deps.summary.generate({
-        ...input,
-        jobId: job.id,
-      }, onEvent);
+      summary = await this.deps.summary.generate(
+        {
+          ...input,
+          jobId: job.id,
+        },
+        onEvent,
+      );
       if (session) {
-        this.deps.sessions!.finish(session.id, "completed", Date.now() - startTime);
+        this.deps.sessions?.finish(session.id, "completed", Date.now() - startTime);
       }
     } catch (err) {
       if (session) {
-        this.deps.sessions!.finish(session.id, "failed", Date.now() - startTime);
+        this.deps.sessions?.finish(session.id, "failed", Date.now() - startTime);
       }
       if (change.status === "summarizing") {
         this.deps.stateMachine.transition(change.id, "scored", {
@@ -257,7 +270,6 @@ export class JobWorker {
         payload: JSON.stringify({ change_id: change.id, event }),
       });
     }
-
   }
 
   private async handleSendNotification(job: Job): Promise<void> {
@@ -269,11 +281,7 @@ export class JobWorker {
     const change = this.deps.changes.getById(change_id);
     if (!change) throw new Error(`Change ${change_id} not found`);
 
-    const results = await this.deps.notifier.send(
-      this.deps.notificationConfigs,
-      change,
-      event
-    );
+    const results = await this.deps.notifier.send(this.deps.notificationConfigs, change, event);
 
     // Log notification results
     this.deps.events.append({
@@ -289,10 +297,14 @@ export class JobWorker {
       }),
     });
   }
-
 }
 
 function parseRepoFullName(fullName: string): [string, string] {
   const [owner, ...rest] = fullName.split("/");
   return [owner, rest.join("/")];
+}
+
+function readCommitCount(metadata: string): number {
+  const parsed = JSON.parse(metadata) as { commits?: unknown };
+  return typeof parsed.commits === "number" ? parsed.commits : 0;
 }

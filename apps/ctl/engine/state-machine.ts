@@ -1,5 +1,5 @@
-import type { ChangeStatus } from "../types";
 import type { ChangeQueries, EventQueries } from "../db/queries";
+import type { ChangeStatus } from "../types";
 
 /**
  * Valid state transitions for the change lifecycle:
@@ -26,7 +26,7 @@ const VALID_TRANSITIONS: Record<ChangeStatus, ChangeStatus[]> = {
 export class InvalidTransitionError extends Error {
   constructor(
     public from: ChangeStatus,
-    public to: ChangeStatus
+    public to: ChangeStatus,
   ) {
     super(`Invalid transition: ${from} → ${to}`);
     this.name = "InvalidTransitionError";
@@ -36,15 +36,11 @@ export class InvalidTransitionError extends Error {
 export class ChangeStateMachine {
   constructor(
     private changes: ChangeQueries,
-    private events: EventQueries
+    private events: EventQueries,
   ) {}
 
   /** Transition a change to a new status with validation and event logging. */
-  transition(
-    changeId: number,
-    toStatus: ChangeStatus,
-    metadata?: Record<string, unknown>
-  ): void {
+  transition(changeId: number, toStatus: ChangeStatus, metadata?: Record<string, unknown>): void {
     const change = this.changes.getById(changeId);
     if (!change) {
       throw new Error(`Change ${changeId} not found`);
@@ -67,11 +63,7 @@ export class ChangeStateMachine {
   }
 
   /** Mark all open changes on a repo+branch as superseded (new push arrived). */
-  supersedePrior(
-    repo: string,
-    branch: string,
-    excludeId: number
-  ): number {
+  supersedePrior(repo: string, branch: string, excludeId: number): number {
     return this.changes.supersedePrior(repo, branch, excludeId);
   }
 

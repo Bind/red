@@ -1,13 +1,13 @@
-import { honoLogger, type HonoContext } from "@logtape/hono";
+import { type HonoContext, honoLogger } from "@logtape/hono";
 import {
   configure,
   configureSync,
   fromAsyncSink,
   getConsoleSink,
   getLogger,
+  type LoggerConfig,
   type LogLevel,
   type LogRecord,
-  type LoggerConfig,
   type Sink,
 } from "@logtape/logtape";
 import type { Context, MiddlewareHandler } from "hono";
@@ -38,23 +38,26 @@ function appCategory(app?: string): string[] {
 }
 
 function formatLogMessage(record: LogRecord): string {
-  return record.message.map((part) => {
-    if (typeof part === "string") return part;
-    try {
-      return JSON.stringify(part);
-    } catch {
-      return String(part);
-    }
-  }).join("");
+  return record.message
+    .map((part) => {
+      if (typeof part === "string") return part;
+      try {
+        return JSON.stringify(part);
+      } catch {
+        return String(part);
+      }
+    })
+    .join("");
 }
 
 function createLokiSink(): Sink | null {
   const lokiUrl = process.env.LOKI_URL?.trim();
   if (!lokiUrl) return null;
   return fromAsyncSink(async (record) => {
-    const service = typeof record.properties.service === "string"
-      ? record.properties.service
-      : record.category[1] ?? "app";
+    const service =
+      typeof record.properties.service === "string"
+        ? record.properties.service
+        : (record.category[1] ?? "app");
     const labels = {
       app: record.category[0] ?? DEFAULT_APP_CATEGORY,
       service,
@@ -67,13 +70,15 @@ function createLokiSink(): Sink | null {
       level: record.level,
       category: record.category,
       message: formatLogMessage(record),
-      request_id: typeof record.properties.request_id === "string" ? record.properties.request_id : undefined,
+      request_id:
+        typeof record.properties.request_id === "string" ? record.properties.request_id : undefined,
       method: typeof record.properties.method === "string" ? record.properties.method : undefined,
       path: typeof record.properties.path === "string" ? record.properties.path : undefined,
       status: typeof record.properties.status === "number" ? record.properties.status : undefined,
-      response_time_ms: typeof record.properties.response_time_ms === "number"
-        ? record.properties.response_time_ms
-        : undefined,
+      response_time_ms:
+        typeof record.properties.response_time_ms === "number"
+          ? record.properties.response_time_ms
+          : undefined,
       properties: record.properties,
     });
     const response = await fetch(`${lokiUrl.replace(/\/+$/, "")}/loki/api/v1/push`, {

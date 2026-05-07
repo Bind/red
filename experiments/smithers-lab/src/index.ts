@@ -9,11 +9,13 @@ const app = createApp(config, {
   wideEventRollupReader: wideEventRollupReader ?? undefined,
 });
 
-console.log(`smithers-lab listening on http://${config.hostname}:${config.port}`);
-console.log(`mode: ${config.mode}`);
-console.log(`db: ${config.dbPath}`);
-console.log(`model: ${config.openaiModel}`);
-console.log(`wide-event rollup reader: ${wideEventRollupReader ? "enabled" : "disabled"}`);
+process.stdout.write(`smithers-lab listening on http://${config.hostname}:${config.port}\n`);
+process.stdout.write(`mode: ${config.mode}\n`);
+process.stdout.write(`db: ${config.dbPath}\n`);
+process.stdout.write(`model: ${config.openaiModel}\n`);
+process.stdout.write(
+  `wide-event rollup reader: ${wideEventRollupReader ? "enabled" : "disabled"}\n`,
+);
 
 Bun.serve({
   hostname: config.hostname,

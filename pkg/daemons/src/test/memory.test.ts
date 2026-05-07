@@ -235,7 +235,9 @@ describe("memory", () => {
   test("normalizes checked paths to scope-relative files only", () => {
     expect(normalizeCheckedPath("/repo/infra", "compose/dev.yml")).toBe("compose/dev.yml");
     expect(normalizeCheckedPath("/repo/infra", "../README.md")).toBeNull();
-    expect(normalizeCheckedPath("/repo/infra", "/repo/infra/compose/dev.yml")).toBe("compose/dev.yml");
+    expect(normalizeCheckedPath("/repo/infra", "/repo/infra/compose/dev.yml")).toBe(
+      "compose/dev.yml",
+    );
     expect(normalizeCheckedPath("/repo/infra", "")).toBeNull();
   });
 });

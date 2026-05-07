@@ -1,4 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
+import type { AgentRuntimeEvent } from "../claw/runtime";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -14,7 +15,13 @@ import type {
   RepoRecord,
   RepoVisibility,
 } from "../types";
-import type { AgentRuntimeEvent } from "../claw/runtime";
+
+function requireRecord<T>(value: T | null, message: string): T {
+  if (value === null) {
+    throw new Error(message);
+  }
+  return value;
+}
 
 export class ChangeQueries {
   constructor(private db: Database) {}
@@ -48,13 +55,11 @@ export class ChangeQueries {
     const id = this.db.prepare("SELECT last_insert_rowid() as id").get() as {
       id: number;
     };
-    return this.getById(id.id)!;
+    return requireRecord(this.getById(id.id), `failed to load change after insert: ${id.id}`);
   }
 
   getById(id: number): Change | null {
-    return this.db.prepare("SELECT * FROM changes WHERE id = ?").get(id) as
-      | Change
-      | null;
+    return this.db.prepare("SELECT * FROM changes WHERE id = ?").get(id) as Change | null;
   }
 
   getByDeliveryId(deliveryId: string): Change | null {
@@ -64,51 +69,43 @@ export class ChangeQueries {
   }
 
   getLatestByRepoHead(repo: string, headSha: string): Change | null {
-    return this.db.prepare(
-      `SELECT * FROM changes
+    return this.db
+      .prepare(
+        `SELECT * FROM changes
        WHERE repo = ? AND head_sha = ?
        ORDER BY created_at DESC
-       LIMIT 1`
-    ).get(repo, headSha) as Change | null;
+       LIMIT 1`,
+      )
+      .get(repo, headSha) as Change | null;
   }
 
   updateStatus(id: number, status: ChangeStatus): void {
     this.db
-      .prepare(
-        "UPDATE changes SET status = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE changes SET status = ?, updated_at = datetime('now') WHERE id = ?")
       .run(status, id);
   }
 
   updateConfidence(id: number, confidence: ConfidenceLevel): void {
     this.db
-      .prepare(
-        "UPDATE changes SET confidence = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE changes SET confidence = ?, updated_at = datetime('now') WHERE id = ?")
       .run(confidence, id);
   }
 
   updateSummary(id: number, summary: string): void {
     this.db
-      .prepare(
-        "UPDATE changes SET summary = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE changes SET summary = ?, updated_at = datetime('now') WHERE id = ?")
       .run(summary, id);
   }
 
   updateDiffStats(id: number, diffStats: string): void {
     this.db
-      .prepare(
-        "UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?")
       .run(diffStats, id);
   }
 
   updatePrNumber(id: number, prNumber: number): void {
     this.db
-      .prepare(
-        "UPDATE changes SET pr_number = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE changes SET pr_number = ?, updated_at = datetime('now') WHERE id = ?")
       .run(prNumber, id);
   }
 
@@ -118,7 +115,7 @@ export class ChangeQueries {
       .prepare(
         `UPDATE changes SET status = 'superseded', updated_at = datetime('now')
        WHERE repo = ? AND branch = ? AND id != ?
-       AND status NOT IN ('merged', 'closed', 'superseded')`
+       AND status NOT IN ('merged', 'closed', 'superseded')`,
       )
       .run(repo, branch, excludeId);
     return result.changes;
@@ -126,7 +123,7 @@ export class ChangeQueries {
 
   listByStatus(
     status: ChangeStatus,
-    opts?: { org_id?: string; limit?: number; offset?: number }
+    opts?: { org_id?: string; limit?: number; offset?: number },
   ): Change[] {
     let query = "SELECT * FROM changes WHERE status = ?";
     const params: SQLQueryBindings[] = [status];
@@ -156,33 +153,41 @@ export class ChangeQueries {
       query += " AND org_id = ?";
       params.push(org_id);
     }
-    query += " ORDER BY CASE confidence WHEN 'critical' THEN 0 WHEN 'needs_review' THEN 1 WHEN 'safe' THEN 2 ELSE 3 END, updated_at ASC";
+    query +=
+      " ORDER BY CASE confidence WHEN 'critical' THEN 0 WHEN 'needs_review' THEN 1 WHEN 'safe' THEN 2 ELSE 3 END, updated_at ASC";
     return this.db.prepare(query).all(...params) as Change[];
   }
 
   /** List distinct repos that have changes. */
   listRepos(): string[] {
-    const rows = this.db.prepare(
-      "SELECT DISTINCT repo FROM changes ORDER BY repo"
-    ).all() as { repo: string }[];
+    const rows = this.db.prepare("SELECT DISTINCT repo FROM changes ORDER BY repo").all() as {
+      repo: string;
+    }[];
     return rows.map((r) => r.repo);
   }
 
   /** Get the latest active (non-terminal) change for a repo+branch. */
   getActiveByRepoBranch(repo: string, branch: string): Change | null {
-    return this.db.prepare(
-      `SELECT * FROM changes WHERE repo = ? AND branch = ?
+    return this.db
+      .prepare(
+        `SELECT * FROM changes WHERE repo = ? AND branch = ?
        AND status NOT IN ('merged', 'closed', 'superseded')
-       ORDER BY created_at DESC LIMIT 1`
-    ).get(repo, branch) as Change | null;
+       ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(repo, branch) as Change | null;
   }
 
   /** Queue stats for the last N hours. */
-  mergeVelocity(hours: number = 24, org_id?: string): { summarized: number; pending_review: number } {
+  mergeVelocity(
+    hours: number = 24,
+    org_id?: string,
+  ): { summarized: number; pending_review: number } {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-    let mergedQuery = "SELECT COUNT(*) as count FROM changes WHERE status = 'ready_for_review' AND updated_at >= ?";
-    let pendingQuery = "SELECT COUNT(*) as count FROM changes WHERE status IN ('ready_for_review', 'scored') ";
+    let mergedQuery =
+      "SELECT COUNT(*) as count FROM changes WHERE status = 'ready_for_review' AND updated_at >= ?";
+    let pendingQuery =
+      "SELECT COUNT(*) as count FROM changes WHERE status IN ('ready_for_review', 'scored') ";
     const mergedParams: SQLQueryBindings[] = [since];
     const pendingParams: SQLQueryBindings[] = [];
 
@@ -225,7 +230,7 @@ export class RepoQueries {
       .prepare(
         `INSERT INTO repos (
           org_id, owner, name, full_name, default_branch, visibility, created_by_subject
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         record.org_id,
@@ -237,7 +242,10 @@ export class RepoQueries {
         record.created_by_subject,
       );
 
-    return this.getByFullName(record.full_name, record.org_id)!;
+    return requireRecord(
+      this.getByFullName(record.full_name, record.org_id),
+      `failed to load repo after insert: ${record.full_name}`,
+    );
   }
 
   ensure(params: {
@@ -285,22 +293,20 @@ export class EventQueries {
     this.db
       .prepare(
         `INSERT INTO change_events (change_id, event_type, from_status, to_status, metadata)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
       )
       .run(
         params.change_id,
         params.event_type,
         params.from_status ?? null,
         params.to_status ?? null,
-        params.metadata ?? null
+        params.metadata ?? null,
       );
   }
 
   listByChangeId(changeId: number): ChangeEvent[] {
     return this.db
-      .prepare(
-        "SELECT * FROM change_events WHERE change_id = ? ORDER BY created_at ASC"
-      )
+      .prepare("SELECT * FROM change_events WHERE change_id = ? ORDER BY created_at ASC")
       .all(changeId) as ChangeEvent[];
   }
 }
@@ -312,23 +318,13 @@ export class JobQueries {
     return this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job | null;
   }
 
-  enqueue(params: {
-    org_id: string;
-    type: string;
-    payload: string;
-    max_attempts?: number;
-  }): Job {
+  enqueue(params: { org_id: string; type: string; payload: string; max_attempts?: number }): Job {
     this.db
       .prepare(
         `INSERT INTO jobs (org_id, type, payload, max_attempts)
-       VALUES (?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?)`,
       )
-      .run(
-        params.org_id,
-        params.type,
-        params.payload,
-        params.max_attempts ?? 3
-      );
+      .run(params.org_id, params.type, params.payload, params.max_attempts ?? 3);
     const id = this.db.prepare("SELECT last_insert_rowid() as id").get() as {
       id: number;
     };
@@ -354,9 +350,7 @@ export class JobQueries {
 
   complete(id: number): void {
     this.db
-      .prepare(
-        "UPDATE jobs SET status = 'completed', updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE jobs SET status = 'completed', updated_at = datetime('now') WHERE id = ?")
       .run(id);
   }
 
@@ -365,17 +359,17 @@ export class JobQueries {
     if (job && job.attempts >= job.max_attempts) {
       this.db
         .prepare(
-          "UPDATE jobs SET status = 'dead', last_error = ?, updated_at = datetime('now') WHERE id = ?"
+          "UPDATE jobs SET status = 'dead', last_error = ?, updated_at = datetime('now') WHERE id = ?",
         )
         .run(error, id);
     } else {
       // Exponential backoff: 2^attempts minutes
-      const backoffMinutes = Math.pow(2, job?.attempts ?? 1);
+      const backoffMinutes = 2 ** (job?.attempts ?? 1);
       this.db
         .prepare(
           `UPDATE jobs SET status = 'pending', last_error = ?,
            run_at = datetime('now', '+${backoffMinutes} minutes'),
-           updated_at = datetime('now') WHERE id = ?`
+           updated_at = datetime('now') WHERE id = ?`,
         )
         .run(error, id);
     }
@@ -383,9 +377,9 @@ export class JobQueries {
 
   pendingCount(): number {
     return (
-      this.db
-        .prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'pending'")
-        .get() as { count: number }
+      this.db.prepare("SELECT COUNT(*) as count FROM jobs WHERE status = 'pending'").get() as {
+        count: number;
+      }
     ).count;
   }
 }
@@ -395,16 +389,12 @@ export class DeliveryQueries {
 
   /** Returns true if this delivery was already processed. */
   isDuplicate(deliveryId: string): boolean {
-    const row = this.db
-      .prepare("SELECT 1 FROM webhook_deliveries WHERE id = ?")
-      .get(deliveryId);
+    const row = this.db.prepare("SELECT 1 FROM webhook_deliveries WHERE id = ?").get(deliveryId);
     return row !== null;
   }
 
   record(deliveryId: string): void {
-    this.db
-      .prepare("INSERT OR IGNORE INTO webhook_deliveries (id) VALUES (?)")
-      .run(deliveryId);
+    this.db.prepare("INSERT OR IGNORE INTO webhook_deliveries (id) VALUES (?)").run(deliveryId);
   }
 }
 
@@ -427,7 +417,7 @@ export class PullRequestQueries {
       .prepare(
         `INSERT INTO pull_requests (
           change_id, repo, head_branch, base_branch, title, body, status, provider, provider_ref, merge_commit_sha
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         params.change_id,
@@ -439,37 +429,35 @@ export class PullRequestQueries {
         params.status ?? "draft",
         params.provider ?? "internal",
         params.provider_ref ?? null,
-        params.merge_commit_sha ?? null
+        params.merge_commit_sha ?? null,
       );
     const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
-    return this.getById(id)!;
+    return requireRecord(this.getById(id), `failed to load pull request after insert: ${id}`);
   }
 
   getById(id: number): PullRequest | null {
-    return this.db.prepare("SELECT * FROM pull_requests WHERE id = ?").get(id) as PullRequest | null;
+    return this.db
+      .prepare("SELECT * FROM pull_requests WHERE id = ?")
+      .get(id) as PullRequest | null;
   }
 
   getLatestByChangeId(changeId: number): PullRequest | null {
     return this.db
       .prepare(
-        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC LIMIT 1"
+        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
       )
       .get(changeId) as PullRequest | null;
   }
 
   listByChangeId(changeId: number): PullRequest[] {
     return this.db
-      .prepare(
-        "SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC"
-      )
+      .prepare("SELECT * FROM pull_requests WHERE change_id = ? ORDER BY created_at DESC, id DESC")
       .all(changeId) as PullRequest[];
   }
 
   updateStatus(id: number, status: PullRequestStatus): void {
     this.db
-      .prepare(
-        "UPDATE pull_requests SET status = ?, updated_at = datetime('now') WHERE id = ?"
-      )
+      .prepare("UPDATE pull_requests SET status = ?, updated_at = datetime('now') WHERE id = ?")
       .run(status, id);
   }
 
@@ -478,7 +466,7 @@ export class PullRequestQueries {
       .prepare(
         `UPDATE pull_requests
          SET title = ?, body = ?, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(title, body ?? null, id);
   }
@@ -488,7 +476,7 @@ export class PullRequestQueries {
       .prepare(
         `UPDATE pull_requests
          SET provider = ?, provider_ref = ?, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(provider, providerRef, id);
   }
@@ -498,7 +486,7 @@ export class PullRequestQueries {
       .prepare(
         `UPDATE pull_requests
          SET status = 'merged', merge_commit_sha = ?, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(mergeCommitSha ?? null, id);
   }
@@ -517,11 +505,11 @@ export class SessionQueries {
     this.db
       .prepare(
         `INSERT INTO agent_sessions (change_id, job_id, job_type, run_id, runtime)
-         VALUES (?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?)`,
       )
       .run(params.changeId, params.jobId, params.jobType, params.runId, params.runtime);
     const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
-    return this.getById(id)!;
+    return requireRecord(this.getById(id), `failed to load job after insert: ${id}`);
   }
 
   getById(id: number): AgentSession | null {
@@ -532,17 +520,13 @@ export class SessionQueries {
 
   getLatestByChangeId(changeId: number): AgentSession | null {
     return this.db
-      .prepare(
-        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1"
-      )
+      .prepare("SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC LIMIT 1")
       .get(changeId) as AgentSession | null;
   }
 
   listByChangeId(changeId: number): AgentSession[] {
     return this.db
-      .prepare(
-        "SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC"
-      )
+      .prepare("SELECT * FROM agent_sessions WHERE change_id = ? ORDER BY started_at DESC")
       .all(changeId) as AgentSession[];
   }
 
@@ -552,7 +536,7 @@ export class SessionQueries {
         `SELECT * FROM agent_sessions
          WHERE change_id = ? AND job_type = ? AND status = 'running'
          ORDER BY started_at DESC
-         LIMIT 1`
+         LIMIT 1`,
       )
       .get(changeId, jobType) as AgentSession | null;
   }
@@ -562,7 +546,7 @@ export class SessionQueries {
       .prepare(
         `UPDATE agent_sessions
          SET runtime_session_id = ?
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(runtimeSessionId, id);
   }
@@ -572,7 +556,7 @@ export class SessionQueries {
       .prepare(
         `UPDATE agent_sessions
          SET status = ?, finished_at = datetime('now'), duration_ms = ?
-         WHERE id = ?`
+         WHERE id = ?`,
       )
       .run(status, durationMs, id);
   }
@@ -586,7 +570,7 @@ export class SessionQueries {
           ?,
           (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_session_events WHERE session_id = ?),
           ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )`
+        )`,
       )
       .run(
         sessionId,
@@ -599,7 +583,7 @@ export class SessionQueries {
         event.text ?? null,
         event.delta ?? null,
         event.data ? JSON.stringify(event.data) : null,
-        event.raw ? JSON.stringify(event.raw) : null
+        event.raw ? JSON.stringify(event.raw) : null,
       );
     const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
     return this.db
@@ -607,13 +591,17 @@ export class SessionQueries {
       .get(id) as AgentSessionEvent;
   }
 
-  getEventsAfter(sessionId: number, afterSeq: number = 0, limit: number = 1000): AgentSessionEvent[] {
+  getEventsAfter(
+    sessionId: number,
+    afterSeq: number = 0,
+    limit: number = 1000,
+  ): AgentSessionEvent[] {
     return this.db
       .prepare(
         `SELECT * FROM agent_session_events
          WHERE session_id = ? AND seq > ?
          ORDER BY seq ASC
-         LIMIT ?`
+         LIMIT ?`,
       )
       .all(sessionId, afterSeq, limit) as AgentSessionEvent[];
   }

@@ -46,11 +46,7 @@
     },
     {
       "text": "Dependency and styling updates add Pierre diff/tree packages, Preact runtime support, and a new global theme stylesheet to support the richer review experience.",
-      "files": [
-        "bun.lock",
-        "web/package.json",
-        "src/globals.css"
-      ],
+      "files": ["bun.lock", "web/package.json", "src/globals.css"],
       "type": "config"
     }
   ]

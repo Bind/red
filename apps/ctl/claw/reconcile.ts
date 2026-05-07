@@ -25,7 +25,7 @@ export class ClawRunReconciler {
 
   constructor(
     private deps: ClawRunReconcilerDeps,
-    config: Partial<ClawRunReconcilerConfig> = {}
+    config: Partial<ClawRunReconcilerConfig> = {},
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -78,9 +78,10 @@ export class ClawRunReconciler {
       errorMessage,
     });
 
-    const change = run.changeId != null
-      ? this.deps.changes.getById(run.changeId)
-      : this.deps.changes.getLatestByRepoHead(run.repo, run.headRef);
+    const change =
+      run.changeId != null
+        ? this.deps.changes.getById(run.changeId)
+        : this.deps.changes.getLatestByRepoHead(run.repo, run.headRef);
     if (!change) return;
 
     const jobType = mapRunJobNameToSessionJobType(run.jobName);
@@ -131,13 +132,10 @@ type ContainerState = {
 
 async function inspectContainerState(containerRef: string): Promise<ContainerState | null> {
   if (!containerRef) return null;
-  const proc = Bun.spawn(
-    ["docker", "inspect", "-f", "{{json .State}}", containerRef],
-    {
-      stdout: "pipe",
-      stderr: "ignore",
-    }
-  );
+  const proc = Bun.spawn(["docker", "inspect", "-f", "{{json .State}}", containerRef], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
   const stdout = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
   if (exitCode !== 0 || !stdout.trim()) return null;

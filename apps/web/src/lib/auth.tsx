@@ -1,16 +1,24 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ApiError,
-  createLoginAttempt,
-  fetchLoginAttempt,
-  fetchLatestMagicLink,
-  fetchMe,
-  loginWithTotp,
-  redeemLoginAttempt,
   type AuthMeResponse,
   type AuthOnboardingState,
+  createLoginAttempt,
+  fetchLatestMagicLink,
+  fetchLoginAttempt,
+  fetchMe,
   type LoginAttempt,
+  loginWithTotp,
   type MagicLinkPreview,
+  redeemLoginAttempt,
 } from "@/lib/api";
 
 export type AuthSessionStatus = "loading" | "signed_out" | "authenticated" | "error";
@@ -93,11 +101,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const startLoginAttempt = useCallback(async (email: string, clientId: string) => {
+  const startLoginAttempt = useCallback((email: string, clientId: string) => {
     return createLoginAttempt(email, clientId);
   }, []);
 
-  const pollLoginAttempt = useCallback(async (attemptId: string) => {
+  const pollLoginAttempt = useCallback((attemptId: string) => {
     return fetchLoginAttempt(attemptId);
   }, []);
 
@@ -105,7 +113,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     await redeemLoginAttempt({ attemptId, loginGrant });
   }, []);
 
-  const peekMagicLink = useCallback(async (email: string) => {
+  const peekMagicLink = useCallback((email: string) => {
     return fetchLatestMagicLink(email);
   }, []);
 
@@ -165,7 +173,16 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       redeemLoginGrant,
       peekMagicLink,
     }),
-    [status, me, error, refreshSession, startLoginAttempt, pollLoginAttempt, redeemLoginGrant, peekMagicLink],
+    [
+      status,
+      me,
+      error,
+      refreshSession,
+      startLoginAttempt,
+      pollLoginAttempt,
+      redeemLoginGrant,
+      peekMagicLink,
+    ],
   );
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;

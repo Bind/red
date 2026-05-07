@@ -27,7 +27,20 @@ export type LibrarianOptions = {
   model?: string;
   provider?: AgentProvider;
   cwd?: string;
+  maxWallclockMs?: number;
 };
+
+function librarianMaxWallclockMs(override?: number): number {
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+
+  const raw = process.env.DAEMON_REVIEW_LIBRARIAN_MAX_MS;
+  if (!raw) return 120_000;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
+}
 
 const LIBRARIAN_INSTRUCTIONS = [
   "You are a reusable routing librarian for daemon-based review systems.",
@@ -112,7 +125,7 @@ export function librarian(options: LibrarianOptions = {}): Librarian {
       args: input,
       provider,
       maxTurns: 4,
-      maxWallclockMs: 120_000,
+      maxWallclockMs: librarianMaxWallclockMs(options.maxWallclockMs),
     });
     const result = execution.result;
 
