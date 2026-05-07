@@ -72,8 +72,8 @@ are auditing clearly depends on an external contract.
 - Scripts under `infra/dev/`, `infra/preview/`, and
   `infra/prod/` must be safe for unattended use in CI:
   fail fast, avoid hidden prompts, and keep behavior explicit.
-- Shell scripts should centralize shared logic in `lib.sh` and avoid copy-paste
-  drift across deploy/bootstrap flows.
+- Shell scripts should centralize shared logic in `platform/utils.sh` and avoid
+  copy-paste drift across deploy/bootstrap flows.
 - Gateway, Caddy, and compose config must agree on ports, hostnames, and
   routing responsibilities.
 - Infra docs and operator commands must stay aligned with the actual files in
@@ -105,7 +105,7 @@ When auditing `infra/`, check for:
   or `prod/compose.yml`
 - ingress config that disagrees with compose topology
 - docs or `just` recipes that no longer match the actual operator flow
-- duplicated shell logic that should be consolidated in `lib.sh`
+- duplicated shell logic that should be consolidated in `platform/utils.sh`
 - changes that make CI or remote bootstrap interactive or stateful in unsafe
   ways
 

@@ -36,6 +36,12 @@ You are not responsible for:
 - low-level compose, Caddy, or gateway topology mismatches unless they indicate a layering boundary failure
 - bootstrap/deploy script hygiene issues that do not affect the `base` / `dev` / `preview` / `prod` / `platform` split
 - generic lint-, typecheck-, or unit-test-style enforcement
+- the number of functions or lines in `platform/utils.sh` or `platform/lib.sh` — utility consolidation depth is `infra-audit`'s concern, not this daemon's
+
+Established facts about platform shell helpers:
+
+- `platform/utils.sh` is the intentionally minimal shared helper sourced by preview and prod deploy scripts; currently it contains `teardown_preview_project` and nothing else is required
+- `platform/lib.sh` exists as a skeleton entry point for future shared logic; having no callers yet is expected and not a violation
 
 Flag:
 

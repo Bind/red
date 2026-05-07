@@ -13,7 +13,7 @@ import {
   GitCommit,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,7 +33,6 @@ import {
   type Change,
   type DaemonMemory,
   fetchDaemonMemory,
-  fetchHostedRepoCommitDiff,
   fetchHostedRepoFile,
   fetchHostedRepoSnapshot,
   fetchHostedRepoTree,
@@ -119,16 +118,6 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function parseDiffFiles(diff: string): string[] {
-  return diff
-    .split(/(?=^diff --git )/m)
-    .filter(Boolean)
-    .flatMap((chunk) => {
-      const header = chunk.match(/^diff --git (?:a\/|\/dev\/null)(.+?) (?:b\/)(.+)$/m);
-      return header ? [header[2]] : [];
-    });
-}
-
 // ─── clone popover ───────────────────────────────────────────────────────────
 
 function ClonePopover({ owner, repo }: { owner: string; repo: string }) {
@@ -197,7 +186,6 @@ const confidenceColors: Record<string, string> = {
 
 function PullRequestsTab({ repoFullName }: { repoFullName: string }) {
   const [changes, setChanges] = useState<Change[] | null>(null);
-  const loadingKeys = ["pr-skeleton-1", "pr-skeleton-2", "pr-skeleton-3"];
 
   useEffect(() => {
     fetchReviewQueue()
@@ -206,6 +194,7 @@ function PullRequestsTab({ repoFullName }: { repoFullName: string }) {
   }, [repoFullName]);
 
   if (!changes) {
+    const loadingKeys = ["pr-skeleton-1", "pr-skeleton-2", "pr-skeleton-3"];
     return (
       <div className="space-y-2 p-4">
         {loadingKeys.map((key) => (
@@ -465,7 +454,10 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
           </p>
           <div className="space-y-1">
             {memory.lastRun.findings.map((f) => (
-              <div key={`${f.status}:${f.invariant}`} className="flex items-start gap-2 text-xs">
+              <div
+                key={`${f.status}-${f.invariant}`}
+                className="flex items-start gap-2 text-xs"
+              >
                 <span
                   className={`mt-0.5 shrink-0 font-medium ${
                     f.status === "ok"
@@ -501,7 +493,6 @@ interface RepoDaemon {
 function DaemonsTab({ repoId, defaultBranch }: { repoId: string; defaultBranch: string }) {
   const [daemons, setDaemons] = useState<RepoDaemon[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const loadingKeys = ["daemon-skeleton-1", "daemon-skeleton-2", "daemon-skeleton-3"];
 
   useEffect(() => {
     fetchHostedRepoTree(defaultBranch, repoId)
@@ -519,9 +510,10 @@ function DaemonsTab({ repoId, defaultBranch }: { repoId: string; defaultBranch: 
   }, [repoId, defaultBranch]);
 
   if (!daemons) {
+    const daemonLoadingKeys = ["daemon-skeleton-1", "daemon-skeleton-2", "daemon-skeleton-3"];
     return (
       <div className="space-y-2 p-4">
-        {loadingKeys.map((key) => (
+        {daemonLoadingKeys.map((key) => (
           <Skeleton key={key} className="h-12 rounded-md" />
         ))}
       </div>
@@ -586,21 +578,21 @@ function CodeTab({
   owner,
   repo,
   repoId,
-  diff,
+  tree,
+  activeBranch,
 }: {
   snapshot: HostedRepoSnapshot;
   owner: string;
   repo: string;
   repoId: string;
-  diff: string | null;
+  tree: string[] | null;
+  activeBranch: string;
 }) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
 
-  const files = useMemo(() => (diff ? parseDiffFiles(diff) : []), [diff]);
-
-  const activeBranch = snapshot.repo.default_branch;
+  const files = tree ?? [];
 
   useEffect(() => {
     if (!selectedFile) {
@@ -667,7 +659,7 @@ function CodeTab({
           />
         ) : (
           <div className="px-3 py-4 text-xs text-muted-foreground">
-            {diff === null ? "Loading files…" : "No files in latest commit."}
+            {tree === null ? "Loading files…" : "No files found."}
           </div>
         )}
       </div>
@@ -716,7 +708,7 @@ export function HostedRepoPage() {
   const { owner = "", repo = "" } = useParams();
   const repoId = owner && repo ? `${owner}/${repo}` : "";
   const [snapshot, setSnapshot] = useState<HostedRepoSnapshot | null>(null);
-  const [diff, setDiff] = useState<string | null>(null);
+  const [tree, setTree] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 
@@ -730,16 +722,10 @@ export function HostedRepoPage() {
     }
     fetchHostedRepoSnapshot(repoId)
       .then((data) => {
-        if (cancelled) return;
-        setSnapshot(data);
-        setError(null);
-        const sha = data.commits[0]?.sha;
-        if (sha)
-          fetchHostedRepoCommitDiff(sha, repoId)
-            .then((p) => {
-              if (!cancelled) setDiff(p);
-            })
-            .catch(() => {});
+        if (!cancelled) {
+          setSnapshot(data);
+          setError(null);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load repo");
@@ -748,6 +734,23 @@ export function HostedRepoPage() {
       cancelled = true;
     };
   }, [repoId]);
+
+  useEffect(() => {
+    if (!repoId || !snapshot) return;
+    let cancelled = false;
+    setTree(null);
+    const branch = selectedBranch ?? snapshot.repo.default_branch;
+    fetchHostedRepoTree(branch, repoId)
+      .then((files) => {
+        if (!cancelled) setTree(files);
+      })
+      .catch(() => {
+        if (!cancelled) setTree([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId, snapshot, selectedBranch]);
 
   if (!snapshot && !error) {
     return (
@@ -853,7 +856,14 @@ export function HostedRepoPage() {
 
         <div className="overflow-hidden rounded-b-md rounded-tr-md border border-t-0 border-border">
           <TabsContent value="code" className="m-0">
-            <CodeTab snapshot={snapshot} owner={owner} repo={repo} repoId={repoId} diff={diff} />
+            <CodeTab
+              snapshot={snapshot}
+              owner={owner}
+              repo={repo}
+              repoId={repoId}
+              tree={tree}
+              activeBranch={activeBranch}
+            />
           </TabsContent>
           <TabsContent value="pull-requests" className="m-0">
             <PullRequestsTab repoFullName={snapshot.repo.full_name} />

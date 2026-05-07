@@ -26,13 +26,11 @@ export class GitHubRepo implements SandboxRepo {
   }
 
   async getReadRemote(ref: string): Promise<SandboxRepoRemote> {
-    return {
-      fetchUrl: `https://github.com/${this.options.owner}/${this.options.name}.git`,
-      ref,
-      gitConfigArgs: this.options.token
-        ? ["-c", `http.extraHeader=AUTHORIZATION: bearer ${this.options.token}`]
-        : undefined,
-    };
+    const { owner, name, token } = this.options;
+    const fetchUrl = token
+      ? `https://x-access-token:${token}@github.com/${owner}/${name}.git`
+      : `https://github.com/${owner}/${name}.git`;
+    return { fetchUrl, ref };
   }
 }
 
