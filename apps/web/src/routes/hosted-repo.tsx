@@ -454,10 +454,7 @@ function DaemonMemoryView({ name, repoId }: { name: string; repoId: string }) {
           </p>
           <div className="space-y-1">
             {memory.lastRun.findings.map((f) => (
-              <div
-                key={`${f.status}-${f.invariant}`}
-                className="flex items-start gap-2 text-xs"
-              >
+              <div key={`${f.status}-${f.invariant}`} className="flex items-start gap-2 text-xs">
                 <span
                   className={`mt-0.5 shrink-0 font-medium ${
                     f.status === "ok"
