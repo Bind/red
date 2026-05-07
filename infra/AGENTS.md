@@ -26,7 +26,7 @@ Pull in broader context only when the local file points to it:
 - root `justfile` for the command surface that invokes infra scripts
 - `sst.config.ts` for cloud resource ownership and environment provisioning
 - `docs/release.md`, `docs/dev-preview.md`, `docs/base-image.md`,
-  `docs/secrets.md`, and `docs/mcp.md` for intended operator behavior
+  and `docs/secrets.md` for intended operator behavior
 
 Do not read the whole repo by default. Stay local unless the infra file you
 are auditing clearly depends on an external contract.

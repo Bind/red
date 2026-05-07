@@ -98,7 +98,6 @@ visible.
 - [x] `apps/auth`
 - [x] `apps/obs`
 - [x] `apps/triage`
-- [x] `apps/mcp`
 - [x] `apps/grs` — n/a; the TS surface is an SDK/client for the Zig
   server, not a Hono API. The Zig server's HTTP contract is hand-written
   in Zig and out of scope for this convention.

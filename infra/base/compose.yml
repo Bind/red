@@ -10,7 +10,6 @@ services:
       TRIAGE_HOST: triage
       GRS_HOST: grs
       WEB_HOST: web
-      MCP_HOST: mcp
     depends_on:
       - api
       - auth
@@ -19,7 +18,6 @@ services:
       - triage
       - grs
       - web
-      - mcp
 
   api:
     image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-api:${IMAGE_TAG:?IMAGE_TAG is required}
@@ -50,7 +48,6 @@ services:
       - obs
       - grs
       - triage
-      - mcp
     environment:
       BFF_PORT: 3001
       RED_API_BASE_URL: http://api:3000
@@ -58,7 +55,6 @@ services:
       OBS_BASE_URL: http://obs:4090
       TRIAGE_BASE_URL: http://triage:7000
       GRS_BASE_URL: http://grs:8080
-      MCP_BASE_URL: http://mcp:3002
       BFF_GIT_STORAGE_PUBLIC_URL: http://grs:8080
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
 
@@ -182,20 +178,6 @@ services:
   web:
     image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-web:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
-
-  mcp:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-mcp:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - auth
-    environment:
-      MCP_PORT: 3002
-      MCP_AUTH_BASE_URL: http://auth:4020
-      MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:-mcp}
-      MCP_OAUTH_CLIENT_SECRET: ${MCP_OAUTH_CLIENT_SECRET:-}
-      MCP_REQUIRED_SCOPE: ${MCP_REQUIRED_SCOPE:-mcp:read}
-      MCP_DISABLE_AUTH: ${MCP_DISABLE_AUTH:-false}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
 
 volumes:
   api-data:
