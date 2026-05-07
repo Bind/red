@@ -124,7 +124,6 @@ Main product and runtime surfaces live here.
 - `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
 - `apps/bff/`: backend-for-frontend service.
 - `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
-- `apps/mcp/`: MCP service surface with auth-protected tool access.
 - `apps/obs/`: observability collector service for request-wide events and rollups.
 - `apps/ocr/`: OpenCode runner image build context used by the API to launch agent runs in Docker.
 - `apps/triage/`: triage service plus optional Smithers-backed workflow runner mode.
