@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { AgentProvider, ProviderRunCallbacks } from "../pkg/daemons/src/providers/types";
 import type { BlobStore } from "./blob-store";
-import type { SandboxRepo } from "./repo";
+import type { SandboxRepo, WritableSandboxRepo } from "./repo";
 import { runBureauAgent } from "./runtime";
 import type { BureauAgentContext, BureauAgentDefinition } from "./sdk";
 import type { BureauStoredSession } from "./session-store";
+import { commitWorkspace, initEmptyWorkspace, seedWorkspace } from "./workspace-persistence";
 
 export type PreparedBureauWorkspace = {
   root: string;
@@ -199,17 +200,51 @@ export type CreateSandboxOptions = {
   contextBase: BureauSandboxContextBase;
   maxWallclockMs: number;
   blobStore?: BlobStore;
+  /**
+   * When set, the workspace persists across Sandboxes via this repo.
+   * `sessionId` becomes required so the scratch ref name is deterministic.
+   * `resumeFrom` (a workspaceRef returned by a prior `close()`) seeds the
+   * workspace from that ref instead of starting empty.
+   */
+  workspaceRepo?: WritableSandboxRepo;
+  sessionId?: string;
+  resumeFrom?: string;
 };
 
 export async function createSandbox(options: CreateSandboxOptions): Promise<BureauSandbox> {
   const session = await options.provider.create({ preserve: false });
   const workspaceDir = session.root;
+
+  if (options.workspaceRepo) {
+    if (!options.sessionId && !options.resumeFrom) {
+      throw new Error("createSandbox: workspaceRepo requires sessionId or resumeFrom");
+    }
+    if (options.resumeFrom) {
+      await seedWorkspace({
+        workspaceDir,
+        repo: options.workspaceRepo,
+        ref: options.resumeFrom,
+      });
+    } else {
+      await initEmptyWorkspace({ workspaceDir });
+    }
+  }
+
   let closed = false;
   const close = async (): Promise<CloseResult> => {
     if (closed) return {};
     closed = true;
+    let workspaceRef: string | undefined;
+    if (options.workspaceRepo && options.sessionId) {
+      workspaceRef = await commitWorkspace({
+        workspaceDir,
+        repo: options.workspaceRepo,
+        ref: workspaceRefFor(options.sessionId),
+        message: `bureau session ${options.sessionId}`,
+      });
+    }
     await session.cleanup();
-    return {};
+    return workspaceRef !== undefined ? { workspaceRef } : {};
   };
   const dispose = async (): Promise<void> => {
     await close();
@@ -244,6 +279,10 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
 }
 
 export type BureauStoredSessionResult = BureauStoredSession;
+
+function workspaceRefFor(sessionId: string): string {
+  return `bureau/sessions/${sessionId}`;
+}
 
 export const bureau = {
   createSandbox,

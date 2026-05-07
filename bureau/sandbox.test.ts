@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentProvider } from "../pkg/daemons/src/providers/types";
 import { bureau, createSandbox, justBashSandboxProvider, type BureauSandboxProvider } from "./sandbox";
+import { LocalScratchRepo } from "./scratch-repo";
 import { agent } from "./sdk";
 
 let rootDir: string;
@@ -126,6 +128,59 @@ describe("createSandbox", () => {
 
     expect(outcome.session.meta.agentName).toBe("tester");
     expect(cleanupCalls).toBe(1);
+  });
+
+  test("close commits workspace edits to the scratch repo and returns workspaceRef", async () => {
+    const scratchDir = join(rootDir, "scratch.git");
+    const scratchRepo = new LocalScratchRepo({ rootDir: scratchDir });
+
+    const sb = await createSandbox({
+      provider: justBashSandboxProvider,
+      agentProvider: fakeAgentProvider,
+      contextBase: baseContext(rootDir),
+      maxWallclockMs: 5_000,
+      workspaceRepo: scratchRepo,
+      sessionId: "ses-abc",
+    });
+
+    await writeFile(join(sb.workspaceDir, "hello.txt"), "world");
+    const result = await sb.close();
+
+    expect(result.workspaceRef).toBeString();
+    expect(result.workspaceRef!.length).toBeGreaterThan(0);
+  });
+
+  test("createSandbox with resumeFrom restores prior workspace contents", async () => {
+    const scratchDir = join(rootDir, "scratch.git");
+    const scratchRepo = new LocalScratchRepo({ rootDir: scratchDir });
+
+    const first = await createSandbox({
+      provider: justBashSandboxProvider,
+      agentProvider: fakeAgentProvider,
+      contextBase: baseContext(rootDir),
+      maxWallclockMs: 5_000,
+      workspaceRepo: scratchRepo,
+      sessionId: "ses-abc",
+    });
+    await writeFile(join(first.workspaceDir, "hello.txt"), "world");
+    const firstResult = await first.close();
+
+    const second = await createSandbox({
+      provider: justBashSandboxProvider,
+      agentProvider: fakeAgentProvider,
+      contextBase: baseContext(rootDir),
+      maxWallclockMs: 5_000,
+      workspaceRepo: scratchRepo,
+      resumeFrom: firstResult.workspaceRef,
+    });
+
+    try {
+      const restoredPath = join(second.workspaceDir, "hello.txt");
+      expect(existsSync(restoredPath)).toBe(true);
+      expect(await readFile(restoredPath, "utf8")).toBe("world");
+    } finally {
+      await second.close();
+    }
   });
 
   test("await using disposes the sandbox exactly once on block exit", async () => {
