@@ -91,12 +91,6 @@ export class ChangeQueries {
       .run(confidence, id);
   }
 
-  updateSummary(id: number, summary: string): void {
-    this.db
-      .prepare("UPDATE changes SET summary = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(summary, id);
-  }
-
   updateDiffStats(id: number, diffStats: string): void {
     this.db
       .prepare("UPDATE changes SET diff_stats = ?, updated_at = datetime('now') WHERE id = ?")

@@ -4,16 +4,15 @@ import type { ChangeStatus } from "../types";
 /**
  * Valid state transitions for the change lifecycle:
  *
- *   pushed → scoring → scored → summarizing → ready_for_review
+ *   pushed → scoring → scored → ready_for_review
  *
  *   Any state → superseded (new push to same branch)
  */
 const VALID_TRANSITIONS: Record<ChangeStatus, ChangeStatus[]> = {
   pushed: ["scoring", "superseded"],
   scoring: ["scored", "superseded"],
-  scored: ["summarizing", "superseded"],
-  summarizing: ["scored", "ready_for_review", "superseded"],
-  ready_for_review: ["summarizing", "superseded"],
+  scored: ["ready_for_review", "superseded"],
+  ready_for_review: ["superseded"],
   approved: [],
   rejected: [],
   merging: [],

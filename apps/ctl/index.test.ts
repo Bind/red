@@ -266,67 +266,6 @@ describe("App integration", () => {
     db.close();
   });
 
-  test("requeue summary enqueues a generate_summary job from scored", async () => {
-    const { app, changes, jobs, db } = createApp(testConfig);
-    const change = changes.create({
-      org_id: "default",
-      repo: "red-admin/test-repo",
-      branch: "feature/test",
-      base_branch: "main",
-      head_sha: "abc123",
-      created_by: "human",
-      delivery_id: "delivery-1",
-      diff_stats: JSON.stringify({
-        files_changed: 1,
-        additions: 1,
-        deletions: 0,
-        files: ["test-file.txt"],
-      }),
-    });
-    changes.updateStatus(change.id, "scored");
-
-    const res = await app.fetch(
-      new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
-        method: "POST",
-      }),
-    );
-
-    expect(res.status).toBe(200);
-    expect(changes.getById(change.id)?.status).toBe("summarizing");
-    const pending = jobs.claimNext("generate_summary");
-    expect(pending).not.toBeNull();
-    expect(JSON.parse(pending!.payload).change_id).toBe(change.id);
-    db.close();
-  });
-
-  test("requeue summary rejects non-scored changes", async () => {
-    const { app, changes, db } = createApp(testConfig);
-    const change = changes.create({
-      org_id: "default",
-      repo: "red-admin/test-repo",
-      branch: "feature/test",
-      base_branch: "main",
-      head_sha: "abc123",
-      created_by: "human",
-      delivery_id: "delivery-2",
-      diff_stats: JSON.stringify({
-        files_changed: 1,
-        additions: 1,
-        deletions: 0,
-        files: ["test-file.txt"],
-      }),
-    });
-
-    const res = await app.fetch(
-      new Request(`http://localhost/api/changes/${change.id}/requeue-summary`, {
-        method: "POST",
-      }),
-    );
-
-    expect(res.status).toBe(400);
-    db.close();
-  });
-
   test("local ref-update ingestion endpoint creates a change", async () => {
     const { app, changes } = createApp(testConfig);
     const res = await app.fetch(

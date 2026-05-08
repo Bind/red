@@ -352,58 +352,6 @@ export function makeApiRouter(deps: ApiDeps) {
       c.header("Content-Type", contentType);
       return c.text(text);
     })
-    .post(
-      "/api/changes/:id/regenerate-summary",
-      zValidator("json", z.object({}).optional()),
-      (c) => {
-        const id = Number.parseInt(c.req.param("id"), 10);
-        const change = changes.getById(id);
-        if (!change) return c.json({ error: "Not found" }, 404);
-        if (change.status !== "ready_for_review") {
-          return c.json({ error: `Cannot regenerate from status: ${change.status}` }, 400);
-        }
-
-        const diffStats = change.diff_stats
-          ? JSON.parse(change.diff_stats as unknown as string)
-          : null;
-        if (!diffStats) {
-          return c.json({ error: "No diff stats available for this change" }, 400);
-        }
-
-        stateMachine.transition(id, "summarizing");
-        jobs.enqueue({
-          org_id: change.org_id,
-          type: "generate_summary",
-          payload: JSON.stringify({ change_id: id, diff_stats: diffStats }),
-        });
-
-        return c.json({ ok: true });
-      },
-    )
-    .post("/api/changes/:id/requeue-summary", zValidator("json", z.object({}).optional()), (c) => {
-      const id = Number.parseInt(c.req.param("id"), 10);
-      const change = changes.getById(id);
-      if (!change) return c.json({ error: "Not found" }, 404);
-      if (change.status !== "scored") {
-        return c.json({ error: `Cannot requeue summary from status: ${change.status}` }, 400);
-      }
-
-      const diffStats = change.diff_stats
-        ? JSON.parse(change.diff_stats as unknown as string)
-        : null;
-      if (!diffStats) {
-        return c.json({ error: "No diff stats available for this change" }, 400);
-      }
-
-      stateMachine.transition(id, "summarizing", { reason: "manual_requeue_summary" });
-      jobs.enqueue({
-        org_id: change.org_id,
-        type: "generate_summary",
-        payload: JSON.stringify({ change_id: id, diff_stats: diffStats }),
-      });
-
-      return c.json({ ok: true });
-    })
     .get("/api/repos", (c) => {
       return c.json(repos.list().map((repo) => repo.full_name));
     })

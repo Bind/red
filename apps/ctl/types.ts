@@ -3,7 +3,7 @@
  *
  * Change lifecycle state machine:
  *
- *   pushed → scoring → scored → summarizing → ready_for_review
+ *   pushed → scoring → scored → ready_for_review
  *
  *   Any state → superseded (new push to same branch)
  */
@@ -12,7 +12,6 @@ export type ChangeStatus =
   | "pushed"
   | "scoring"
   | "scored"
-  | "summarizing"
   | "ready_for_review"
   | "approved"
   | "rejected"
@@ -38,7 +37,6 @@ export interface Change {
   status: ChangeStatus;
   confidence: ConfidenceLevel | null;
   created_by: CreatedBy;
-  summary: string | null;
   diff_stats: DiffStats | null;
   delivery_id: string;
   created_at: string;
@@ -126,21 +124,6 @@ export interface PolicyRule {
 
 export interface PolicyConfig {
   rules: PolicyRule[];
-}
-
-export interface SummaryAnnotation {
-  text: string;
-  files: string[];
-  type: "new_module" | "refactor" | "bugfix" | "config" | "change";
-}
-
-export interface LLMSummary {
-  title: string;
-  what_changed: string;
-  risk_assessment: string;
-  affected_modules: string[];
-  recommended_action: "approve" | "review" | "block";
-  annotations?: SummaryAnnotation[];
 }
 
 /** Notification webhook config. */
