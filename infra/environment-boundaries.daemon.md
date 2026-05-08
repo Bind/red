@@ -40,7 +40,7 @@ You are not responsible for:
 
 Established facts about platform shell helpers:
 
-- `platform/utils.sh` is the intentionally minimal shared helper sourced by preview and prod deploy scripts; currently it contains `teardown_preview_project` and nothing else is required
+- `platform/utils.sh` is the shared helper sourced by preview and prod deploy scripts; `teardown_preview_project` runs compose down then a best-effort `docker rm/volume rm/network rm` pass to keep the preview box tidy — the defensive cleanup block is intentional, not dead code
 - `platform/lib.sh` exists as a skeleton entry point for future shared logic; having no callers yet is expected and not a violation
 
 Flag:

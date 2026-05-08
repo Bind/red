@@ -68,7 +68,7 @@ jobs:
             {
               sha256sum package.json bun.lock
               dirs=(apps pkg)
-              for d in workflows experiments; do [ -d "$d" ] && dirs+=("$d"); done
+              [ -d experiments ] && dirs+=(experiments)
               find "${dirs[@]}" -path '*/node_modules' -prune -o -name package.json -print0 | sort -z | xargs -0 sha256sum
             } | sha256sum | cut -d' ' -f1
           )"
@@ -132,10 +132,6 @@ jobs:
           - image_name: red-web
             context: .
             dockerfile: apps/web/Dockerfile
-            workspace_deps_flavor: alpine
-          - image_name: red-mcp
-            context: .
-            dockerfile: apps/mcp/Dockerfile
             workspace_deps_flavor: alpine
 
     steps:

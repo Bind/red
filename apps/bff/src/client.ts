@@ -14,7 +14,7 @@ type HonoApp = Hono<any, any, any>;
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export type Upstream = "api" | "auth" | "obs" | "triage" | "grs" | "mcp";
+export type Upstream = "api" | "auth" | "obs" | "triage" | "grs";
 export type AuthMode = "jwt" | "cookie" | "session" | "none";
 export type BodyMode = "json" | "text" | "stream";
 
@@ -24,7 +24,6 @@ export interface ClientConfig {
   obsBaseUrl?: string;
   triageBaseUrl?: string;
   grsBaseUrl?: string;
-  mcpBaseUrl?: string;
   disableAuth?: boolean;
 }
 
@@ -203,8 +202,6 @@ class RouteBuilder<TAppRouter extends HonoApp> {
         return this.config.triageBaseUrl;
       case "grs":
         return this.config.grsBaseUrl;
-      case "mcp":
-        return this.config.mcpBaseUrl;
     }
   }
 }
