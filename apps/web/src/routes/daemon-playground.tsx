@@ -34,6 +34,138 @@ const DEFAULT_PROFILES: DaemonPlaygroundProfile[] = [
   },
 ];
 
+function RoutingGraph({
+  files,
+}: {
+  files: DaemonPlaygroundRunResult["profiles"][number]["scenarios"][number]["evaluation"]["fileDebug"];
+}) {
+  const width = 760;
+  const fileX = 32;
+  const routerX = 300;
+  const daemonX = 548;
+  const topPad = 44;
+  const rowGap = 78;
+  const daemonGap = 52;
+  const daemonNames = [...new Set(files.flatMap((file) => file.selectedDaemons))];
+  const daemonBaseY = topPad;
+  const height = Math.max(
+    topPad + files.length * rowGap + 28,
+    daemonBaseY + daemonNames.length * daemonGap + 28,
+  );
+
+  const daemonY = new Map(
+    daemonNames.map((name, index) => [name, daemonBaseY + index * daemonGap]),
+  );
+
+  return (
+    <div className="overflow-x-auto rounded border border-border/50 bg-muted/20 p-3">
+      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px]">
+        <title>Routing graph from changed files through the router to selected daemons</title>
+        <text
+          x={fileX}
+          y={20}
+          className="fill-muted-foreground text-[11px] uppercase tracking-[0.2em]"
+        >
+          files
+        </text>
+        <text
+          x={routerX}
+          y={20}
+          className="fill-muted-foreground text-[11px] uppercase tracking-[0.2em]"
+        >
+          router
+        </text>
+        <text
+          x={daemonX}
+          y={20}
+          className="fill-muted-foreground text-[11px] uppercase tracking-[0.2em]"
+        >
+          daemons
+        </text>
+
+        {files.map((file, index) => {
+          const y = topPad + index * rowGap;
+          const routerLabel = file.mode === "memory_embedding_librarian" ? "librarian" : file.mode;
+          return (
+            <g key={file.file}>
+              <rect
+                x={fileX}
+                y={y - 18}
+                width="200"
+                height="34"
+                rx="10"
+                className="fill-background stroke-border"
+              />
+              <text x={fileX + 12} y={y + 2} className="fill-foreground text-[12px] font-mono">
+                {file.file}
+              </text>
+
+              <rect
+                x={routerX}
+                y={y - 18}
+                width="150"
+                height="34"
+                rx="10"
+                className="fill-background stroke-border"
+              />
+              <text x={routerX + 12} y={y - 2} className="fill-foreground text-[12px]">
+                {routerLabel}
+              </text>
+              <text x={routerX + 12} y={y + 11} className="fill-muted-foreground text-[10px]">
+                {file.selectedDaemons.length} route{file.selectedDaemons.length === 1 ? "" : "s"}
+              </text>
+
+              <line
+                x1={fileX + 200}
+                y1={y - 1}
+                x2={routerX}
+                y2={y - 1}
+                className="stroke-border"
+                strokeWidth="1.5"
+              />
+
+              {file.selectedDaemons.map((daemon) => {
+                const targetY = daemonY.get(daemon);
+                if (targetY === undefined) return null;
+                return (
+                  <line
+                    key={`${file.file}-${daemon}`}
+                    x1={routerX + 150}
+                    y1={y - 1}
+                    x2={daemonX}
+                    y2={targetY - 1}
+                    className="stroke-primary/60"
+                    strokeWidth="1.5"
+                  />
+                );
+              })}
+            </g>
+          );
+        })}
+
+        {daemonNames.map((daemon) => {
+          const y = daemonY.get(daemon) ?? topPad;
+          return (
+            <g key={daemon}>
+              <rect
+                x={daemonX}
+                y={y - 18}
+                width="180"
+                height="34"
+                rx="10"
+                className="fill-background stroke-border"
+              />
+              <text x={daemonX + 12} y={y + 2} className="fill-foreground text-[12px] font-mono">
+                {daemon}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function scoreTone(finalScore: number): string {
   if (finalScore >= 0.85) return "text-green-500";
   if (finalScore >= 0.6) return "text-foreground";
@@ -228,6 +360,7 @@ export function DaemonPlaygroundPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <RoutingGraph files={scenario.evaluation.fileDebug} />
                     {scenario.evaluation.fileDebug.map((file) => (
                       <div
                         key={file.file}

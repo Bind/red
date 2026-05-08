@@ -97,7 +97,6 @@ The local compose stack uses short container names:
 |   |-- auth/
 |   |-- bff/
 |   |-- grs/
-|   |-- mcp/
 |   |-- obs/
 |   |-- ocr/
 |   |-- triage/
