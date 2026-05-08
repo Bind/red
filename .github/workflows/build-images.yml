@@ -125,10 +125,6 @@ jobs:
             context: apps/grs
             dockerfile: apps/grs/docker/gitty/Dockerfile
             workspace_deps_flavor: none
-          - image_name: red-triage
-            context: .
-            dockerfile: apps/triage/Dockerfile
-            workspace_deps_flavor: alpine
           - image_name: red-web
             context: .
             dockerfile: apps/web/Dockerfile

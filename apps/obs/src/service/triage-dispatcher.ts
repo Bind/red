@@ -1,7 +1,5 @@
 import type { WideRollupRecord } from "./collector-contract";
 
-type FetchLike = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
-
 export interface TriageDispatcher {
   dispatch(rollup: WideRollupRecord): Promise<void>;
 }
@@ -103,51 +101,33 @@ export class DedupingTriageDispatcher implements TriageDispatcher {
   }
 }
 
-export interface HttpTriageDispatcherOptions {
-  endpointUrl: string;
-  fetchImpl?: FetchLike;
-  timeoutMs?: number;
+export interface BureauTriageDispatcherOptions {
+  runAnalyze: (rollup: WideRollupRecord) => Promise<unknown>;
   onError?: (error: unknown, rollup: WideRollupRecord) => void;
 }
 
-export class HttpTriageDispatcher implements TriageDispatcher {
-  private readonly endpointUrl: string;
-  private readonly fetchImpl: FetchLike;
-  private readonly timeoutMs: number;
+export class BureauTriageDispatcher implements TriageDispatcher {
+  private readonly runAnalyze: (rollup: WideRollupRecord) => Promise<unknown>;
   private readonly onError: (error: unknown, rollup: WideRollupRecord) => void;
 
-  constructor(options: HttpTriageDispatcherOptions) {
-    this.endpointUrl = options.endpointUrl;
-    this.fetchImpl = options.fetchImpl ?? fetch;
-    this.timeoutMs = options.timeoutMs ?? 5000;
+  constructor(options: BureauTriageDispatcherOptions) {
+    this.runAnalyze = options.runAnalyze;
     this.onError =
       options.onError ??
       ((error, rollup) => {
         const message =
           error instanceof Error ? (error.stack ?? error.message) : JSON.stringify(error);
         process.stderr.write(
-          `triage dispatch failed for request ${rollup.request_id}: ${message}\n`,
+          `bureau triage dispatch failed for request ${rollup.request_id}: ${message}\n`,
         );
       });
   }
 
   async dispatch(rollup: WideRollupRecord): Promise<void> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await this.fetchImpl(this.endpointUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rollup }),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(`triage endpoint returned ${response.status} ${response.statusText}`);
-      }
+      await this.runAnalyze(rollup);
     } catch (error) {
       this.onError(error, rollup);
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

@@ -28,8 +28,6 @@ cat <<'EOF'
 
 Next steps:
   1. echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
-  2. echo "SMITHERS_API_KEY=$(openssl rand -hex 32)" >> .env
-  3. claude       # start a Claude Code session in this repo
-  4. just up      # once the session is driving, bring up the base stack
-  5. just triage-up && just triage-smithers-mode
+  2. claude       # start a Claude Code session in this repo
+  3. just up      # once the session is driving, bring up the base stack
 EOF

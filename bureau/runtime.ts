@@ -47,7 +47,7 @@ export async function runBureauAgent<Input>(input: {
   const blobs = input.blobStore
     ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
     : undefined;
-  const store = createLocalBureauSessionStore({ rootDir: ctx.root });
+  const store = createLocalBureauSessionStore({ rootDir: ctx.sourceRoot });
   const session = await store.createRoot({
     sessionId,
     agentName: ctx.name,
@@ -56,6 +56,7 @@ export async function runBureauAgent<Input>(input: {
     sourceSha: input.sourceSha ?? null,
     snapshot: normalizeSnapshot(result.session),
     blobs,
+    output: result.ok ? result.payload : undefined,
   });
 
   return { context: ctx, plan, result, session };
@@ -100,7 +101,7 @@ export async function resumeBureauAgent<Input>(input: {
   const blobs = input.blobStore
     ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
     : undefined;
-  const store = createLocalBureauSessionStore({ rootDir: ctx.root });
+  const store = createLocalBureauSessionStore({ rootDir: ctx.sourceRoot });
   const session = await store.createChild({
     sessionId,
     parentSessionId: input.parentSession.meta.sessionId,
@@ -110,6 +111,7 @@ export async function resumeBureauAgent<Input>(input: {
     sourceSha: input.sourceSha ?? null,
     snapshot: normalizeSnapshot(result.session),
     blobs,
+    output: result.ok ? result.payload : undefined,
   });
 
   return { context: ctx, plan, result, session };

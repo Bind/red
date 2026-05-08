@@ -7,7 +7,6 @@ services:
       AUTH_HOST: auth
       BFF_HOST: bff
       OBS_HOST: obs
-      TRIAGE_HOST: triage
       GRS_HOST: grs
       WEB_HOST: web
     depends_on:
@@ -15,7 +14,6 @@ services:
       - auth
       - bff
       - obs
-      - triage
       - grs
       - web
 
@@ -31,7 +29,6 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-red-artifacts}
-      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
       GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
       GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
       GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
@@ -47,13 +44,12 @@ services:
       - auth
       - obs
       - grs
-      - triage
+      - mcp
     environment:
       BFF_PORT: 3001
       RED_API_BASE_URL: http://api:3000
       AUTH_BASE_URL: http://auth:4020
       OBS_BASE_URL: http://obs:4090
-      TRIAGE_BASE_URL: http://triage:7000
       GRS_BASE_URL: http://grs:8080
       BFF_GIT_STORAGE_PUBLIC_URL: http://grs:8080
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
@@ -131,50 +127,6 @@ services:
       GIT_SERVER_AUTH_TOKEN_SECRET: ${GIT_SERVER_AUTH_TOKEN_SECRET:-dev-git-server-secret}
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
 
-  triage:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    depends_on:
-      - triage-smithers
-    environment:
-      TRIAGE_PORT: 7000
-      TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
-      TRIAGE_SMITHERS_BASE_URL: http://triage-smithers:7331
-      TRIAGE_WORKFLOW_PATH: /app/apps/triage/src/workflows/triage.tsx
-      TRIAGE_SMITHERS_DB_PATH: /smithers-data/smithers.db
-      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-openai-compatible}
-      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
-      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
-      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
-      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
-      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
-      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      RED_API_BASE_URL: http://api:3000
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    volumes:
-      - smithers-data:/smithers-data
-
-  triage-smithers:
-    image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-triage:${IMAGE_TAG:?IMAGE_TAG is required}
-    restart: unless-stopped
-    command: ["bun", "run", "apps/triage/src/smithers-server.ts"]
-    environment:
-      SMITHERS_SERVER_PORT: 7331
-      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      SMITHERS_DB_PATH: /smithers-data/smithers.db
-      SMITHERS_ROOT_DIR: /app
-      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-openai-compatible}
-      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
-      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
-      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
-      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
-      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    volumes:
-      - smithers-data:/smithers-data
-
   web:
     image: ${IMAGE_REGISTRY:-ghcr.io/bind}/red-web:${IMAGE_TAG:?IMAGE_TAG is required}
     restart: unless-stopped
@@ -184,4 +136,3 @@ volumes:
   db-auth-data:
   s3-data:
   obs-data:
-  smithers-data:

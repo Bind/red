@@ -44,11 +44,10 @@ describe("ChangeStateMachine", () => {
     const c = makeChange();
     sm.transition(c.id, "scoring");
     sm.transition(c.id, "scored");
-    sm.transition(c.id, "summarizing");
     sm.transition(c.id, "ready_for_review");
 
     expect(changes.getById(c.id)!.status).toBe("ready_for_review");
-    expect(events.listByChangeId(c.id)).toHaveLength(4);
+    expect(events.listByChangeId(c.id)).toHaveLength(3);
   });
 
   test("invalid transition throws InvalidTransitionError", () => {
@@ -67,7 +66,6 @@ describe("ChangeStateMachine", () => {
     const c = makeChange();
     sm.transition(c.id, "scoring");
     sm.transition(c.id, "scored");
-    sm.transition(c.id, "summarizing");
     sm.transition(c.id, "ready_for_review");
 
     expect(() => sm.transition(c.id, "pushed")).toThrow(InvalidTransitionError);
@@ -88,7 +86,7 @@ describe("ChangeStateMachine", () => {
   test("canTransition returns correct values", () => {
     expect(sm.canTransition("pushed", "scoring")).toBe(true);
     expect(sm.canTransition("pushed", "merged")).toBe(false);
-    expect(sm.canTransition("ready_for_review", "summarizing")).toBe(true);
+    expect(sm.canTransition("scored", "ready_for_review")).toBe(true);
     expect(sm.canTransition("ready_for_review", "superseded")).toBe(true);
   });
 

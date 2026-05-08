@@ -12,14 +12,12 @@ services:
       - bff
       - obs
       - grs
-      - triage
       - web
     environment:
       API_HOST: ctl
       AUTH_HOST: auth
       BFF_HOST: bff
       OBS_HOST: obs
-      TRIAGE_HOST: triage
       GRS_HOST: grs
       WEB_HOST: web
     ports:
@@ -111,7 +109,6 @@ services:
       WIDE_EVENTS_ROLLUP_BUCKET: ${WIDE_EVENTS_ROLLUP_BUCKET}
       WIDE_EVENTS_ROLLUP_PREFIX: ${WIDE_EVENTS_ROLLUP_PREFIX}
       TRIAGE_ENABLED: ${TRIAGE_ENABLED:-false}
-      TRIAGE_ENDPOINT_URL: ${TRIAGE_ENDPOINT_URL:-http://triage:7000/v1/runs}
       TRIAGE_MIN_STATUS_CODE: ${TRIAGE_MIN_STATUS_CODE:-500}
       TRIAGE_DEDUP_TTL_MS: ${TRIAGE_DEDUP_TTL_MS:-900000}
       AI_DAEMONS_MEMORY_BACKEND: ${AI_DAEMONS_MEMORY_BACKEND:-r2}
@@ -284,10 +281,7 @@ services:
       GIT_STORAGE_CONTROL_PLANE_PASSWORD: ${GIT_STORAGE_CONTROL_PLANE_PASSWORD:-admin}
       GIT_SERVER_ADMIN_USERNAME: ${GIT_SERVER_ADMIN_USERNAME:-admin}
       GIT_SERVER_ADMIN_PASSWORD: ${GIT_SERVER_ADMIN_PASSWORD:-admin}
-      OPENCODE_RUNNER_IMAGE: ${OPENCODE_RUNNER_IMAGE:-${CODEX_RUNNER_IMAGE:-red-claw-runner}}
       FETCH_REMOTE_AFTER_MERGE: ${FETCH_REMOTE_AFTER_MERGE:-}
-      HOST_OPENCODE_DIR: ${HOME}/.local/share/opencode
-      HOST_CODEX_DIR: ${HOME}/.codex
       DOCKER_RUN_NETWORK: ${COMPOSE_PROJECT_NAME:-red}_default
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-s3}
       MINIO_PORT: ${MINIO_PORT:-9000}
@@ -295,7 +289,6 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-red-artifacts}
-      MINIO_PREFIX: ${MINIO_PREFIX:-claw-runs}
       OBS_SINK_MODE: ${OBS_SINK_MODE:-collector}
       WIDE_EVENTS_COLLECTOR_URL: ${WIDE_EVENTS_COLLECTOR_URL:-http://obs:4090}
       LOKI_URL: ${LOKI_URL:-http://loki:3100}
@@ -311,7 +304,6 @@ services:
       - red-data:/data
       - /tmp:/tmp
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOME}/.local/share/opencode:/root/.local/share/opencode:ro
       - ${HOME}/.codex:/root/.codex:ro
     healthcheck:
       test:
@@ -342,7 +334,7 @@ services:
       RED_API_BASE_URL: http://ctl:3000
       AUTH_BASE_URL: http://auth:4020
       OBS_BASE_URL: http://obs:4090
-      TRIAGE_BASE_URL: http://triage:7000
+      BUREAU_SOURCE_ROOT: /app
       BFF_DISABLE_AUTH: ${BFF_DISABLE_AUTH:-true}
       BFF_HOSTED_REPO_ID: ${BFF_HOSTED_REPO_ID:-bind/red}
       BFF_HOSTED_REPO_ACTOR_ID: ${BFF_HOSTED_REPO_ACTOR_ID:-red-bff-hosted-repo}
@@ -396,99 +388,6 @@ services:
       - red-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
 
-  triage:
-    container_name: triage
-    image: oven/bun:1-alpine
-    init: true
-    stop_grace_period: 2s
-    restart: unless-stopped
-    depends_on:
-      - loki
-    working_dir: /app/apps/triage
-    environment:
-      TRIAGE_PORT: ${TRIAGE_PORT:-7000}
-      TRIAGE_WORKFLOW_MODE: ${TRIAGE_WORKFLOW_MODE:-stub}
-      TRIAGE_SMITHERS_BASE_URL: ${TRIAGE_SMITHERS_BASE_URL:-http://triage-smithers:7331}
-      TRIAGE_WORKFLOW_PATH: ${TRIAGE_WORKFLOW_PATH:-/app/apps/triage/src/workflows/triage.tsx}
-      TRIAGE_SMITHERS_DB_PATH: ${TRIAGE_SMITHERS_DB_PATH:-/smithers-data/smithers.db}
-      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-subscription}
-      TRIAGE_SUBSCRIPTION_MODEL: ${TRIAGE_SUBSCRIPTION_MODEL:-gpt-5.3-codex}
-      TRIAGE_SUBSCRIPTION_REASONING_EFFORT: ${TRIAGE_SUBSCRIPTION_REASONING_EFFORT:-high}
-      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
-      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
-      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
-      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
-      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
-      LOKI_URL: ${LOKI_URL:-http://loki:3100}
-      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      RED_API_BASE_URL: ${RED_API_BASE_URL:-http://ctl:3000}
-      GIT_COMMIT: ${GIT_COMMIT:-unknown}
-    command: >
-      sh -lc "apk add --no-cache ca-certificates &&
-      cd /app/apps/triage &&
-      exec bun run --watch src/index.ts"
-    volumes:
-      - ../..:/app
-      - red-node-modules:/app/node_modules
-      - smithers-data:/smithers-data
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "bun",
-          "--eval",
-          "const response = await fetch('http://127.0.0.1:7000/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-  triage-smithers:
-    container_name: triage-smithers
-    image: oven/bun:1-alpine
-    init: true
-    stop_grace_period: 2s
-    restart: unless-stopped
-    working_dir: /app/apps/triage
-    environment:
-      SMITHERS_SERVER_PORT: 7331
-      SMITHERS_API_KEY: ${SMITHERS_API_KEY:-}
-      SMITHERS_DB_PATH: /smithers-data/smithers.db
-      SMITHERS_ROOT_DIR: /app
-      SMITHERS_ALLOW_NETWORK: ${SMITHERS_ALLOW_NETWORK:-true}
-      TRIAGE_AGENT_MODE: ${TRIAGE_AGENT_MODE:-subscription}
-      TRIAGE_SUBSCRIPTION_MODEL: ${TRIAGE_SUBSCRIPTION_MODEL:-gpt-5.3-codex}
-      TRIAGE_SUBSCRIPTION_REASONING_EFFORT: ${TRIAGE_SUBSCRIPTION_REASONING_EFFORT:-high}
-      TRIAGE_OPENAI_BASE_URL: ${TRIAGE_OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
-      TRIAGE_OPENAI_API_KEY: ${TRIAGE_OPENAI_API_KEY:-}
-      TRIAGE_OPENAI_MODEL: ${TRIAGE_OPENAI_MODEL:-anthropic/claude-sonnet-4.5}
-      TRIAGE_OPENAI_PROVIDER_NAME: ${TRIAGE_OPENAI_PROVIDER_NAME:-openrouter}
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red}
-      TRIAGE_OPENAI_REFERER: ${TRIAGE_OPENAI_REFERER:-}
-      LOKI_URL: ${LOKI_URL:-http://loki:3100}
-    command: >
-      sh -lc "apk add --no-cache ca-certificates npm &&
-      npm install -g @openai/codex@0.117.0 &&
-      cd /app/apps/triage &&
-      exec bun run src/smithers-server.ts"
-    volumes:
-      - ../..:/app
-      - red-node-modules:/app/node_modules
-      - smithers-data:/smithers-data
-      - ${HOME}/.codex:/root/.codex:ro
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "bun",
-          "--eval",
-          "const response = await fetch('http://127.0.0.1:7331/health'); if (!response.ok) throw new Error('healthcheck failed: ' + response.status);",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    profiles: ["triage"]
-
 volumes:
   minio-data:
   loki-data:
@@ -496,4 +395,3 @@ volumes:
   red-node-modules:
   web-node-modules:
   auth-node-modules:
-  smithers-data:

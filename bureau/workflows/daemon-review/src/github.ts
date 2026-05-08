@@ -147,11 +147,11 @@ export async function postProposalReview(
 }
 
 function githubFixupRemote(owner: string, repo: string, githubToken: string) {
+  const encodedToken = encodeURIComponent(githubToken);
+  const authenticatedUrl = `https://x-access-token:${encodedToken}@github.com/${owner}/${repo}.git`;
   return {
-    fetchUrl: `https://github.com/${owner}/${repo}.git`,
-    pushUrl: `https://github.com/${owner}/${repo}.git`,
-    fetchGitConfigArgs: ["-c", `http.extraHeader=AUTHORIZATION: bearer ${githubToken}`],
-    pushGitConfigArgs: ["-c", `http.extraHeader=AUTHORIZATION: bearer ${githubToken}`],
+    fetchUrl: authenticatedUrl,
+    pushUrl: authenticatedUrl,
     branchUrl: (branchName: string) => `https://github.com/${owner}/${repo}/tree/${branchName}`,
   };
 }
@@ -162,6 +162,42 @@ export function stackedFixupBaseRef(context: GithubPrContext): string {
 
 export function canPublishStackedFixups(context: GithubPrContext): boolean {
   return context.prHeadRepoFullName === `${context.owner}/${context.repo}`;
+}
+
+function daemonExecutionSource(): string {
+  return process.env.DAEMON_REVIEW_EXECUTION_SOURCE ?? "trusted-base";
+}
+
+export function renderRoutingDiagram(
+  fileDebug: Array<{
+    file: string;
+    mode: string;
+    selectedDaemons: string[];
+    scores: Array<{ daemonName: string; finalScore: number; selected: boolean }>;
+  }>,
+): string {
+  if (fileDebug.length === 0) {
+    return "(no changed files)";
+  }
+
+  const lines: string[] = [];
+  for (const file of fileDebug) {
+    lines.push(file.file);
+    lines.push(`  mode: ${file.mode}`);
+    lines.push(
+      `  selected: ${file.selectedDaemons.join(", ") || "(none)"}`,
+    );
+    const topScores = file.scores.slice(0, 3);
+    if (topScores.length > 0) {
+      lines.push("  scores:");
+      for (const score of topScores) {
+        lines.push(
+          `    ${score.selected ? "*" : "-"} ${score.daemonName} ${score.finalScore.toFixed(3)}`,
+        );
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 async function publishGithubProposals(
@@ -202,7 +238,9 @@ async function publishGithubProposals(
           ensureStackedGithubPr(context.githubToken, context.owner, context.repo, input),
       });
     } catch (error) {
-      reviewLogger.error("daemon fixup branch push failed", { error });
+      reviewLogger.error("daemon fixup branch push failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   } else {
     reviewLogger.info("skipping stacked fixup branch publishing for fork PR", {
@@ -325,10 +363,19 @@ export async function runGithubDaemonReview(context: GithubPrContext): Promise<D
     librarianModel: process.env.DAEMON_REVIEW_LIBRARIAN_MODEL,
   });
   const execution = workflow.execution;
+  const routingDiagram = renderRoutingDiagram(workflow.routing.evaluation.fileDebug);
   const summary = [
     "# Daemon Review",
     "",
     `PR: #${context.prNumber}`,
+    `Execution source: ${daemonExecutionSource()}`,
+    "",
+    "## Routing Diagram",
+    "",
+    "```text",
+    routingDiagram,
+    "```",
+    "",
     execution.summary,
   ].join("\n");
   reviewLogger.info("daemon review summary\n{summary}", { summary });

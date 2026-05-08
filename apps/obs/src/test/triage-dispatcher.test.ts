@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { WideRollupRecord } from "../service/collector-contract";
 import {
+  BureauTriageDispatcher,
   DedupingTriageDispatcher,
-  HttpTriageDispatcher,
   shouldTriage,
   type TriageDispatcher,
   triageFingerprint,
@@ -148,36 +148,30 @@ describe("DedupingTriageDispatcher", () => {
   });
 });
 
-describe("HttpTriageDispatcher", () => {
-  test("POSTs the rollup envelope to the configured endpoint", async () => {
-    const captured: { url: string; body: unknown }[] = [];
-    const fakeFetch = async (url: RequestInfo | URL | Request, init?: RequestInit) => {
-      captured.push({ url: String(url), body: JSON.parse(String(init?.body)) });
-      return new Response(null, { status: 202 });
-    };
-    const dispatcher = new HttpTriageDispatcher({
-      endpointUrl: "http://triage:7000/v1/runs",
-      fetchImpl: fakeFetch,
+describe("BureauTriageDispatcher", () => {
+  test("invokes runAnalyze with the rollup", async () => {
+    const calls: WideRollupRecord[] = [];
+    const dispatcher = new BureauTriageDispatcher({
+      runAnalyze: async (rollup) => {
+        calls.push(rollup);
+      },
     });
     await dispatcher.dispatch(createRollup());
-    expect(captured).toHaveLength(1);
-    expect(captured[0].url).toBe("http://triage:7000/v1/runs");
-    expect(captured[0].body).toMatchObject({
-      rollup: { request_id: "req-1", final_status_code: 500 },
-    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request_id).toBe("req-1");
   });
 
-  test("swallows errors via onError callback", async () => {
+  test("swallows errors from runAnalyze via onError", async () => {
     const errors: unknown[] = [];
-    const fakeFetch = async () => {
-      throw new Error("network");
-    };
-    const dispatcher = new HttpTriageDispatcher({
-      endpointUrl: "http://triage:7000/v1/runs",
-      fetchImpl: fakeFetch,
+    const dispatcher = new BureauTriageDispatcher({
+      runAnalyze: async () => {
+        throw new Error("workflow failed");
+      },
       onError: (error) => errors.push(error),
     });
     await expect(dispatcher.dispatch(createRollup())).resolves.toBeUndefined();
     expect(errors).toHaveLength(1);
+    expect((errors[0] as Error).message).toBe("workflow failed");
   });
 });
+

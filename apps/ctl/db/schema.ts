@@ -36,7 +36,6 @@ function migrate(db: Database): void {
       status TEXT NOT NULL DEFAULT 'pushed',
       confidence TEXT,
       created_by TEXT NOT NULL DEFAULT 'human',
-      summary TEXT,
       diff_stats TEXT,
       delivery_id TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

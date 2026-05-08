@@ -6,7 +6,6 @@ import {
   makeApi,
   makeAuth,
   makeObs,
-  makeTriage,
 } from "./client";
 
 type Call = {
@@ -42,7 +41,6 @@ function baseConfig(overrides: Partial<ClientConfig> = {}): ClientConfig {
     apiBaseUrl: "http://api.test",
     authBaseUrl: "http://auth.test",
     obsBaseUrl: "http://obs.test",
-    triageBaseUrl: "http://triage.test",
     ...overrides,
   };
 }
@@ -165,16 +163,16 @@ describe("service client", () => {
 
   test("503 when upstream is unconfigured, with shaped error body", async () => {
     const { calls, fetchImpl } = recorder(async () => Response.json({ ok: true }));
-    const triage = makeTriage({
-      config: baseConfig({ triageBaseUrl: undefined, disableAuth: true }),
+    const obs = makeObs({
+      config: baseConfig({ obsBaseUrl: undefined, disableAuth: true }),
       fetchImpl,
     });
-    const app = new Hono().get("/test", (c) => triage(c).send(($) => $.v1.runs.$get()));
+    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.api.health.$get()));
 
     const res = await app.request("/test");
 
     expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({ error: "triage backend not configured" });
+    expect(await res.json()).toEqual({ error: "obs backend not configured" });
     expect(calls).toHaveLength(0);
   });
 
@@ -235,11 +233,11 @@ describe("service client", () => {
       if (url.pathname === "/session/exchange") return exchangeOk();
       throw new Error("connect ECONNREFUSED");
     };
-    const triage = makeTriage({ config: baseConfig({ disableAuth: true }), fetchImpl });
+    const obs = makeObs({ config: baseConfig({ disableAuth: true }), fetchImpl });
     const app = new Hono().get("/test", (c) =>
-      triage(c)
+      obs(c)
         .onError(() => c.json({ runs: [] }))
-        .send(($) => $.v1.runs.$get()),
+        .send(($) => $.api.health.$get()),
     );
 
     const res = await app.request("/test");
