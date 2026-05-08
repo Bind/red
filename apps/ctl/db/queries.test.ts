@@ -71,12 +71,6 @@ describe("ChangeQueries", () => {
     expect(changes.getById(c.id)!.confidence).toBe("safe");
   });
 
-  test("updateSummary", () => {
-    const c = makeChange();
-    changes.updateSummary(c.id, "Fixed a bug");
-    expect(changes.getById(c.id)!.summary).toBe("Fixed a bug");
-  });
-
   test("supersedePrior marks open changes on same branch", () => {
     const c1 = makeChange({ delivery_id: "d1" });
     const c2 = makeChange({ delivery_id: "d2" });

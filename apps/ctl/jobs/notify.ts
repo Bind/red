@@ -8,7 +8,6 @@ export interface NotificationPayload {
     branch: string;
     confidence: ConfidenceLevel | null;
     status: string;
-    summary: string | null;
   };
   timestamp: string;
 }
@@ -38,7 +37,6 @@ export class NotificationSender {
         branch: change.branch,
         confidence: change.confidence,
         status: change.status,
-        summary: change.summary,
       },
       timestamp: new Date().toISOString(),
     };

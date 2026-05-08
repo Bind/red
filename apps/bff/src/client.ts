@@ -5,8 +5,6 @@ import { hc } from "hono/client";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
 import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
-import type { AppRouter as TriageAppRouter } from "../../triage/src/app";
-
 // Hono's typed generics intentionally use `any` for un-pinned slots; this
 // alias is the single quarantined site so the rest of the file stays clean.
 // biome-ignore lint/suspicious/noExplicitAny: hono internal generics
@@ -14,7 +12,7 @@ type HonoApp = Hono<any, any, any>;
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export type Upstream = "api" | "auth" | "obs" | "triage" | "grs";
+export type Upstream = "api" | "auth" | "obs" | "grs" | "mcp";
 export type AuthMode = "jwt" | "cookie" | "session" | "none";
 export type BodyMode = "json" | "text" | "stream";
 
@@ -22,8 +20,9 @@ export interface ClientConfig {
   apiBaseUrl: string;
   authBaseUrl: string;
   obsBaseUrl?: string;
-  triageBaseUrl?: string;
   grsBaseUrl?: string;
+  mcpBaseUrl?: string;
+  bureauSourceRoot?: string;
   disableAuth?: boolean;
 }
 
@@ -35,8 +34,6 @@ export interface ClientDeps {
 export type CtlClient = ReturnType<typeof hc<CtlAppRouter>>;
 export type AuthClient = ReturnType<typeof hc<AuthAppRouter>>;
 export type ObsClient = ReturnType<typeof hc<ObsAppRouter>>;
-export type TriageClient = ReturnType<typeof hc<TriageAppRouter>>;
-
 /**
  * Per-service client factories. Each carries a typed `hc<UpstreamAppRouter>`
  * client; routes invoke upstream methods via `.send($ => $.x.y.$get(...))`
@@ -65,14 +62,6 @@ export function makeAuth(deps: ClientDeps): (c: Context) => RouteBuilder<AuthApp
 export function makeObs(deps: ClientDeps): (c: Context) => RouteBuilder<ObsAppRouter> {
   return (c) =>
     new RouteBuilder<ObsAppRouter>(c, deps.config, deps.fetchImpl, "obs", {
-      auth: "session",
-      as: "json",
-    });
-}
-
-export function makeTriage(deps: ClientDeps): (c: Context) => RouteBuilder<TriageAppRouter> {
-  return (c) =>
-    new RouteBuilder<TriageAppRouter>(c, deps.config, deps.fetchImpl, "triage", {
       auth: "session",
       as: "json",
     });
@@ -198,8 +187,6 @@ class RouteBuilder<TAppRouter extends HonoApp> {
         return this.config.authBaseUrl;
       case "obs":
         return this.config.obsBaseUrl;
-      case "triage":
-        return this.config.triageBaseUrl;
       case "grs":
         return this.config.grsBaseUrl;
     }

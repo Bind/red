@@ -4,7 +4,6 @@ import { ChangeQueries, EventQueries, JobQueries } from "../db/queries";
 import { initInMemoryDatabase } from "../db/schema";
 import { ScoringEngine } from "../engine/review";
 import { ChangeStateMachine } from "../engine/state-machine";
-import { StubSummaryGenerator } from "../engine/summary";
 import type { RepositoryProvider } from "../repo/repository-provider";
 import { NotificationSender } from "./notify";
 import { JobWorker, type WorkerDeps } from "./worker";
@@ -53,7 +52,6 @@ beforeEach(() => {
     jobs,
     repositoryProvider: createMockRepositoryProvider(),
     scorer: new ScoringEngine(),
-    summary: new StubSummaryGenerator(),
     stateMachine: new ChangeStateMachine(changes, events),
     notifier: new NotificationSender(),
     notificationConfigs: [],
@@ -87,7 +85,7 @@ describe("JobWorker", () => {
     expect(result).toBeNull();
   });
 
-  test("score_change: full scoring pipeline", async () => {
+  test("score_change: scoring transitions through scored to ready_for_review", async () => {
     const changeId = createTestChange();
     deps.jobs.enqueue({
       org_id: "default",
@@ -99,79 +97,19 @@ describe("JobWorker", () => {
     expect(job).not.toBeNull();
     expect(job!.type).toBe("score_change");
 
-    // Change should be scored
     const change = deps.changes.getById(changeId)!;
-    expect(change.status).toBe("summarizing");
+    expect(change.status).toBe("ready_for_review");
     expect(change.confidence).not.toBeNull();
     expect(change.pr_number).toBeNull();
 
-    // Should have enqueued a summary job
-    expect(deps.jobs.pendingCount()).toBe(1);
-    const summaryJob = deps.jobs.claimNext("generate_summary");
-    expect(summaryJob).not.toBeNull();
+    expect(deps.jobs.pendingCount()).toBe(0);
     expect(repositoryCallLog.map((entry) => entry.method)).toContain("compareDiff");
-  });
 
-  test("generate_summary: full summary pipeline", async () => {
-    const changeId = createTestChange();
-
-    // Manually advance change to summarizing state
-    deps.stateMachine.transition(changeId, "scoring");
-    deps.changes.updateConfidence(changeId, "safe");
-    deps.stateMachine.transition(changeId, "scored");
-    deps.stateMachine.transition(changeId, "summarizing");
-
-    deps.jobs.enqueue({
-      org_id: "default",
-      type: "generate_summary",
-      payload: JSON.stringify({
-        change_id: changeId,
-        diff_stats: {
-          files_changed: 2,
-          additions: 15,
-          deletions: 3,
-          files: [{ filename: "src/app.ts", additions: 10, deletions: 2, status: "modified" }],
-        },
-      }),
-    });
-
-    const job = await worker.tick();
-    expect(job).not.toBeNull();
-
-    const change = deps.changes.getById(changeId)!;
-    expect(change.status).toBe("ready_for_review");
-    expect(change.summary).not.toBeNull();
-
-    const summary = JSON.parse(change.summary!);
-    expect(summary.recommended_action).toBe("approve"); // safe confidence
-  });
-
-  test("full pipeline: score → summarize", async () => {
-    const changeId = createTestChange();
-    deps.jobs.enqueue({
-      org_id: "default",
-      type: "score_change",
-      payload: JSON.stringify({ change_id: changeId }),
-    });
-
-    // First tick: scoring
-    await worker.tick();
-
-    // Second tick: summary
-    await worker.tick();
-
-    const change = deps.changes.getById(changeId)!;
-    expect(change.status).toBe("ready_for_review");
-    expect(change.confidence).not.toBeNull();
-    expect(change.summary).not.toBeNull();
-    expect(change.pr_number).toBeNull();
-
-    // Verify event trail
     const events = deps.events.listByChangeId(changeId);
-    const types = events.map((e) => e.event_type);
-    expect(types).toContain("push_received");
-    expect(types).toContain("status_change");
-    expect(types).toContain("summary_generated");
+    const transitions = events
+      .filter((e) => e.event_type === "status_change")
+      .map((e) => `${e.from_status}→${e.to_status}`);
+    expect(transitions).toEqual(["pushed→scoring", "scoring→scored", "scored→ready_for_review"]);
   });
 
   test("skips superseded changes in score_change", async () => {
