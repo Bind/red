@@ -3,6 +3,12 @@ name: Daemon review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review with the workflow definition from the selected ref
+        required: true
+        type: string
 
 env:
   DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
@@ -17,10 +23,46 @@ jobs:
       issues: write
     timeout-minutes: 20
     steps:
+      - name: Resolve PR metadata
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            {
+              echo "PR_NUMBER=${{ github.event.pull_request.number }}"
+              echo "PR_BASE_SHA=${{ github.event.pull_request.base.sha }}"
+              echo "PR_BASE_REF=${{ github.event.pull_request.base.ref }}"
+              echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+              echo "PR_HEAD_REF=${{ github.event.pull_request.head.ref }}"
+              echo "PR_HEAD_REPO=${{ github.event.pull_request.head.repo.full_name }}"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          pr_json="$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number }})"
+          {
+            echo "PR_NUMBER=${{ inputs.pr_number }}"
+            echo "PR_BASE_SHA=$(printf '%s' "$pr_json" | jq -r '.base.sha')"
+            echo "PR_BASE_REF=$(printf '%s' "$pr_json" | jq -r '.base.ref')"
+            echo "PR_HEAD_SHA=$(printf '%s' "$pr_json" | jq -r '.head.sha')"
+            echo "PR_HEAD_REF=$(printf '%s' "$pr_json" | jq -r '.head.ref')"
+            echo "PR_HEAD_REPO=$(printf '%s' "$pr_json" | jq -r '.head.repo.full_name')"
+          } >> "$GITHUB_ENV"
+
+      - name: Select daemon review source
+        run: |
+          if [ "$PR_HEAD_REPO" = "${{ github.repository }}" ]; then
+            echo "DAEMON_REVIEW_WORKTREE=pr-head" >> "$GITHUB_ENV"
+            echo "DAEMON_REVIEW_EXECUTION_SOURCE=pr-head" >> "$GITHUB_ENV"
+          else
+            echo "DAEMON_REVIEW_WORKTREE=trusted-base" >> "$GITHUB_ENV"
+            echo "DAEMON_REVIEW_EXECUTION_SOURCE=trusted-base" >> "$GITHUB_ENV"
+          fi
+
       - name: Checkout trusted base repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ env.PR_BASE_SHA }}
           path: trusted-base
           fetch-depth: 1
           persist-credentials: false
@@ -28,8 +70,8 @@ jobs:
       - name: Checkout PR contents
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ env.PR_HEAD_REPO }}
+          ref: ${{ env.PR_HEAD_SHA }}
           path: pr-head
           fetch-depth: 1
           persist-credentials: false
@@ -45,7 +87,7 @@ jobs:
         run: curl -fsS https://dotenvx.sh | sh
 
       - name: Install dependencies
-        working-directory: trusted-base
+        working-directory: ${{ env.DAEMON_REVIEW_WORKTREE }}
         run: bun install --frozen-lockfile
 
       - name: Configure git credentials for sandbox clones
@@ -54,17 +96,18 @@ jobs:
         run: git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Run daemon review
-        working-directory: trusted-base
+        working-directory: ${{ env.DAEMON_REVIEW_WORKTREE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          PR_BASE_SHA: ${{ env.PR_BASE_SHA }}
+          PR_BASE_REF: ${{ env.PR_BASE_REF }}
+          PR_HEAD_SHA: ${{ env.PR_HEAD_SHA }}
+          PR_HEAD_REF: ${{ env.PR_HEAD_REF }}
+          PR_HEAD_REPO: ${{ env.PR_HEAD_REPO }}
           REPO_ROOT: ${{ github.workspace }}/pr-head
+          DAEMON_REVIEW_EXECUTION_SOURCE: ${{ env.DAEMON_REVIEW_EXECUTION_SOURCE }}
           DAEMON_REVIEW_MAX_PARALLEL: "3"
           DAEMON_REVIEW_PROPOSAL_MODE: "true"
           DAEMON_REVIEW_ROUTER_MODE: "memory_embedding_librarian"
