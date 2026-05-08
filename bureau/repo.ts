@@ -2,6 +2,7 @@ import type { Repo } from "../apps/grs/src/core/api";
 import { resolve } from "node:path";
 
 export type SandboxRepoRemote = {
+  /** URL git uses for both fetch and push for this remote. */
   fetchUrl: string;
   ref: string;
   gitConfigArgs?: string[];
@@ -10,6 +11,10 @@ export type SandboxRepoRemote = {
 export interface SandboxRepo {
   id: string;
   getReadRemote(ref: string): Promise<SandboxRepoRemote>;
+}
+
+export interface WritableSandboxRepo extends SandboxRepo {
+  getWriteRemote(ref: string): Promise<SandboxRepoRemote>;
 }
 
 export class GitHubRepo implements SandboxRepo {

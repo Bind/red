@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentProvider, ProviderRunOptions, ProviderRunResult } from "../pkg/daemons/src/providers/types";
+import { createBlobStore } from "./blob-store";
 import { agent } from "./sdk";
 import { runBureauAgent } from "./runtime";
 
@@ -87,5 +88,70 @@ describe("runBureauAgent", () => {
         { role: "assistant", content: "done" },
       ],
     });
+  });
+
+  test("harvests .bureau-out/ into the blob store and records names on the session meta", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bureau-runtime-cwd-"));
+    const blobsDir = await mkdtemp(join(tmpdir(), "bureau-runtime-blobs-"));
+    try {
+      await mkdir(join(cwd, ".bureau-out"), { recursive: true });
+      await writeFile(join(cwd, ".bureau-out", "summary.md"), "summary contents");
+
+      const definition = agent<{ prompt: string }>()
+        .instructions(() => "harvest test")
+        .initialInput((ctx) => ctx.input.prompt)
+        .build();
+
+      const provider: AgentProvider = {
+        name: "fake",
+        async runUntilComplete(opts) {
+          return {
+            ok: true,
+            payload: { summary: "ok", findings: [] },
+            turns: 1,
+            tokens: { input: 1, output: 1 },
+            session: {
+              systemPrompt: opts.systemPrompt,
+              messages: [],
+            },
+          };
+        },
+      };
+
+      const blobStore = createBlobStore({ kind: "local-fs", rootDir: blobsDir });
+
+      const result = await runBureauAgent({
+        definition,
+        input: { prompt: "harvest please" },
+        args: null,
+        provider,
+        maxTurns: 1,
+        maxWallclockMs: 5_000,
+        blobStore,
+        context: {
+          name: "harvester",
+          sourceRoot: rootDir,
+          root: rootDir,
+          cwd,
+          agentDir: join(rootDir, "bureau", "agents", "harvester"),
+          assets: { skills: [] },
+          emit() {},
+          resolveAsset(relativePath) {
+            return join(rootDir, "bureau", "agents", "harvester", relativePath);
+          },
+          resolveSharedAsset(relativePath) {
+            return join(rootDir, "bureau", "shared", relativePath);
+          },
+        },
+      });
+
+      expect(result.session.meta.blobs).toEqual(["summary.md"]);
+
+      const blob = await blobStore.get(result.session.meta.sessionId, "summary.md");
+      expect(new TextDecoder().decode(blob?.bytes)).toBe("summary contents");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+      await rm(blobsDir, { recursive: true, force: true });
+    }
   });
 });
