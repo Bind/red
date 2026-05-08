@@ -1,13 +1,50 @@
 #!/usr/bin/env bun
+import { resolve } from "node:path";
+import { createFileCodexAuthSource, createPiProvider } from "@red/daemons";
 import { configureServerLogging, getServerLogger } from "@red/server";
+import { justBashSandboxProvider } from "../../../bureau/sandbox";
+import { runTriageAnalyze } from "../../../bureau/workflows/triage/workflow";
 import { createApp } from "./service/app";
 import { replayCollectorFromRaw } from "./service/collector-service";
-import { createCollectorDeps, loadConfig } from "./util/config";
+import {
+  BureauTriageDispatcher,
+  DedupingTriageDispatcher,
+  type TriageDispatcher,
+} from "./service/triage-dispatcher";
+import { createCollectorDeps, loadConfig, type TriageConfig } from "./util/config";
 
 await configureServerLogging({ app: "red", lowestLevel: "info" });
 const config = loadConfig();
-const deps = createCollectorDeps(config);
+const triageDispatcher = config.triage ? buildBureauTriageDispatcher(config.triage) : undefined;
+const deps = createCollectorDeps(config, { triageDispatcher });
 const logger = getServerLogger(["obs"]);
+
+function buildBureauTriageDispatcher(triageConfig: TriageConfig): TriageDispatcher {
+  const sourceRoot = resolve(process.env.BUREAU_SOURCE_ROOT ?? process.cwd());
+  const agentProvider = createPiProvider({ authSource: createFileCodexAuthSource() });
+  const maxWallclockMs = Number.parseInt(
+    process.env.TRIAGE_MAX_WALLCLOCK_MS ?? `${10 * 60_000}`,
+    10,
+  );
+  const inner = new BureauTriageDispatcher({
+    runAnalyze: async (rollup) => {
+      await runTriageAnalyze({
+        rollup: rollup as Parameters<typeof runTriageAnalyze>[0]["rollup"],
+        deps: {
+          agentProvider,
+          sandboxProvider: justBashSandboxProvider,
+          sourceRoot,
+          maxWallclockMs,
+        },
+      });
+    },
+  });
+  return new DedupingTriageDispatcher({
+    inner,
+    filter: { minStatusCode: triageConfig.minStatusCode },
+    dedupTtlMs: triageConfig.dedupTtlMs,
+  });
+}
 
 if (config.replayWindowMs > 0) {
   await replayCollectorFromRaw(deps, new Date(Date.now() - config.replayWindowMs), new Date());
