@@ -8,6 +8,7 @@ import {
   obsMiddleware,
 } from "@red/obs";
 import { createHttpLogger, getServerLogger, Hono } from "@red/server";
+import { listTriageRuns } from "../../../bureau/workflows/triage/workflow";
 import {
   type ClientConfig,
   forwardAuthRequest,
@@ -15,7 +16,6 @@ import {
   makeApi,
   makeAuth,
   makeObs,
-  makeTriage,
 } from "./client";
 import {
   createHostedRepoReader,
@@ -148,7 +148,7 @@ export function createApp(config: BffConfig) {
   const api = makeApi(deps);
   const auth = makeAuth(deps);
   const obs = makeObs(deps);
-  const triage = makeTriage(deps);
+  const bureauSourceRoot = config.bureauSourceRoot ?? process.cwd();
 
   const rpc = new Hono<BffAppEnv>()
     .get("/status", async (c) => {
@@ -168,7 +168,6 @@ export function createApp(config: BffConfig) {
         probeHealthEndpoint(fetchImpl, "api", config.apiBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "auth", config.authBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "obs", config.obsBaseUrl, envelope.requestId),
-        probeHealthEndpoint(fetchImpl, "triage", config.triageBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "grs", config.grsBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "mcp", config.mcpBaseUrl, envelope.requestId),
       ]);
@@ -411,16 +410,17 @@ export function createApp(config: BffConfig) {
           }),
         ),
     )
-    .get("/triage/runs", (c) =>
-      triage(c)
-        .onError((err) => {
-          logger.warn("triage runs unavailable, returning empty list", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-          return c.json({ runs: [] });
-        })
-        .send(($) => $.v1.runs.$get()),
-    );
+    .get("/triage/runs", async (c) => {
+      try {
+        const runs = await listTriageRuns({ sourceRoot: bureauSourceRoot });
+        return c.json({ runs });
+      } catch (err) {
+        logger.warn("triage runs unavailable, returning empty list", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return c.json({ runs: [] });
+      }
+    });
 
   const app = new Hono<BffAppEnv>()
     .use("*", obsMiddleware({ service: "bff", sink: createObsSinkFromEnv({ service: "bff" }) }))

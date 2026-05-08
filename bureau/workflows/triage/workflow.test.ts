@@ -7,6 +7,7 @@ import type { TriagePlan, WideRollupRecord } from "../../agents/triage-analyze/a
 import { justBashSandboxProvider } from "../../sandbox";
 import type { TriageProposal } from "../../agents/triage-propose/agent";
 import {
+  listTriageRuns,
   markTriageDecision,
   readTriageDecision,
   runTriageAnalyze,
@@ -213,5 +214,141 @@ describe("runTriagePropose", () => {
     await expect(
       runTriagePropose({ analyzeSessionId: analyzed.session.meta.sessionId, deps }),
     ).rejects.toThrow(/not.*approved/i);
+  });
+});
+
+describe("listTriageRuns", () => {
+  test("returns an empty list when no triage sessions exist", async () => {
+    const runs = await listTriageRuns({ sourceRoot: rootDir });
+    expect(runs).toEqual([]);
+  });
+
+  test("returns plan_ready for an analyze session that has not been decided", async () => {
+    const plan: TriagePlan = {
+      hypothesis: "Null reference",
+      suspectedFiles: ["api/foo.ts"],
+      reproductionSteps: [],
+      proposedChangeSummary: "Add null check",
+      confidence: "medium",
+    };
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts) {
+        return {
+          ok: true,
+          payload: plan,
+          turns: 1,
+          tokens: { input: 1, output: 1 },
+          session: { systemPrompt: opts.systemPrompt, messages: [] },
+        };
+      },
+    };
+    const analyzed = await runTriageAnalyze({
+      rollup: sampleRollup,
+      deps: {
+        agentProvider: provider,
+        sandboxProvider: justBashSandboxProvider,
+        sourceRoot: rootDir,
+        maxWallclockMs: 5_000,
+      },
+    });
+
+    const runs = await listTriageRuns({ sourceRoot: rootDir });
+    expect(runs).toHaveLength(1);
+    expect(runs[0].id).toBe(analyzed.session.meta.sessionId);
+    expect(runs[0].status).toBe("plan_ready");
+    expect(runs[0].plan).toEqual({ hypothesis: plan.hypothesis, confidence: plan.confidence });
+    expect(runs[0].rollup.request_id).toBe(sampleRollup.request_id);
+    expect(runs[0].rollup.entry_service).toBe(sampleRollup.entry_service);
+  });
+
+  test("returns approved status when the decision is approved and no propose session exists", async () => {
+    const plan: TriagePlan = {
+      hypothesis: "x",
+      suspectedFiles: [],
+      reproductionSteps: [],
+      proposedChangeSummary: "x",
+      confidence: "low",
+    };
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts) {
+        return {
+          ok: true,
+          payload: plan,
+          turns: 1,
+          tokens: { input: 1, output: 1 },
+          session: { systemPrompt: opts.systemPrompt, messages: [] },
+        };
+      },
+    };
+    const analyzed = await runTriageAnalyze({
+      rollup: sampleRollup,
+      deps: {
+        agentProvider: provider,
+        sandboxProvider: justBashSandboxProvider,
+        sourceRoot: rootDir,
+        maxWallclockMs: 5_000,
+      },
+    });
+    await markTriageDecision({
+      sessionId: analyzed.session.meta.sessionId,
+      decision: "approved",
+      sourceRoot: rootDir,
+    });
+
+    const runs = await listTriageRuns({ sourceRoot: rootDir });
+    expect(runs[0].status).toBe("approved");
+  });
+
+  test("returns proposal_ready and the proposal when a propose child exists", async () => {
+    const plan: TriagePlan = {
+      hypothesis: "x",
+      suspectedFiles: [],
+      reproductionSteps: [],
+      proposedChangeSummary: "x",
+      confidence: "low",
+    };
+    const proposal: TriageProposal = {
+      repoId: "bind/red",
+      branch: "agent/fix",
+      summary: "fixed",
+    };
+    let call = 0;
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts) {
+        call += 1;
+        return {
+          ok: true,
+          payload: call === 1 ? plan : proposal,
+          turns: 1,
+          tokens: { input: 1, output: 1 },
+          session: { systemPrompt: opts.systemPrompt, messages: [] },
+        };
+      },
+    };
+    const deps = {
+      agentProvider: provider,
+      sandboxProvider: justBashSandboxProvider,
+      sourceRoot: rootDir,
+      maxWallclockMs: 5_000,
+    };
+    const analyzed = await runTriageAnalyze({ rollup: sampleRollup, deps });
+    await markTriageDecision({
+      sessionId: analyzed.session.meta.sessionId,
+      decision: "approved",
+      sourceRoot: rootDir,
+    });
+    await runTriagePropose({ analyzeSessionId: analyzed.session.meta.sessionId, deps });
+
+    const runs = await listTriageRuns({ sourceRoot: rootDir });
+    const run = runs.find((r) => r.id === analyzed.session.meta.sessionId);
+    expect(run?.status).toBe("proposal_ready");
+    expect(run?.proposal).toEqual({
+      repo_id: proposal.repoId,
+      branch: proposal.branch,
+      pr_url: undefined,
+    });
   });
 });

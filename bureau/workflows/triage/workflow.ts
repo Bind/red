@@ -64,7 +64,7 @@ export async function runTriageAnalyze(input: {
     blobStore: input.deps.blobStore,
     definition: triageAnalyze(),
     input: input.rollup,
-    args: { rollupId: input.rollup.request_id },
+    args: { rollup: input.rollup },
     maxTurns: 1,
   });
 
@@ -177,4 +177,74 @@ export async function runTriagePropose(input: {
   } finally {
     await sandboxSession.cleanup();
   }
+}
+
+export type TriageRunSummary = {
+  id: string;
+  status:
+    | "plan_ready"
+    | "approved"
+    | "rejected"
+    | "proposal_ready"
+    | "failed";
+  created_at: string;
+  updated_at: string;
+  rollup: WideRollupRecord;
+  plan?: { hypothesis: string; confidence: TriagePlan["confidence"] };
+  proposal?: { repo_id: string; branch: string; pr_url: string | undefined };
+};
+
+export async function listTriageRuns(input: {
+  sourceRoot: string;
+}): Promise<TriageRunSummary[]> {
+  const root = resolve(input.sourceRoot);
+  const store = createLocalBureauSessionStore({ rootDir: root });
+  const [analyzeMetas, proposeMetas] = await Promise.all([
+    store.list({ agentName: "triage-analyze" }),
+    store.list({ agentName: "triage-propose" }),
+  ]);
+  const proposeByParent = new Map<string, (typeof proposeMetas)[number]>();
+  for (const meta of proposeMetas) {
+    if (meta.parentSessionId) proposeByParent.set(meta.parentSessionId, meta);
+  }
+
+  const summaries: TriageRunSummary[] = [];
+  for (const meta of analyzeMetas) {
+    const rollup = (meta.args as { rollup?: WideRollupRecord } | null)?.rollup;
+    if (!rollup) continue;
+    const plan = meta.output as TriagePlan | undefined;
+    const decision = await readTriageDecision({ sessionId: meta.sessionId, sourceRoot: root });
+    const proposeMeta = proposeByParent.get(meta.sessionId);
+    const proposal = proposeMeta?.output as TriageProposal | undefined;
+
+    let status: TriageRunSummary["status"];
+    if (proposal) {
+      status = "proposal_ready";
+    } else if (decision?.state === "approved") {
+      status = "approved";
+    } else if (decision?.state === "rejected") {
+      status = "rejected";
+    } else if (plan) {
+      status = "plan_ready";
+    } else {
+      status = "failed";
+    }
+
+    summaries.push({
+      id: meta.sessionId,
+      status,
+      created_at: meta.createdAt,
+      updated_at: proposeMeta?.updatedAt ?? meta.updatedAt,
+      rollup,
+      plan: plan
+        ? { hypothesis: plan.hypothesis, confidence: plan.confidence }
+        : undefined,
+      proposal: proposal
+        ? { repo_id: proposal.repoId, branch: proposal.branch, pr_url: proposal.prUrl }
+        : undefined,
+    });
+  }
+
+  summaries.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  return summaries;
 }

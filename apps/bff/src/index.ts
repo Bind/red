@@ -9,7 +9,7 @@ function loadConfig(): BffConfig {
     apiBaseUrl: process.env.RED_API_BASE_URL ?? "http://localhost:3000",
     authBaseUrl: process.env.AUTH_BASE_URL ?? "http://localhost:4020",
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
-    triageBaseUrl: process.env.TRIAGE_BASE_URL ?? "http://triage:7000",
+    bureauSourceRoot: process.env.BUREAU_SOURCE_ROOT,
     grsBaseUrl: process.env.GRS_BASE_URL ?? "http://grs:8080",
     mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",

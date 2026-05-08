@@ -9,7 +9,6 @@ describe("BFF app", () => {
       apiBaseUrl: "http://api.test",
       authBaseUrl: "http://auth.test",
       obsBaseUrl: "http://obs.test",
-      triageBaseUrl: "http://triage.test",
       grsBaseUrl: "http://grs.test",
       mcpBaseUrl: "http://mcp.test",
       fetchImpl: async (input) => {
@@ -25,8 +24,6 @@ describe("BFF app", () => {
             return Response.json({ service: url.host.split(".")[0], status: "ok" });
           case "obs.test":
             return Response.json({ error: "duckdb unavailable" }, { status: 503 });
-          case "triage.test":
-            throw new Error("connect ECONNREFUSED");
           case "mcp.test":
             return Response.json({ service: "mcp", status: "ok" });
           default:
@@ -61,12 +58,6 @@ describe("BFF app", () => {
           status: "error",
           http_status: 503,
           error: "duckdb unavailable",
-        }),
-        expect.objectContaining({
-          service: "triage",
-          status: "error",
-          http_status: null,
-          error: "connect ECONNREFUSED",
         }),
         expect.objectContaining({
           service: "grs",
