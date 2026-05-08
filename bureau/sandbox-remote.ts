@@ -5,10 +5,9 @@
 // is available. Closing this issue means landing every item below as real
 // code with green tests against a live Docker daemon:
 //
-//   1. Container based on the existing OCR Dockerfile, lifted to
-//      `bureau/runtime-image/`, with bureau source baked in (or mounted)
-//      *instead of* opencode-ai. Reference: `apps/ocr/Dockerfile`,
-//      `apps/ocr/run.sh`.
+//   1. Container with bureau source baked in (or mounted), Pi running
+//      inside instead of an external runner. Lifted to
+//      `bureau/runtime-image/`.
 //
 //   2. Pi runs *inside* the container. Tools (read/bash/track/complete)
 //      are pure in-container code — no wire protocol. The host invokes

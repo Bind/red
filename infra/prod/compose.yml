@@ -42,14 +42,6 @@ services:
     env_file:
       - ../../.env
 
-  triage:
-    env_file:
-      - ../../.env
-
-  triage-smithers:
-    env_file:
-      - ../../.env
-
   mcp:
     env_file:
       - ../../.env

@@ -2,14 +2,6 @@ import { createObsSinkFromEnv, type EventEnvelope, obsMiddleware } from "@red/ob
 import { configureServerLogging, createHttpLogger, getServerLogger, Hono } from "@red/server";
 import { makeApiRouter } from "./api/router";
 import {
-  ClawArtifactUploader,
-  ClawRunReconciler,
-  getRequiredMinioArtifactStoreConfig,
-  LocalClawArtifactStore,
-  MinioClawArtifactStore,
-  SqliteClawRunTracker,
-} from "./claw";
-import {
   ChangeQueries,
   DeliveryQueries,
   EventQueries,
@@ -44,17 +36,6 @@ export interface AppConfig {
     };
   };
   repos: string[];
-  artifacts: {
-    minio: {
-      endPoint: string;
-      port: number;
-      useSSL: boolean;
-      accessKey: string;
-      secretKey: string;
-      bucket: string;
-      prefix?: string;
-    };
-  };
 }
 
 function loadConfig(): AppConfig {
@@ -83,9 +64,6 @@ function loadConfig(): AppConfig {
       },
     },
     repos: configuredRepos,
-    artifacts: {
-      minio: getRequiredMinioArtifactStoreConfig(),
-    },
   };
 }
 
@@ -114,9 +92,6 @@ export function createApp(config: AppConfig) {
     password: config.repoBackend.controlPlane.password,
   });
   const stateMachine = new ChangeStateMachine(changes, events);
-  const clawTracker = new SqliteClawRunTracker();
-  const localClawArtifactStore = new LocalClawArtifactStore();
-  const remoteClawArtifactStore = new MinioClawArtifactStore(config.artifacts.minio);
   const logger = getServerLogger(["ctl"]);
   const eventBus = new EventBus();
 
@@ -131,9 +106,6 @@ export function createApp(config: AppConfig) {
     repositoryProvider,
     stateMachine,
     eventBus,
-    clawTracker,
-    localClawArtifactStore,
-    remoteClawArtifactStore,
     logger,
   });
 
@@ -161,18 +133,6 @@ export function createApp(config: AppConfig) {
     },
   );
 
-  const clawReconciler = new ClawRunReconciler({
-    tracker: clawTracker,
-    changes,
-    jobs,
-    sessions,
-    stateMachine,
-  });
-  const clawArtifactUploader = new ClawArtifactUploader({
-    tracker: clawTracker,
-    remoteStore: remoteClawArtifactStore,
-  });
-
   return {
     app,
     apiRouter,
@@ -184,9 +144,6 @@ export function createApp(config: AppConfig) {
     repos,
     repositoryProvider,
     worker,
-    runner,
-    clawReconciler,
-    clawArtifactUploader,
   };
 }
 
@@ -200,11 +157,9 @@ if (import.meta.main) {
   await configureServerLogging({ app: "red", lowestLevel: "info" });
   const logger = getServerLogger(["ctl"]);
   const config = loadConfig();
-  const { app, worker, clawReconciler, clawArtifactUploader } = createApp(config);
+  const { app, worker } = createApp(config);
 
   worker.start();
-  clawReconciler.start();
-  clawArtifactUploader.start();
   logger.info("ctl listening on {url}", { url: `http://0.0.0.0:${config.port}` });
   Bun.serve({
     port: config.port,

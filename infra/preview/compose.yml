@@ -58,20 +58,6 @@ services:
     env_file:
       - /opt/red-previews/.env
 
-  triage:
-    container_name: ${COMPOSE_PROJECT_NAME}-triage
-    env_file:
-      - /opt/red-previews/.env
-    environment:
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red-preview}
-
-  triage-smithers:
-    container_name: ${COMPOSE_PROJECT_NAME}-triage-smithers
-    env_file:
-      - /opt/red-previews/.env
-    environment:
-      TRIAGE_OPENAI_TITLE: ${TRIAGE_OPENAI_TITLE:-red-preview}
-
   web:
     container_name: ${COMPOSE_PROJECT_NAME}-web
 

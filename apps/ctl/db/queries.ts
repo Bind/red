@@ -1,5 +1,4 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import type { AgentRuntimeEvent } from "../claw/runtime";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -553,36 +552,6 @@ export class SessionQueries {
          WHERE id = ?`,
       )
       .run(status, durationMs, id);
-  }
-
-  appendEvent(sessionId: number, event: AgentRuntimeEvent): AgentSessionEvent {
-    this.db
-      .prepare(
-        `INSERT INTO agent_session_events (
-          session_id, seq, event_id, kind, type, status, role, text, delta, data_json, raw_json
-        ) VALUES (
-          ?,
-          (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_session_events WHERE session_id = ?),
-          ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )`,
-      )
-      .run(
-        sessionId,
-        sessionId,
-        event.id,
-        event.kind,
-        event.type,
-        event.status ?? null,
-        event.role ?? null,
-        event.text ?? null,
-        event.delta ?? null,
-        event.data ? JSON.stringify(event.data) : null,
-        event.raw ? JSON.stringify(event.raw) : null,
-      );
-    const { id } = this.db.prepare("SELECT last_insert_rowid() as id").get() as { id: number };
-    return this.db
-      .prepare("SELECT * FROM agent_session_events WHERE id = ?")
-      .get(id) as AgentSessionEvent;
   }
 
   getEventsAfter(

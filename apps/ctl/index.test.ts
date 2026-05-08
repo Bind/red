@@ -19,17 +19,6 @@ const testConfig: AppConfig = {
     },
   },
   repos: [],
-  artifacts: {
-    minio: {
-      endPoint: "localhost",
-      port: 9000,
-      useSSL: false,
-      accessKey: "minioadmin",
-      secretKey: "minioadmin",
-      bucket: "test-artifacts",
-      prefix: "claw-runs",
-    },
-  },
 };
 
 describe("App integration", () => {
@@ -213,49 +202,6 @@ describe("App integration", () => {
     expect(await secondListResponse.json()).toEqual(["red/dashboard-demo"]);
 
     second.db.close();
-  });
-
-  test("claw actions endpoint returns action metadata", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/claw/actions"));
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as Array<{ id: string; promptHash: string }>;
-    expect(json.some((action) => action.id === "generate-summary")).toBe(true);
-    expect(json.every((action) => action.promptHash.length > 0)).toBe(true);
-  });
-
-  test("claw prompt endpoint returns prompt details", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(
-      new Request("http://localhost/api/claw/actions/generate-summary/prompt"),
-    );
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { id: string; prompt: string; promptHash: string };
-    expect(json.id).toBe("generate-summary");
-    expect(json.prompt).toContain('You are reviewing a change on branch "{{branch}}"');
-    expect(json.promptHash.length).toBeGreaterThan(0);
-  });
-
-  test("claw runs endpoint returns a list", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/claw/runs"));
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as unknown[];
-    expect(Array.isArray(json)).toBe(true);
-  });
-
-  test("missing claw run returns 404", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(new Request("http://localhost/api/claw/runs/missing-run"));
-    expect(res.status).toBe(404);
-  });
-
-  test("missing claw artifact returns 404", async () => {
-    const { app } = createApp(testConfig);
-    const res = await app.fetch(
-      new Request("http://localhost/api/claw/runs/missing-run/artifacts/result"),
-    );
-    expect(res.status).toBe(404);
   });
 
   test("createApp with file-based db", async () => {

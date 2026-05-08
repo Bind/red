@@ -16,17 +16,6 @@ const testConfig: AppConfig = {
     },
   },
   repos: [],
-  artifacts: {
-    minio: {
-      endPoint: "localhost",
-      port: 9000,
-      useSSL: false,
-      accessKey: "minioadmin",
-      secretKey: "minioadmin",
-      bucket: "test-artifacts",
-      prefix: "claw-runs",
-    },
-  },
 };
 
 describeHealthContract({

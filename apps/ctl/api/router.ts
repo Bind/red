@@ -9,8 +9,6 @@ import {
   type PlaygroundProfile,
   runDaemonPlayground,
 } from "../../../bureau/workflows/daemon-review/src/playground";
-import type { LocalClawArtifactStore, MinioClawArtifactStore, SqliteClawRunTracker } from "../claw";
-import { getClawActionMetadata, getClawActionPrompt, listClawActions } from "../claw/actions";
 import type {
   ChangeQueries,
   DeliveryQueries,
@@ -39,9 +37,6 @@ export interface ApiDeps {
   repositoryProvider: RepositoryProvider;
   stateMachine: ChangeStateMachine;
   eventBus: EventBus;
-  clawTracker: SqliteClawRunTracker;
-  localClawArtifactStore: LocalClawArtifactStore;
-  remoteClawArtifactStore: MinioClawArtifactStore;
   logger: {
     error: (strings: TemplateStringsArray, ...values: unknown[]) => void;
   };
@@ -88,9 +83,6 @@ export function makeApiRouter(deps: ApiDeps) {
     repositoryProvider,
     stateMachine,
     eventBus,
-    clawTracker,
-    localClawArtifactStore,
-    remoteClawArtifactStore,
     logger,
   } = deps;
 
@@ -306,51 +298,6 @@ export function makeApiRouter(deps: ApiDeps) {
       if (result.status === "duplicate") return c.json(result, 200);
       if (result.status === "skipped") return c.json(result, 200);
       return c.json(result, 201);
-    })
-    .get("/api/claw/actions", (c) => {
-      return c.json(listClawActions());
-    })
-    .get("/api/claw/actions/:id", (c) => {
-      const action = getClawActionMetadata(c.req.param("id"));
-      if (!action) return c.json({ error: "Not found" }, 404);
-      return c.json(action);
-    })
-    .get("/api/claw/actions/:id/prompt", (c) => {
-      const prompt = getClawActionPrompt(c.req.param("id"));
-      if (!prompt) return c.json({ error: "Not found" }, 404);
-      return c.json(prompt);
-    })
-    .get("/api/claw/runs", (c) => {
-      const limit = Number.parseInt(c.req.query("limit") ?? "20", 10);
-      return c.json(clawTracker.listRecent(limit));
-    })
-    .get("/api/claw/runs/:runId", (c) => {
-      const run = clawTracker.getByRunId(c.req.param("runId"));
-      if (!run) return c.json({ error: "Not found" }, 404);
-      return c.json(run);
-    })
-    .get("/api/claw/runs/:runId/artifacts/:kind", async (c) => {
-      const runId = c.req.param("runId");
-      const kind = c.req.param("kind");
-      if (kind !== "request" && kind !== "result" && kind !== "events") {
-        return c.json({ error: "Unknown artifact kind" }, 400);
-      }
-
-      const run = clawTracker.getByRunId(runId);
-      if (!run) return c.json({ error: "Not found" }, 404);
-
-      const artifactStore = run.rolloutPath?.startsWith("s3://")
-        ? remoteClawArtifactStore
-        : localClawArtifactStore;
-      const text = await artifactStore.readTextArtifact(runId, kind);
-      if (text == null) return c.json({ error: "Artifact not found" }, 404);
-
-      const contentType =
-        kind === "events"
-          ? "application/x-ndjson; charset=utf-8"
-          : "application/json; charset=utf-8";
-      c.header("Content-Type", contentType);
-      return c.text(text);
     })
     .get("/api/repos", (c) => {
       return c.json(repos.list().map((repo) => repo.full_name));

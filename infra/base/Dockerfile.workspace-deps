@@ -11,7 +11,6 @@ COPY apps/grs/package.json ./apps/grs/
 COPY apps/grs/zig/examples/cloudflare-worker/package.json ./apps/grs/zig/examples/cloudflare-worker/
 COPY apps/mcp/package.json ./apps/mcp/
 COPY apps/obs/package.json ./apps/obs/
-COPY apps/triage/package.json ./apps/triage/
 COPY apps/web/package.json ./apps/web/
 COPY experiments/ai-daemons-lab/package.json ./experiments/ai-daemons-lab/
 COPY experiments/bash-runtime-lab/package.json ./experiments/bash-runtime-lab/
