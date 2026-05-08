@@ -63,11 +63,6 @@ just obs-test
 just obs-typecheck
 just obs-lint
 just obs-format
-
-just triage-up
-just triage-down
-just triage-logs
-just triage-test
 ```
 
 ## Container glossary
@@ -77,15 +72,13 @@ The local compose stack uses short container names:
 - `ctl`: control plane API and CLI backend.
 - `grs`: git repository server.
 - `obs`: observability collector and rollup service.
-- `ocr`: OpenCode runner image name used by `ctl` for agent jobs. This is not a standalone compose service in the dev stack.
+- `gateway`: local Envoy edge proxy that fronts `web` and `bff`.
 - `bff`: backend-for-frontend service.
 - `web`: frontend app.
 - `auth`: authentication service.
 - `db-auth`: auth service Postgres database.
 - `s3`: MinIO-based object store used as the local S3 endpoint.
 - `loki`: log store used for cross-service log queries and SSE-backed live log views.
-- `triage`: triage service for agent workflow review and orchestration.
-- `triage-smithers`: Smithers server for triage agent integration (launched via `--profile triage`).
 - `init`: system-wide initialization container. Put shared stack bootstrap logic here, such as bucket creation or other one-time infra setup.
 
 ## Project structure
@@ -98,8 +91,6 @@ The local compose stack uses short container names:
 |   |-- bff/
 |   |-- grs/
 |   |-- obs/
-|   |-- ocr/
-|   |-- triage/
 |   `-- web/
 |-- experiments/
 |-- infra/
@@ -124,8 +115,6 @@ Main product and runtime surfaces live here.
 - `apps/bff/`: backend-for-frontend service.
 - `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
 - `apps/obs/`: observability collector service for request-wide events and rollups.
-- `apps/ocr/`: OpenCode runner image build context used by the API to launch agent runs in Docker.
-- `apps/triage/`: triage service plus optional Smithers-backed workflow runner mode.
 - `apps/web/`: Vite/React frontend app.
 
 ### `pkg/`
