@@ -129,10 +129,6 @@ jobs:
             context: .
             dockerfile: apps/web/Dockerfile
             workspace_deps_flavor: alpine
-          - image_name: red-mcp
-            context: .
-            dockerfile: apps/mcp/Dockerfile
-            workspace_deps_flavor: alpine
 
     steps:
       - uses: actions/checkout@v4

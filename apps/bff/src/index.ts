@@ -11,7 +11,6 @@ function loadConfig(): BffConfig {
     obsBaseUrl: process.env.OBS_BASE_URL ?? "http://obs:4090",
     bureauSourceRoot: process.env.BUREAU_SOURCE_ROOT,
     grsBaseUrl: process.env.GRS_BASE_URL ?? "http://grs:8080",
-    mcpBaseUrl: process.env.MCP_BASE_URL ?? "http://mcp:3002",
     disableAuth: process.env.BFF_DISABLE_AUTH?.toLowerCase() === "true",
     hostedRepo: hostedRepoId
       ? {
@@ -33,7 +32,6 @@ logger.info("bff upstreams configured", {
   api_upstream: config.apiBaseUrl,
   auth_upstream: config.authBaseUrl,
   grs_upstream: config.grsBaseUrl,
-  mcp_upstream: config.mcpBaseUrl,
 });
 if (config.hostedRepo) {
   logger.info("hosted repo app configured", { repo_id: config.hostedRepo.repoId });

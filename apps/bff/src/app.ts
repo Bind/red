@@ -169,7 +169,6 @@ export function createApp(config: BffConfig) {
         probeHealthEndpoint(fetchImpl, "auth", config.authBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "obs", config.obsBaseUrl, envelope.requestId),
         probeHealthEndpoint(fetchImpl, "grs", config.grsBaseUrl, envelope.requestId),
-        probeHealthEndpoint(fetchImpl, "mcp", config.mcpBaseUrl, envelope.requestId),
       ]);
       const report: StatusReport = {
         checked_at: checkedAt,

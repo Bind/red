@@ -10,7 +10,6 @@ describe("BFF app", () => {
       authBaseUrl: "http://auth.test",
       obsBaseUrl: "http://obs.test",
       grsBaseUrl: "http://grs.test",
-      mcpBaseUrl: "http://mcp.test",
       fetchImpl: async (input) => {
         const request = input instanceof Request ? input : new Request(input);
         const url = new URL(request.url);
@@ -61,11 +60,6 @@ describe("BFF app", () => {
         }),
         expect.objectContaining({
           service: "grs",
-          status: "ok",
-          http_status: 200,
-        }),
-        expect.objectContaining({
-          service: "mcp",
           status: "ok",
           http_status: 200,
         }),

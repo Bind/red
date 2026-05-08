@@ -189,8 +189,6 @@ class RouteBuilder<TAppRouter extends HonoApp> {
         return this.config.obsBaseUrl;
       case "grs":
         return this.config.grsBaseUrl;
-      case "mcp":
-        return this.config.mcpBaseUrl;
     }
   }
 }

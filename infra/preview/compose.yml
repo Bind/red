@@ -61,13 +61,6 @@ services:
   web:
     container_name: ${COMPOSE_PROJECT_NAME}-web
 
-  mcp:
-    container_name: ${COMPOSE_PROJECT_NAME}-mcp
-    env_file:
-      - /opt/red-previews/.env
-    environment:
-      MCP_OAUTH_CLIENT_ID: ${MCP_OAUTH_CLIENT_ID:-mcp-preview}
-
 networks:
   preview-net:
     external: true
