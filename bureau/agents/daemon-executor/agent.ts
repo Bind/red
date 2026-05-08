@@ -16,6 +16,7 @@ import {
   type ProviderRunFailure,
   loadMemorySnapshot,
   createTrackTool,
+  resolveDaemon,
   type DaemonSpec,
 } from "../../../pkg/daemons/src/index";
 import { createWideEvent, memorySink, stdoutSink, type WideEvent, type WideEventSink } from "../../../pkg/daemons/src/wide-events";
@@ -23,7 +24,7 @@ import { collectScopeInventory } from "../../../pkg/daemons/src/memory";
 import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_PROVIDER_ID } from "../../../pkg/daemons/src/providers/pi";
 import { getServerLogger } from "../../../pkg/server/src";
 import { runBureauAgent } from "../../runtime";
-import { agent, type BureauAgentContext } from "../../sdk";
+import { agent, type BureauAgentContext, type BureauAgentDefinition, type BureauAgentInstance } from "../../sdk";
 import type {
   DaemonOutcome,
   DaemonReviewConfig,
@@ -37,6 +38,17 @@ type DaemonExecutionInput = {
   trustedRoot: string;
   reviewRoot: string;
   relevantFiles: string[];
+};
+
+export type DaemonExecutorArgs = {
+  daemonName: string;
+  reviewRoot?: string;
+  relevantFiles?: string[];
+};
+
+export type DaemonExecutorAgentInput = {
+  args: DaemonExecutorArgs;
+  userInput: string | null;
 };
 
 type DaemonExecutorDeps = {
@@ -158,6 +170,67 @@ export async function buildDaemonReviewInput(
   return lines.join("\n");
 }
 
+export function buildDaemonExecutorContext(
+  root: string,
+): Omit<BureauAgentContext<DaemonExecutorAgentInput>, "sessionId" | "input"> {
+  return {
+    name: "daemon-executor",
+    sourceRoot: root,
+    sessionRoot: root,
+    root,
+    cwd: root,
+    agentDir: `${root}/bureau/agents/daemon-executor`,
+    assets: { skills: [] },
+    emit() {},
+    resolveAsset(relativePath: string) {
+      return `${root}/bureau/agents/daemon-executor/${relativePath}`;
+    },
+    resolveSharedAsset(relativePath: string) {
+      return `${root}/bureau/shared/${relativePath}`;
+    },
+  };
+}
+
+export function createDaemonExecutorDefinition(): BureauAgentDefinition<DaemonExecutorAgentInput> {
+  return agent<DaemonExecutorAgentInput>()
+    .plan(async (ctx) => {
+      const { daemonName, reviewRoot = ctx.root, relevantFiles = [] } = ctx.input.args;
+      const spec = await resolveDaemon(daemonName, ctx.sourceRoot);
+      const relScopeRoot = relative(ctx.sourceRoot, spec.scopeRoot);
+      const scopeRoot = resolve(reviewRoot, relScopeRoot);
+      const snapshot = await loadMemorySnapshot(spec.name, scopeRoot);
+      const memoryStore = await createDaemonMemoryStore(spec.name, scopeRoot);
+      const runId = `run_${spec.name}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const trackTool = createTrackTool(memoryStore, runId);
+      const systemPrompt = buildSystemPrompt(spec, buildMemoryPrompt(snapshot));
+      const reviewInput = await buildDaemonReviewInput(relevantFiles, snapshot);
+      return {
+        systemPrompt,
+        initialInput: ctx.input.userInput
+          ? `${reviewInput}\n\nUser request:\n${ctx.input.userInput}`
+          : reviewInput,
+        tools: [trackTool],
+        cwd: scopeRoot,
+      };
+    })
+    .build();
+}
+
+export function createDaemonExecutorAgentInstance(
+  args: DaemonExecutorArgs,
+  root: string,
+): BureauAgentInstance<DaemonExecutorAgentInput, DaemonExecutorArgs> {
+  return {
+    name: "daemon-executor",
+    args,
+    definition: createDaemonExecutorDefinition(),
+    context: buildDaemonExecutorContext(root),
+    buildInput(userInput) {
+      return { args, userInput };
+    },
+  };
+}
+
 function filesTouchedFromDiff(diff: string): string[] {
   const filesTouched = new Set<string>();
   for (const line of diff.split("\n")) {
@@ -207,6 +280,7 @@ function buildContext(input: {
   return {
     name: "daemon-executor",
     sourceRoot: input.trustedRoot,
+    sessionRoot: input.reviewRoot,
     root: input.reviewRoot,
     cwd: input.workingScopeRoot,
     agentDir: join(input.trustedRoot, "bureau", "agents", "daemon-executor"),

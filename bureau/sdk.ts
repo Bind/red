@@ -8,6 +8,7 @@ export type BureauAgentContext<Input> = {
   name: string;
   sessionId: string;
   sourceRoot: string;
+  sessionRoot: string;
   root: string;
   cwd: string;
   input: Input;
@@ -27,6 +28,14 @@ export type BureauExecutionPlan = {
 
 export type BureauAgentDefinition<Input = unknown> = {
   run(ctx: BureauAgentContext<Input>): Promise<BureauExecutionPlan>;
+};
+
+export type BureauAgentInstance<Input = unknown, Args = unknown> = {
+  name: string;
+  args: Args;
+  definition: BureauAgentDefinition<Input>;
+  context: Omit<BureauAgentContext<Input>, "sessionId" | "input">;
+  buildInput(userInput: string | null): Input;
 };
 
 type BureauInstructionBuilder<Input, Shared> =

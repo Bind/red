@@ -1,8 +1,8 @@
 import type { AgentProvider } from "../pkg/daemons/src/providers/types";
 import { createPiProvider, createFileCodexAuthSource } from "../pkg/daemons/src/index";
 import { resolveBureauAgent, type ResolvedBureauAgent } from "./resolve-agent";
+import { bureau, justBashSandboxProvider } from "./sandbox";
 import { createLocalBureauSessionStore, type BureauStoredSession } from "./session-store";
-import { resumeBureauAgent, runBureauAgent } from "./runtime";
 
 export async function runBureauCli(
   argv: string[],
@@ -119,12 +119,11 @@ async function runResolvedAgent<Input>(input: {
   stdoutText: (chunk: string) => void;
 }) {
   const output = createCliOutput(input.stdout, input.stdoutText);
-  const outcome = await runBureauAgent({
-    definition: input.resolved.definition,
-    context: input.resolved.context,
-    input: input.resolved.buildInput(input.userInput),
-    args: input.resolved.args,
-    provider: input.provider,
+  const outcome = await bureau.run({
+    provider: justBashSandboxProvider,
+    agentProvider: input.provider,
+    agent: input.resolved,
+    userInput: input.userInput,
     maxTurns: 4,
     maxWallclockMs: 120_000,
     mode: "run",
@@ -165,12 +164,12 @@ async function resumeResolvedAgent<Input>(input: {
   stdoutText: (chunk: string) => void;
 }) {
   const output = createCliOutput(input.stdout, input.stdoutText);
-  const outcome = await resumeBureauAgent({
-    definition: input.resolved.definition,
-    context: input.resolved.context,
-    input: input.resolved.buildInput(input.userInput),
+  const outcome = await bureau.resume({
+    provider: justBashSandboxProvider,
+    agentProvider: input.provider,
+    agent: input.resolved,
     parentSession: input.parentSession,
-    provider: input.provider,
+    userInput: input.userInput,
     maxTurns: 4,
     maxWallclockMs: 120_000,
     mode: "resume",

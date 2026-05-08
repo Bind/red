@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { GitHubRepo } from "../../../repo";
+import { sandbox } from "../../../sandbox";
 import { runDaemonReviewWorkflow } from "../workflow";
 import {
   buildReviewBody,
@@ -359,6 +360,7 @@ export async function runGithubDaemonReview(context: GithubPrContext): Promise<D
     baseRef: context.prBaseSha,
     headRef: context.prHeadSha,
     changedFiles,
+    sandboxProvider: sandbox.justBash(),
     preserveSandbox: false,
     librarianModel: process.env.DAEMON_REVIEW_LIBRARIAN_MODEL,
   });

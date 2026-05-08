@@ -3,15 +3,14 @@ import { join, resolve } from "node:path";
 import type { AgentProvider } from "../../../pkg/daemons/src/providers/types";
 import type { BlobStore } from "../../blob-store";
 import {
-  triageAnalyze,
+  createTriageAnalyzeAgentInstance,
   type TriagePlan,
   type WideRollupRecord,
 } from "../../agents/triage-analyze/agent";
 import {
-  triagePropose,
+  createTriageProposeAgentInstance,
   type TriageProposal,
 } from "../../agents/triage-propose/agent";
-import { resumeBureauAgent } from "../../runtime";
 import { bureau, type BureauSandboxProvider } from "../../sandbox";
 import {
   createLocalBureauSessionStore,
@@ -42,29 +41,14 @@ export async function runTriageAnalyze(input: {
   deps: TriageWorkflowDeps;
 }): Promise<RunTriageAnalyzeResult> {
   const root = resolve(input.deps.sourceRoot);
-  const agentDir = join(root, "bureau", "agents", "triage-analyze");
+  const agent = createTriageAnalyzeAgentInstance(input.rollup, root);
 
   const outcome = await bureau.run({
     provider: input.deps.sandboxProvider,
     agentProvider: input.deps.agentProvider,
-    contextBase: {
-      name: "triage-analyze",
-      sourceRoot: root,
-      agentDir,
-      assets: { skills: [] },
-      emit() {},
-      resolveAsset(relativePath: string) {
-        return join(agentDir, relativePath);
-      },
-      resolveSharedAsset(relativePath: string) {
-        return join(root, "bureau", "shared", relativePath);
-      },
-    },
+    agent,
     maxWallclockMs: input.deps.maxWallclockMs,
     blobStore: input.deps.blobStore,
-    definition: triageAnalyze(),
-    input: input.rollup,
-    args: { rollup: input.rollup },
     maxTurns: 1,
   });
 
@@ -142,41 +126,21 @@ export async function runTriagePropose(input: {
     );
   }
 
-  const agentDir = join(root, "bureau", "agents", "triage-propose");
-  const sandboxSession = await input.deps.sandboxProvider.create({ preserve: false });
-  try {
-    const outcome = await resumeBureauAgent({
-      definition: triagePropose(),
-      input: { plan },
-      parentSession,
-      provider: input.deps.agentProvider,
-      maxTurns: 1,
-      maxWallclockMs: input.deps.maxWallclockMs,
-      blobStore: input.deps.blobStore,
-      context: {
-        name: "triage-propose",
-        sourceRoot: root,
-        root: sandboxSession.root,
-        cwd: sandboxSession.root,
-        agentDir,
-        assets: { skills: [] },
-        emit() {},
-        resolveAsset(relativePath: string) {
-          return join(agentDir, relativePath);
-        },
-        resolveSharedAsset(relativePath: string) {
-          return join(root, "bureau", "shared", relativePath);
-        },
-      },
-    });
+  const agent = createTriageProposeAgentInstance({ plan }, root);
+  const outcome = await bureau.resume({
+    provider: input.deps.sandboxProvider,
+    agentProvider: input.deps.agentProvider,
+    agent,
+    parentSession,
+    maxTurns: 1,
+    maxWallclockMs: input.deps.maxWallclockMs,
+    blobStore: input.deps.blobStore,
+  });
 
-    return {
-      session: outcome.session,
-      proposal: outcome.session.meta.output as TriageProposal,
-    };
-  } finally {
-    await sandboxSession.cleanup();
-  }
+  return {
+    session: outcome.session,
+    proposal: outcome.session.meta.output as TriageProposal,
+  };
 }
 
 export type TriageRunSummary = {

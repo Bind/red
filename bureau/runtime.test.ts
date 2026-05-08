@@ -62,6 +62,7 @@ describe("runBureauAgent", () => {
       context: {
         name: "daemon-executor",
         sourceRoot: rootDir,
+        sessionRoot: rootDir,
         root: rootDir,
         cwd: rootDir,
         agentDir: join(rootDir, "bureau", "agents", "daemon-executor"),
@@ -120,6 +121,7 @@ describe("runBureauAgent", () => {
       context: {
         name: "output-test",
         sourceRoot: rootDir,
+        sessionRoot: rootDir,
         root: rootDir,
         cwd: rootDir,
         agentDir: join(rootDir, "bureau", "agents", "output-test"),
@@ -178,6 +180,7 @@ describe("runBureauAgent", () => {
         context: {
           name: "harvester",
           sourceRoot: rootDir,
+          sessionRoot: rootDir,
           root: rootDir,
           cwd,
           agentDir: join(rootDir, "bureau", "agents", "harvester"),
