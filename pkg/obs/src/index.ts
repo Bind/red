@@ -1,10 +1,5 @@
 export {
-  type CollectorBatchRequest,
-  type CollectorBatchResponse,
-  type CollectorRejectedEvent,
   type CollectorSinkEnvOptions,
-  type CollectorSource,
-  type CollectorWideEvent,
   createObsSinkFromEnv,
   FileNdjsonSink,
   type FileNdjsonSinkOptions,
@@ -30,3 +25,11 @@ export {
   type ObsValue,
 } from "./core";
 export { getEnvelope, type ObsMiddlewareOptions, obsMiddleware } from "./hono";
+export type {
+  CollectorBatchRequest as WideCollectorBatchRequest,
+  CollectorBatchResponse as WideCollectorBatchResponse,
+  CollectorRejectedEvent as WideCollectorRejectedEvent,
+  CollectorSource as WideCollectorSource,
+  CollectorWideEvent as WideCollectorEvent,
+  WideRollupRecord,
+} from "./wide-events";

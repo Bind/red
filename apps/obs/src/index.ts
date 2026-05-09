@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 import { configureServerLogging, getServerLogger } from "@red/server";
-import type { WideRollupRecord as TriageRollupRecord } from "../../../bureau/agents/triage-analyze/agent";
 import { createBureauAgentProvider } from "../../../bureau/provider";
 import { sandbox } from "../../../bureau/sandbox";
 import { runTriageAnalyze } from "../../../bureau/workflows/triage/workflow";
 import { createApp } from "./service/app";
-import type { WideRollupRecord as CollectorRollupRecord } from "./service/collector-contract";
 import { replayCollectorFromRaw } from "./service/collector-service";
 import {
   BureauTriageDispatcher,
@@ -35,7 +33,7 @@ function buildBureauTriageDispatcher(triageConfig: TriageConfig): TriageDispatch
   const inner = new BureauTriageDispatcher({
     runAnalyze: async (rollup) => {
       await runTriageAnalyze({
-        rollup: toTriageRollupRecord(rollup),
+        rollup,
         deps: {
           agentProvider,
           sandboxProvider,
@@ -50,22 +48,6 @@ function buildBureauTriageDispatcher(triageConfig: TriageConfig): TriageDispatch
     filter: { minStatusCode: triageConfig.minStatusCode },
     dedupTtlMs: triageConfig.dedupTtlMs,
   });
-}
-
-function toTriageRollupRecord(rollup: CollectorRollupRecord): TriageRollupRecord {
-  return {
-    request_id: rollup.request_id,
-    first_ts: rollup.first_ts,
-    last_ts: rollup.last_ts,
-    total_duration_ms: rollup.total_duration_ms,
-    entry_service: rollup.entry_service,
-    services: rollup.services,
-    route_names: rollup.route_names,
-    final_outcome: rollup.final_outcome,
-    final_status_code: rollup.final_status_code,
-    primary_error: rollup.primary_error,
-    events: rollup.events.map((event) => ({ ...event })),
-  };
 }
 
 if (config.replayWindowMs > 0) {

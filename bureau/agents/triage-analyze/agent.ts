@@ -1,19 +1,7 @@
 import { join, resolve } from "node:path";
+import type { WideRollupRecord } from "../../../pkg/obs/src/wide-events";
 import { agent, type BureauAgentContext, type BureauAgentInstance } from "../../sdk";
-
-export type WideRollupRecord = {
-  request_id: string;
-  first_ts: string;
-  last_ts: string;
-  total_duration_ms: number;
-  entry_service: string;
-  services: string[];
-  route_names: string[];
-  final_outcome: "ok" | "error" | "unknown";
-  final_status_code: number | null;
-  primary_error: Record<string, unknown> | null;
-  events: Array<Record<string, unknown>>;
-};
+export type { WideRollupRecord } from "../../../pkg/obs/src/wide-events";
 
 export type TriagePlan = {
   hypothesis: string;
