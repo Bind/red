@@ -3,7 +3,7 @@
 Releases are cut by publishing a **GitHub Release** in the repo.
 
 Images are built earlier on every push to `main` by
-`.github/workflows/build-main-images.yml`, tagged by commit SHA.
+`.github/workflows/build-app-images.yml`, tagged by commit SHA.
 
 Publishing the GitHub Release then triggers `.github/workflows/release.yml`, which:
 
@@ -69,7 +69,7 @@ Once you click **Publish**, the workflow kicks off. Watch it under
 Actions → `Release`.
 
 If the release workflow says prebuilt images are missing for the tag's commit SHA,
-wait for the `Build main images` workflow on that `main` commit to finish, or fix
+wait for the `Build app images` workflow on that `main` commit to finish, or fix
 the branch/tag so the release points at a commit that already landed on `main`.
 
 ## Rollback
