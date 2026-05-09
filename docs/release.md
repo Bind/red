@@ -1,19 +1,23 @@
 # Releases
 
-Releases are cut by publishing a **GitHub Release** in the repo. That event
-triggers `.github/workflows/release.yml`, which:
+Releases are cut by publishing a **GitHub Release** in the repo.
 
-1. Checks out the tag.
-2. Builds and pushes the controlled service images to GHCR, tagged by commit SHA
-   and the release version.
-3. Runs `just ci::secrets-check .env.ci production`, then `just provision production`
+Images are built earlier on every push to `main` by
+`.github/workflows/build-main-images.yml`, tagged by commit SHA.
+
+Publishing the GitHub Release then triggers `.github/workflows/release.yml`, which:
+
+1. Checks out the tag and resolves its commit SHA.
+2. Verifies that prebuilt GHCR images already exist for that commit SHA.
+3. Adds the human-friendly release tag to those existing image manifests without rebuilding them.
+4. Runs `just ci::secrets-check .env.ci production`, then `just provision production`
    → `sst deploy` against Cloudflare + Hetzner,
    then syncs exported SST env vars into the target env file.
-4. Writes the SSH private key from secrets.
-5. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
+5. Writes the SSH private key from secrets.
+6. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
    working tree to `/opt/red`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
-6. Runs `just deploy-check https://red.computer` → curl `/health` and fail
+7. Runs `just deploy-check https://red.computer` → curl `/health` and fail
    the workflow unless `status == "ok"`.
 
 Only maintainers with repo write access can publish releases, so release
@@ -43,6 +47,7 @@ The bucket is auto-created under the Cloudflare account associated with
 provisioned once on the server and survive every release:
 
 - `.env` — production env vars (`TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc.)
+- `.env.keys` — dotenvx encryption keys
 - `*.db` / `*.db-wal` / `*.db-shm` — sqlite files
 - `node_modules`, `.git`, `.sst`
 
@@ -62,6 +67,10 @@ git push origin v0.1.0
 
 Once you click **Publish**, the workflow kicks off. Watch it under
 Actions → `Release`.
+
+If the release workflow says prebuilt images are missing for the tag's commit SHA,
+wait for the `Build main images` workflow on that `main` commit to finish, or fix
+the branch/tag so the release points at a commit that already landed on `main`.
 
 ## Rollback
 

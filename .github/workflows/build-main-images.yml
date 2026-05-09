@@ -1,0 +1,25 @@
+name: Build main images
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: build-main-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-images:
+    name: build canonical main images
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-images.yml
+    with:
+      git_commit: ${{ github.sha }}
+      image_tag: ${{ github.sha }}
+      runner_label: ubuntu-24.04-arm
+      platforms: linux/arm64
+      enable_qemu: false
+    secrets: inherit
