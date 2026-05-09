@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assertHealthContract } from "./index";
+import { verifyHealthContract } from "./index";
 
 export interface ContractTestOptions {
   serviceName: string;
@@ -23,8 +23,10 @@ export function describeHealthContract(options: ContractTestOptions): void {
         const res = await app.fetch(new Request("http://localhost/health", { method: "GET" }));
         expect([200, 503]).toContain(res.status);
         const body = await res.json();
-        assertHealthContract(body, options.serviceName);
-        expect((body as { commit: string }).commit).toBe("testcommit");
+        const result = verifyHealthContract(body, options.serviceName);
+        const violation = result.isErr() ? result.error.message : null;
+        expect(violation).toBeNull();
+        if (result.isOk()) expect(result.value.commit).toBe("testcommit");
       } finally {
         process.env.GIT_COMMIT = previous;
       }

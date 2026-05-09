@@ -12,6 +12,9 @@ if echo "$staged_files" | rg -q "$needs_repo_checks_pattern"; then
   echo "pre-commit: running repo lint"
   just lint
 
+  echo "pre-commit: running no-throw scan"
+  just lint-throws
+
   echo "pre-commit: running repo typecheck"
   bun run typecheck
 

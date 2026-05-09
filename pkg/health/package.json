@@ -10,5 +10,8 @@
   },
   "scripts": {
     "test": "bun test"
+  },
+  "dependencies": {
+    "better-result": "^2.9.2"
   }
 }

@@ -47,6 +47,9 @@ jobs:
       - name: Lint
         run: just lint
 
+      - name: No-throw scan
+        run: just lint-throws
+
       - name: Test
         run: bun test apps pkg
 

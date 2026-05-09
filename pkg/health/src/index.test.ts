@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assertHealthContract,
   buildHealth,
   deriveStatus,
   getCommit,
   statusHttpCode,
+  verifyHealthContract,
 } from "./index";
 
 describe("getCommit", () => {
@@ -77,28 +77,40 @@ describe("statusHttpCode", () => {
   test("error → 503", () => expect(statusHttpCode("error")).toBe(503));
 });
 
-describe("assertHealthContract", () => {
+describe("verifyHealthContract", () => {
   test("accepts a valid body", () => {
-    expect(() => assertHealthContract({ service: "x", status: "ok", commit: "c" })).not.toThrow();
+    const result = verifyHealthContract({ service: "x", status: "ok", commit: "c" });
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) expect(result.value.service).toBe("x");
+  });
+
+  test("error has the HealthContractError tag", () => {
+    const result = verifyHealthContract({ status: "ok", commit: "c" });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error._tag).toBe("HealthContractError");
   });
 
   test("rejects missing service", () => {
-    expect(() => assertHealthContract({ status: "ok", commit: "c" })).toThrow(/service/);
+    const result = verifyHealthContract({ status: "ok", commit: "c" });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toMatch(/service/);
   });
 
   test("rejects invalid status", () => {
-    expect(() => assertHealthContract({ service: "x", status: "meh", commit: "c" })).toThrow(
-      /status/,
-    );
+    const result = verifyHealthContract({ service: "x", status: "meh", commit: "c" });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toMatch(/status/);
   });
 
   test("rejects missing commit", () => {
-    expect(() => assertHealthContract({ service: "x", status: "ok" })).toThrow(/commit/);
+    const result = verifyHealthContract({ service: "x", status: "ok" });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toMatch(/commit/);
   });
 
   test("rejects wrong service name when expected", () => {
-    expect(() =>
-      assertHealthContract({ service: "ctl", status: "ok", commit: "c" }, "bff"),
-    ).toThrow(/'bff'/);
+    const result = verifyHealthContract({ service: "ctl", status: "ok", commit: "c" }, "bff");
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.message).toMatch(/'bff'/);
   });
 });
