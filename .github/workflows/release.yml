@@ -3,6 +3,9 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_run:
+    workflows: ["Build app images"]
+    types: [completed]
 
 concurrency:
   group: release
@@ -15,12 +18,18 @@ env:
 jobs:
   release:
     name: provision + deploy + health check
+    if: >
+      github.event_name == 'release' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
@@ -44,23 +53,37 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
-      - name: Resolve release commit
-        id: release-sha
+      - name: Resolve release context
+        id: release
         run: |
           set -euo pipefail
-          echo "value=$(git rev-list -n 1 "${{ github.event.release.tag_name }}")" >> "$GITHUB_OUTPUT"
+          git fetch --tags origin
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            release_tag="${{ github.event.release.tag_name }}"
+            release_sha="$(git rev-list -n 1 "$release_tag")"
+          else
+            release_sha="${{ github.event.workflow_run.head_sha }}"
+            release_tag="$(git tag --points-at "$release_sha" --list 'v*' --sort=-version:refname | head -n1 || true)"
+            if [[ -z "$release_tag" ]]; then
+              echo "no v* release tag points at $release_sha"
+              exit 1
+            fi
+          fi
+          git checkout --detach "$release_sha"
+          echo "tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "sha=${release_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Verify release commit is on main
         run: |
           set -euo pipefail
           git fetch origin main
-          git merge-base --is-ancestor "${{ steps.release-sha.outputs.value }}" origin/main
+          git merge-base --is-ancestor "${{ steps.release.outputs.sha }}" origin/main
 
       - name: Assert prebuilt release images exist
-        run: just ci::assert-release-images "${{ steps.release-sha.outputs.value }}"
+        run: just ci::assert-release-images "${{ steps.release.outputs.sha }}"
 
       - name: Tag prebuilt images with release version
-        run: just ci::retag-release-images "${{ steps.release-sha.outputs.value }}" "${{ github.event.release.tag_name }}"
+        run: just ci::retag-release-images "${{ steps.release.outputs.sha }}" "${{ steps.release.outputs.tag }}"
 
       - name: Validate CI secrets
         run: just ci::secrets-check .env.ci production
@@ -80,7 +103,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy code (rsync + docker compose up)
-        run: just deploy-ssh "${{ github.event.release.tag_name }}" "${{ steps.release-sha.outputs.value }}" red.computer 2222
+        run: just deploy-ssh "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.sha }}" red.computer 2222
 
       - name: Post-deploy health check
         run: just deploy-check https://red.computer
