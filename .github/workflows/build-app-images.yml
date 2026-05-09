@@ -6,7 +6,7 @@ on:
       - main
 
 concurrency:
-  group: build-app-images-${{ github.sha }}
+  group: build-app-images-main
   cancel-in-progress: false
 
 jobs:
@@ -23,3 +23,43 @@ jobs:
       platforms: linux/arm64
       enable_qemu: false
     secrets: inherit
+
+  publish-release:
+    name: publish release
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: extractions/setup-just@v2
+
+      - name: Fetch tags
+        run: git fetch --tags origin
+
+      - name: Check for existing release tag on commit
+        id: existing-tag
+        run: |
+          set -euo pipefail
+          tag="$(git tag --points-at "${GITHUB_SHA}" --list 'v*' | head -n1 || true)"
+          echo "value=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute next release tag
+        if: steps.existing-tag.outputs.value == ''
+        id: next-tag
+        run: |
+          set -euo pipefail
+          echo "value=$(just ci::next-release-tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: steps.existing-tag.outputs.value == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create "${{ steps.next-tag.outputs.value }}"
+          --target "${{ github.sha }}"
+          --title "${{ steps.next-tag.outputs.value }}"
+          --generate-notes

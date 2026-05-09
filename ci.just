@@ -60,3 +60,16 @@ retag-release-images git_commit release_tag owner="bind":
       docker buildx imagetools create -t "$dst" "$src" >/dev/null
       echo "tagged $dst -> $src"
     done
+
+# Compute the next patch release tag from the existing semver tag set.
+next-release-tag prefix="v":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    latest_tag="$(git tag --list '{{ prefix }}[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n1)"
+    if [[ -z "${latest_tag}" ]]; then
+      printf '%s\n' "{{ prefix }}0.0.1"
+      exit 0
+    fi
+    version="${latest_tag#{{ prefix }}}"
+    IFS='.' read -r major minor patch <<<"${version}"
+    printf '%s%d.%d.%d\n' "{{ prefix }}" "${major}" "${minor}" "$((patch + 1))"
