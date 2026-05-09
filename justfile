@@ -4,6 +4,7 @@ set dotenv-load
 
 mod infra
 mod bureau
+mod ci
 
 DEV_COMPOSE := "infra/dev/compose.yml"
 BASE_COMPOSE := "infra/base/compose.yml"
