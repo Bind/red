@@ -137,8 +137,11 @@ if [[ -f .env.development ]] && command -v dotenvx >/dev/null 2>&1; then
 fi
 
 echo "Syncing container Bun dependencies..."
-docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps ctl bun install --frozen-lockfile
-docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps auth bun install --frozen-lockfile
+# --ignore-scripts: matches infra/base/Dockerfile.workspace-deps. Alpine/musl
+# containers can't run @ast-grep/cli's postinstall (glibc-only prebuilts) and
+# the dev containers never invoke ast-grep anyway.
+docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps ctl bun install --frozen-lockfile --ignore-scripts
+docker compose --env-file .env -f "$COMPOSE_FILE" run --rm --no-deps auth bun install --frozen-lockfile --ignore-scripts
 
 if [[ "$SKIP_IMAGE_BUILD" != "true" ]]; then
   echo "Building shared workspace dependency images..."

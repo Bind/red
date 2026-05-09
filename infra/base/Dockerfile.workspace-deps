@@ -21,4 +21,9 @@ COPY pkg/health/package.json ./pkg/health/
 COPY pkg/obs/package.json ./pkg/obs/
 COPY pkg/server/package.json ./pkg/server/
 
-RUN bun install --frozen-lockfile
+# `--ignore-scripts` skips postinstalls that fetch native binaries for the
+# host's libc (e.g. @ast-grep/cli only ships glibc prebuilts and breaks on
+# the Alpine/musl base image). This layer is copied into runtime containers
+# that never invoke those tools, so skipping the binary materialization is
+# safe here. CI runners install separately on glibc and run scripts normally.
+RUN bun install --frozen-lockfile --ignore-scripts
