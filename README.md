@@ -92,6 +92,7 @@ The local compose stack uses short container names:
 |   |-- grs/
 |   |-- obs/
 |   `-- web/
+|-- bureau/
 |-- experiments/
 |-- infra/
 |-- pkg/
@@ -100,6 +101,8 @@ The local compose stack uses short container names:
 |   |-- obs/
 |   `-- server/
 |-- scripts/
+|-- bureau.just
+|-- infra.just
 |-- justfile
 `-- package.json
 ```
@@ -110,7 +113,7 @@ Main product and runtime surfaces live here.
 
 - `apps/ctl/`: main Bun/Hono backend plus the `red` CLI entrypoints.
   Important subfolders:
-  `cli/` for the narrow Bun status client exposed as the package `red` bin, `cli/shell/` for the broader operator shell CLI wrapped by `./scripts/red`, `claw/` for agent-run orchestration and runner design notes, `db/` for schema/query code, `engine/` for review and summary logic, and `repo/` for grs integration.
+  `cli/` for the narrow Bun status client exposed as the package `red` bin, `cli/shell/` for the broader operator shell CLI wrapped by `./scripts/red`, `api/` for the HTTP API surface, `bureau/` for agent-run orchestration and daemon session management, `db/` for schema/query code, `engine/` for review and summary logic, `ingest/` for event ingestion, `jobs/` for background job definitions, `logs/` for log management, and `repo/` for grs integration.
 - `apps/auth/`: standalone auth service with Better Auth, session exchange, OAuth endpoints, and compose support.
 - `apps/bff/`: backend-for-frontend service.
 - `apps/grs/`: git repository server package, including the TypeScript client/test surface in `src/` and the native Zig implementation under `zig/`.
@@ -135,6 +138,10 @@ Infra and local dev wiring.
 - `infra/dev/`, `infra/preview/`, `infra/prod/`: environment-specific overlays and lifecycle scripts.
 - `infra/platform/caddy/`: local gateway/proxy configuration.
 - `infra/platform/gateway/`: gateway-specific config and assets.
+
+### `bureau/`
+
+AI daemon runtime, workflows, session store, and the agent orchestration framework. Root-level `bureau.just` recipes are available through `just` via `mod bureau` in the root justfile.
 
 ### `experiments/`
 
