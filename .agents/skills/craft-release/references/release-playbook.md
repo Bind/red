@@ -13,22 +13,26 @@ This file captures the red-specific production release flow that the skill shoul
 
 Production deploy is triggered by publishing a GitHub Release.
 
-Tag push alone is not enough.
+Normally the GitHub Release is published automatically after a push to `main`.
 
-Typical operator sequence:
+Normal operator sequence:
 
 ```bash
-git checkout main
-git pull
-git tag -a vX.Y.Z -m "release vX.Y.Z"
-git push origin vX.Y.Z
+merge the PR to main
 ```
 
-Then publish the GitHub Release on GitHub, or use `gh release create` if the user wants CLI execution.
+Then the `Build app images` workflow creates the next patch release tag and
+publishes the GitHub Release automatically.
 
 ## Workflow behavior
 
-The `Release` workflow does this:
+The `Build app images` workflow:
+
+1. Builds the canonical `linux/arm64` app images for the merged `main` commit SHA.
+2. Computes the next patch release tag (`vX.Y.Z`) unless that commit is already tagged.
+3. Publishes the GitHub Release for that commit.
+
+Then the `Release` workflow does this:
 
 1. Resolve the release tag to a commit SHA on `main`.
 2. Assert the canonical images for that commit SHA already exist in GHCR:
@@ -76,6 +80,7 @@ Examples:
 
 ```bash
 gh release view <tag>
+gh run list --workflow "Build app images" --limit 5
 gh run list --workflow Release --limit 5
 gh run watch <run-id>
 gh run view <run-id>

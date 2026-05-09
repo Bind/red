@@ -1,9 +1,12 @@
 # Releases
 
-Releases are cut by publishing a **GitHub Release** in the repo.
+Production releases are cut automatically after a push to `main`.
 
-Images are built earlier on every push to `main` by
-`.github/workflows/build-app-images.yml`, tagged by commit SHA.
+`.github/workflows/build-app-images.yml`:
+
+1. Builds canonical app images for the merged `main` commit, tagged by commit SHA.
+2. Computes the next patch release tag (`vX.Y.Z`) unless that commit already has a release tag.
+3. Publishes the GitHub Release for that commit.
 
 Publishing the GitHub Release then triggers `.github/workflows/release.yml`, which:
 
@@ -20,9 +23,7 @@ Publishing the GitHub Release then triggers `.github/workflows/release.yml`, whi
 7. Runs `just deploy-check https://red.computer` → curl `/health` and fail
    the workflow unless `status == "ok"`.
 
-Only maintainers with repo write access can publish releases, so release
-creation itself is the human-in-the-loop gate — no GitHub Environment
-approval rules needed.
+The human gate is now merging to `main`, not manually publishing a release.
 
 ## Required repo secrets
 
@@ -57,20 +58,26 @@ image tags instead of rebuilding service images on the box.
 First-time-server bootstrap still needs a `.env` file dropped in
 `/opt/red/.env` manually.
 
-## Cutting a release
+## Normal flow
 
 ```bash
-git tag -a v0.1.0 -m "first cut"
-git push origin v0.1.0
-# then on GitHub: Releases → Draft new release → pick tag v0.1.0 → Publish
+merge the PR to main
+# build-app-images publishes the next patch release automatically
 ```
 
-Once you click **Publish**, the workflow kicks off. Watch it under
-Actions → `Release`.
+Watch it under:
+
+- Actions → `Build app images`
+- Actions → `Release`
 
 If the release workflow says prebuilt images are missing for the tag's commit SHA,
 wait for the `Build app images` workflow on that `main` commit to finish, or fix
 the branch/tag so the release points at a commit that already landed on `main`.
+
+## Manual backfill
+
+If automation is broken and you need to backfill manually, create and publish a
+GitHub Release for a commit that already landed on `main`.
 
 ## Rollback
 

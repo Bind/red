@@ -10,7 +10,7 @@ Use this skill for the red production release path.
 This skill is the repo-local equivalent of a `land-and-deploy` workflow:
 
 - prepare the release
-- publish the GitHub Release
+- monitor the automatic GitHub Release publication
 - monitor the release workflow
 - verify production health
 - summarize rollback options if deploy health fails
@@ -32,15 +32,15 @@ Use this before doing anything irreversible, or on first use in a session.
 - `gh auth status`
 - `just ci::secrets-check .env.ci production`
 - repo state is sane enough for tagging or publishing
-3. Show the exact commands or GitHub actions that will happen next.
-4. Stop before creating a tag or publishing the release unless the user explicitly wants the real release.
+3. Show the exact GitHub actions that will happen next after merge to `main`.
+4. Stop before merging or manually publishing any release unless the user explicitly wants the real release.
 
 ### Real release
 
 1. Make sure the user explicitly wants production release execution now.
-2. Ensure the intended tag exists, or create and push it if that is part of the request.
-3. Publish the GitHub Release. In this repo, publishing the GitHub Release is what triggers production deploy.
-4. Monitor the GitHub Actions `Release` workflow until it finishes:
+2. Ensure the intended commit is on `main`, because merges to `main` auto-publish the next patch release.
+3. Monitor the GitHub Actions `Build app images` workflow until it publishes the release.
+4. Then monitor the GitHub Actions `Release` workflow until it finishes:
 - image build
 - provision
 - deploy
