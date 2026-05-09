@@ -34,39 +34,42 @@ The `Build app images` workflow:
 
 Then the `Release` workflow does this:
 
-1. Resolve the release tag to a commit SHA on `main`.
-2. Assert the canonical images for that commit SHA already exist in GHCR:
+1. Start from either:
+   - the successful `Build app images` workflow run on `main` for auto-published releases
+   - the `release: published` event for manual backfills
+2. Resolve the release tag to a commit SHA on `main`.
+3. Assert the canonical images for that commit SHA already exist in GHCR:
 
 ```bash
 just ci::assert-release-images <commit-sha>
 ```
 
-3. Retag those existing images with the human-friendly release tag:
+4. Retag those existing images with the human-friendly release tag:
 
 ```bash
 just ci::retag-release-images <commit-sha> <release-tag>
 ```
 
-4. Validate CI secrets with:
+5. Validate CI secrets with:
 
 ```bash
 just ci::secrets-check .env.ci production
 ```
 
-5. Provision infra:
+6. Provision infra:
 
 ```bash
 dotenvx run -f .env.ci -- just provision production .env.ci
 ```
 
-6. Configure the SSH key from `.env.ci`.
-7. Deploy code:
+7. Configure the SSH key from `.env.ci`.
+8. Deploy code:
 
 ```bash
 just deploy-ssh <release-tag> <commit-sha> red.computer 2222
 ```
 
-8. Verify deploy health:
+9. Verify deploy health:
 
 ```bash
 just deploy-check https://red.computer
@@ -80,14 +83,20 @@ Examples:
 
 ```bash
 gh release view <tag>
-gh run list --workflow "Build app images" --limit 5
-gh run list --workflow Release --limit 5
+gh run list --workflow build-app-images.yml --limit 5
+gh run list --workflow release.yml --limit 5
 gh run watch <run-id>
 gh run view <run-id>
 gh run view <run-id> --job <job-id> --log
 ```
 
 If the user gives a run URL or job URL, inspect that exact run first.
+
+For a continuous local watcher, use:
+
+```bash
+just ci::watch-main-release
+```
 
 ## Healthy release criteria
 

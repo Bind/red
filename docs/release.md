@@ -8,7 +8,14 @@ Production releases are cut automatically after a push to `main`.
 2. Computes the next patch release tag (`vX.Y.Z`) unless that commit already has a release tag.
 3. Publishes the GitHub Release for that commit.
 
-Publishing the GitHub Release then triggers `.github/workflows/release.yml`, which:
+`.github/workflows/release.yml` then deploys production. It supports two entry paths:
+
+1. `workflow_run` after a successful `Build app images` run on `main`:
+   this is the normal path for bot-published releases.
+2. `release: published`:
+   this remains available for manual backfills.
+
+The release workflow:
 
 1. Checks out the tag and resolves its commit SHA.
 2. Verifies that prebuilt GHCR images already exist for that commit SHA.
@@ -69,6 +76,16 @@ Watch it under:
 
 - Actions → `Build app images`
 - Actions → `Release`
+
+For a local operator watcher, run:
+
+```bash
+just ci::watch-main-release
+```
+
+That polls `main` every 300 seconds, records the latest build/release run URLs,
+and only runs `just deploy-check https://red.computer` after the matching
+release workflow succeeds.
 
 If the release workflow says prebuilt images are missing for the tag's commit SHA,
 wait for the `Build app images` workflow on that `main` commit to finish, or fix
