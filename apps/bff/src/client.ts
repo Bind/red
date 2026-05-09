@@ -13,7 +13,7 @@ type HonoApp = Hono<any, any, any>;
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export type Upstream = "api" | "auth" | "obs" | "grs" | "mcp";
+export type Upstream = "api" | "auth" | "obs" | "grs";
 export type AuthMode = "jwt" | "cookie" | "session" | "none";
 export type BodyMode = "json" | "text" | "stream";
 
@@ -22,7 +22,6 @@ export interface ClientConfig {
   authBaseUrl: string;
   obsBaseUrl?: string;
   grsBaseUrl?: string;
-  mcpBaseUrl?: string;
   bureauSourceRoot?: string;
   disableAuth?: boolean;
 }

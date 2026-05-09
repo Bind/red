@@ -41,11 +41,6 @@ services:
   obs:
     env_file:
       - ../../.env
-
-  mcp:
-    env_file:
-      - ../../.env
-
 volumes:
   caddy-data:
   caddy-config:

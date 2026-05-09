@@ -44,7 +44,6 @@ services:
       - auth
       - obs
       - grs
-      - mcp
     environment:
       BFF_PORT: 3001
       RED_API_BASE_URL: http://api:3000

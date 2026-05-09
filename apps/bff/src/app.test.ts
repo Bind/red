@@ -23,8 +23,6 @@ describe("BFF app", () => {
             return Response.json({ service: url.host.split(".")[0], status: "ok" });
           case "obs.test":
             return Response.json({ error: "duckdb unavailable" }, { status: 503 });
-          case "mcp.test":
-            return Response.json({ service: "mcp", status: "ok" });
           default:
             return new Response("not found", { status: 404 });
         }
