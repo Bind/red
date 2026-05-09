@@ -43,6 +43,7 @@ The bucket is auto-created under the Cloudflare account associated with
 provisioned once on the server and survive every release:
 
 - `.env` — production env vars (`TRIAGE_OPENAI_API_KEY`, `SMITHERS_API_KEY`, etc.)
+- `.env.keys` — dotenvx encryption keys
 - `*.db` / `*.db-wal` / `*.db-shm` — sqlite files
 - `node_modules`, `.git`, `.sst`
 
