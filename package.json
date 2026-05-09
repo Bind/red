@@ -22,15 +22,18 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
+    "better-result": "^2.9.2",
     "hono": "^4.12.12",
     "superjson": "^2.2.2",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@ast-grep/cli": "^0.42.1",
     "@biomejs/biome": "latest",
     "@types/bun": "latest",
     "sst": "^3",
     "turbo": "^2.5.4",
     "typescript": "^5.9.3"
-  }
+  },
+  "trustedDependencies": ["@ast-grep/cli"]
 }

@@ -131,6 +131,11 @@ fmt:
 lint:
     bun run lint
 
+# Scan for `throw` statements that should be Result<> from better-result.
+# Scope and severity are controlled by rules/no-throw.yml.
+lint-throws:
+    bunx ast-grep scan --error=no-throw
+
 # Lint the bff service (biome; enforces no-explicit-any)
 bff-lint:
     cd apps/bff && bun run lint

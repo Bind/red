@@ -1,0 +1,22 @@
+id: no-throw
+language: TypeScript
+severity: warning
+message: |
+  Don't throw. Return Result<T, E> from `better-result` instead.
+  Wrap APIs that throw with `fromThrowable` / `tryAsync`.
+  See: https://github.com/dmmulroy/better-result
+note: |
+  Scoped to pkg/health while migrating one package at a time. Once that package
+  is converted to Result, flip severity to `error` and expand `files:` to the
+  next package (pkg/obs, then pkg/daemons, then apps/*).
+files:
+  - "pkg/health/**/*.ts"
+ignores:
+  - "**/*.test.ts"
+  - "**/*.integration.ts"
+  - "**/test/**"
+  - "**/fixtures/**"
+rule:
+  any:
+    - pattern: throw new $ERR($$$)
+    - pattern: throw $ERR
