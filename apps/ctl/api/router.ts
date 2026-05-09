@@ -81,7 +81,6 @@ export function makeApiRouter(deps: ApiDeps) {
     repos,
     sessions,
     repositoryProvider,
-    stateMachine,
     eventBus,
     logger,
   } = deps;

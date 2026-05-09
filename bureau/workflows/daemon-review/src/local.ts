@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LocalRepo } from "../../../repo";
+import { sandbox } from "../../../sandbox";
 import { runDaemonReviewWorkflow } from "../workflow";
 import { localReviewLogger } from "./logger";
 
@@ -157,6 +158,7 @@ export async function runLocalDaemonReview(argv = process.argv.slice(2)): Promis
     baseRef,
     headRef,
     changedFiles,
+    sandboxProvider: sandbox.justBash(),
     preserveSandbox: false,
     daemonName,
     daemonLimit: daemonName ? undefined : 1,

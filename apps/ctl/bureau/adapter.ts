@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
-import type { AgentProvider } from "../../../pkg/daemons/src/providers/types";
+import { type BureauSandboxProvider, bureau } from "../../../bureau/sandbox";
 import type { BureauAgentDefinition } from "../../../bureau/sdk";
-import { bureau, type BureauSandboxProvider } from "../../../bureau/sandbox";
 import type { BureauStoredSession } from "../../../bureau/session-store";
+import type { AgentProvider } from "../../../pkg/daemons/src/providers/types";
 import type { SessionQueries } from "../db/queries";
 
 export type BureauAdapterDeps = {
@@ -54,6 +54,8 @@ export async function runBureauForChange<I, O>(
       contextBase: {
         name: input.agentName,
         sourceRoot: root,
+        sessionRoot: root,
+        cwd: root,
         agentDir,
         assets: { skills: [] },
         emit() {},
@@ -71,10 +73,7 @@ export async function runBureauForChange<I, O>(
       maxTurns: input.maxTurns ?? 1,
     });
 
-    input.deps.agentSessions.attachRuntimeSessionId(
-      sessionRow.id,
-      outcome.session.meta.sessionId,
-    );
+    input.deps.agentSessions.attachRuntimeSessionId(sessionRow.id, outcome.session.meta.sessionId);
     const status = outcome.result.ok ? "completed" : "failed";
     input.deps.agentSessions.finish(sessionRow.id, status, Date.now() - startedAt);
 

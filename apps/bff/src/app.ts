@@ -288,20 +288,6 @@ export function createApp(config: BffConfig) {
         .as("text")
         .send(($) => $.api.changes[":id"].diff.$get({ param: { id: c.req.param("id") } })),
     )
-    .post("/changes/:id/regenerate-summary", (c) =>
-      api(c).send(($) =>
-        $.api.changes[":id"]["regenerate-summary"].$post({
-          param: { id: c.req.param("id") },
-        }),
-      ),
-    )
-    .post("/changes/:id/requeue-summary", (c) =>
-      api(c).send(($) =>
-        $.api.changes[":id"]["requeue-summary"].$post({
-          param: { id: c.req.param("id") },
-        }),
-      ),
-    )
     .get("/changes/:id/sessions", (c) =>
       api(c).send(($) => $.api.changes[":id"].sessions.$get({ param: { id: c.req.param("id") } })),
     )

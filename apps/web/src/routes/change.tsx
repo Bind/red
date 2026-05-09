@@ -27,8 +27,6 @@ import {
   fetchChange,
   fetchDiff,
   fetchSessions,
-  regenerateSummary,
-  requeueSummary,
   subscribeToAgentEvents,
 } from "@/lib/api";
 
@@ -652,8 +650,6 @@ export function ChangeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [change, setChange] = useState<ChangeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
-  const [requeueing, setRequeueing] = useState(false);
   const [diff, setDiff] = useState<string | null>(null);
   const setHeaderContent = useHeaderContent();
   const summaryGenerated = change ? parseSummaryGeneratedMetadata(change.events) : null;
@@ -715,30 +711,6 @@ export function ChangeDetailPage() {
       .catch(() => {}); // diff is optional — don't block the page
   }, [id]);
 
-  const handleRegenerateSummary = async () => {
-    if (!change) return;
-    setRegenerating(true);
-    try {
-      await regenerateSummary(change.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Regenerate failed");
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
-  const handleRequeueSummary = async () => {
-    if (!change) return;
-    setRequeueing(true);
-    try {
-      await requeueSummary(change.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Requeue failed");
-    } finally {
-      setRequeueing(false);
-    }
-  };
-
   if (error) {
     return (
       <div className="space-y-4">
@@ -770,14 +742,6 @@ export function ChangeDetailPage() {
 
       <LogViewer changeId={change.id} isSummarizing={change.status === "summarizing"} />
 
-      {change.status === "scored" && (
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRequeueSummary} disabled={requeueing}>
-            {requeueing ? "Requeueing..." : "Requeue Summary"}
-          </Button>
-        </div>
-      )}
-
       {change.summary &&
         (() => {
           try {
@@ -792,19 +756,7 @@ export function ChangeDetailPage() {
             return (
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{summary.title || "Summary"}</CardTitle>
-                    {change.status === "ready_for_review" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleRegenerateSummary}
-                        disabled={regenerating}
-                      >
-                        {regenerating ? "Regenerating..." : "Regenerate Summary"}
-                      </Button>
-                    )}
-                  </div>
+                  <CardTitle className="text-base">{summary.title || "Summary"}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div>

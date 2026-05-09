@@ -1,88 +1,229 @@
-// TODO(#73): Remote-container Sandbox adapter — Pi-in-Docker (or Podman).
-//
-// This file ships as a typed stub so consumers can target the final shape.
-// The actual container plumbing closes in a follow-up session where Docker
-// is available. Closing this issue means landing every item below as real
-// code with green tests against a live Docker daemon:
-//
-//   1. Container with bureau source baked in (or mounted), Pi running
-//      inside instead of an external runner. Lifted to
-//      `bureau/runtime-image/`.
-//
-//   2. Pi runs *inside* the container. Tools (read/bash/track/complete)
-//      are pure in-container code — no wire protocol. The host invokes
-//      "run agent <name> with input X"; the container resolves
-//      `bureau/agents/<name>/agent.ts`.
-//
-//   3. Events stream out via stdout/stderr.
-//
-//   4. Container labels carried forward for ops visibility:
-//      `red.run_id`, `red.session_id`, plus session/turn/agent/repo/refs.
-//      Reference: `apps/ctl/claw/runner.ts:124`–`153`.
-//
-//   5. Docker preflight as adapter health checks before `Bun.spawn`:
-//      disk-space threshold, `docker info`, `docker image inspect`,
-//      ephemeral-create probe. Reference:
-//      `apps/ctl/claw/runner.ts:392`–`452`.
-//
-//   6. Orphan reconciliation: small sweep matching live containers (by
-//      `red.session_id` label) against Sessions whose latest snapshot
-//      says "running"; mark missing ones failed. Smaller than
-//      `apps/ctl/claw/reconcile.ts` thanks to `await using`, but a real
-//      sweep is still required.
-//
-//   7. Workspace persistence: when `workspaceRepo` is set on
-//      createSandbox, the container clones the scratch ref into its
-//      working dir before the agent loop and pushes any edits back at
-//      close. Reuses `seedWorkspace` / `commitWorkspace` from
-//      `bureau/workspace-persistence.ts`.
-//
-//   8. Integration test: open Sandbox via remote-container, run an
-//      Agent, close. Reopen with same `sessionId`, run another Agent,
-//      prior edits visible. Snapshot reflects two Turns.
-//
-//   9. Crash test: kill a container mid-`.run()`, run the orphan sweep,
-//      Session is marked failed and the workspace ref is preserved if
-//      the agent committed any edits.
-//
-//  10. Preflight test: simulate missing image / unreachable daemon /
-//      low disk, adapter surfaces a typed error before spawning.
-//
-//  Podman is the same shape — same adapter, different command. Either
-//  ship together or behind a `runtime: "docker" | "podman"` knob; no
-//  wire-protocol change.
-
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
+import { copyDirectoryContents, resolveSandboxCwd } from "./sandbox-fs";
 import type {
   BureauSandboxPrepareOptions,
   BureauSandboxProvider,
   BureauSandboxSession,
   PreparedBureauWorkspace,
+  PreparedBureauClone,
+  BureauSandboxCloneOptions,
 } from "./sandbox";
 
 export type RemoteContainerOptions = {
-  /** Container runtime to use. Defaults to "docker". */
   runtime?: "docker" | "podman";
-  /** Image to run; defaults to the bureau runtime image. */
   image?: string;
+  minDiskFreeKb?: number;
 };
 
-export function remoteContainer(_options: RemoteContainerOptions = {}): BureauSandboxProvider {
+type RuntimeName = NonNullable<RemoteContainerOptions["runtime"]>;
+
+type MaterializedRemote = {
+  fetchUrl: string;
+  mounts: MountSpec[];
+  gitConfigArgs?: string[];
+};
+
+type MountSpec = {
+  hostPath: string;
+  containerPath: string;
+  readOnly?: boolean;
+};
+
+const DEFAULT_RUNTIME: RuntimeName = "docker";
+const DEFAULT_IMAGE = "alpine/git:2.49.1";
+const DEFAULT_MIN_DISK_FREE_KB = 1_048_576;
+
+export function remoteContainer(options: RemoteContainerOptions = {}): BureauSandboxProvider {
+  const runtime = options.runtime ?? DEFAULT_RUNTIME;
+  const image = options.image ?? DEFAULT_IMAGE;
+  const minDiskFreeKb = options.minDiskFreeKb ?? DEFAULT_MIN_DISK_FREE_KB;
+
   return {
+    kind: "remote",
     name: "remote-container",
-    async create(_opts: { preserve: boolean }): Promise<BureauSandboxSession> {
-      throw notImplemented("create");
+    async create(createOptions): Promise<BureauSandboxSession> {
+      const sandboxRoot = await mkdtemp(join(tmpdir(), "bureau-remote-"));
+      await ensureRuntimeHealthy({ runtime, image, diskCheckPath: sandboxRoot, minDiskFreeKb });
+
+      return {
+        name: "remote-container",
+        root: sandboxRoot,
+        exposedRoot: sandboxRoot,
+        async clone(cloneOptions) {
+          return cloneWithRuntime({
+            runtime,
+            image,
+            sandboxRoot,
+            cloneOptions,
+          });
+        },
+        async cleanup() {
+          if (createOptions.preserve) return;
+          await rm(sandboxRoot, { recursive: true, force: true });
+        },
+      };
     },
-    async prepare(_opts: BureauSandboxPrepareOptions): Promise<PreparedBureauWorkspace> {
-      throw notImplemented("prepare");
+    async prepare(prepareOptions): Promise<PreparedBureauWorkspace> {
+      const session = await this.create({ preserve: prepareOptions.preserve });
+      const sourceRoot = resolve(prepareOptions.sourceRoot);
+      const destinationRoot = join(session.root, "workspace");
+      await mkdir(destinationRoot, { recursive: true });
+      await copyDirectoryContents(sourceRoot, destinationRoot);
+      return {
+        root: destinationRoot,
+        cwd: resolveSandboxCwd(sourceRoot, destinationRoot, prepareOptions.cwd),
+        exposedRoot: session.exposedRoot,
+        cleanup: session.cleanup,
+      };
     },
   };
 }
 
-function notImplemented(method: string): Error {
-  return new Error(
-    `bureau remote-container adapter is not implemented yet (${method}). ` +
-      `See the TODO list at the top of bureau/sandbox-remote.ts and #73 ` +
-      `for what needs to land. The remote container ships as a typed stub ` +
-      `until that work closes.`,
-  );
+async function cloneWithRuntime(input: {
+  runtime: RuntimeName;
+  image: string;
+  sandboxRoot: string;
+  cloneOptions: BureauSandboxCloneOptions;
+}): Promise<PreparedBureauClone> {
+  const destinationRoot = join(input.sandboxRoot, input.cloneOptions.dest);
+  await mkdir(destinationRoot, { recursive: true });
+
+  const remote = await input.cloneOptions.repo.getReadRemote(input.cloneOptions.ref);
+  const materialized = materializeRemote(remote.fetchUrl, remote.gitConfigArgs);
+  await runContainerCommand({
+    runtime: input.runtime,
+    image: input.image,
+    workdir: "/workspace",
+    mounts: [
+      { hostPath: destinationRoot, containerPath: "/workspace" },
+      ...materialized.mounts,
+    ],
+    script: [
+      "git init -q .",
+      `git remote add origin ${shellQuote(materialized.fetchUrl)}`,
+      [
+        "git",
+        ...(materialized.gitConfigArgs ?? []),
+        "fetch",
+        "--depth",
+        "1",
+        "origin",
+        remote.ref,
+      ].map(shellQuote).join(" "),
+      "git checkout --detach FETCH_HEAD",
+    ].join(" && "),
+  });
+
+  return {
+    repoId: input.cloneOptions.repo.id,
+    ref: input.cloneOptions.ref,
+    dest: input.cloneOptions.dest,
+    root: destinationRoot,
+    cwd: resolveSandboxCwd(destinationRoot, destinationRoot, resolve(destinationRoot, input.cloneOptions.cwd ?? ".")),
+  };
+}
+
+function materializeRemote(fetchUrl: string, gitConfigArgs?: string[]): MaterializedRemote {
+  if (isAbsolute(fetchUrl)) {
+    return {
+      fetchUrl: "/remote-source",
+      mounts: [{ hostPath: fetchUrl, containerPath: "/remote-source", readOnly: true }],
+      gitConfigArgs,
+    };
+  }
+
+  return {
+    fetchUrl: rewriteLocalhost(fetchUrl),
+    mounts: [],
+    gitConfigArgs,
+  };
+}
+
+function rewriteLocalhost(fetchUrl: string): string {
+  return fetchUrl.replace(/:\/\/(?:localhost|127\.0\.0\.1)(?=[:/]|$)/, "://host.docker.internal");
+}
+
+async function ensureRuntimeHealthy(input: {
+  runtime: RuntimeName;
+  image: string;
+  diskCheckPath: string;
+  minDiskFreeKb: number;
+}): Promise<void> {
+  await assertDiskSpace(input.diskCheckPath, input.minDiskFreeKb);
+  await runHostCommand([input.runtime, "info"]);
+  await runHostCommand([input.runtime, "image", "inspect", input.image]);
+  await runContainerCommand({
+    runtime: input.runtime,
+    image: input.image,
+    script: "true",
+  });
+}
+
+async function assertDiskSpace(path: string, minDiskFreeKb: number): Promise<void> {
+  const result = await runHostCommand(["df", "-Pk", path]);
+  const lines = result.stdout.trim().split("\n");
+  const row = lines.at(-1);
+  if (!row) {
+    throw new Error(`remote-container preflight failed: unable to read disk space for ${path}`);
+  }
+  const columns = row.trim().split(/\s+/);
+  const availableKb = Number.parseInt(columns[3] ?? "", 10);
+  if (!Number.isFinite(availableKb)) {
+    throw new Error(`remote-container preflight failed: unable to parse disk space for ${path}`);
+  }
+  if (availableKb < minDiskFreeKb) {
+    throw new Error(
+      `remote-container preflight failed: only ${availableKb}KB free at ${path}; requires at least ${minDiskFreeKb}KB`,
+    );
+  }
+}
+
+async function runContainerCommand(input: {
+  runtime: RuntimeName;
+  image: string;
+  script: string;
+  mounts?: MountSpec[];
+  workdir?: string;
+}): Promise<void> {
+  const args = [input.runtime, "run", "--rm"];
+  if (input.runtime === "docker") {
+    args.push("--add-host", "host.docker.internal:host-gateway");
+  }
+  args.push("--entrypoint", "sh");
+  for (const mount of input.mounts ?? []) {
+    args.push(
+      "-v",
+      `${mount.hostPath}:${mount.containerPath}${mount.readOnly ? ":ro" : ""}`,
+    );
+  }
+  if (input.workdir) {
+    args.push("-w", input.workdir);
+  }
+  args.push(input.image, "-lc", input.script);
+  await runHostCommand(args);
+}
+
+async function runHostCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const proc = Bun.spawn({
+    cmd: args,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `remote-container command failed (${args.join(" ")}): ${(stderr || stdout).trim()}`,
+    );
+  }
+  return { stdout, stderr };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

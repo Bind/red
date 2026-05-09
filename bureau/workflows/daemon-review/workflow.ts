@@ -1,7 +1,7 @@
 import { daemonExecutor } from "../../agents/daemon-executor/agent";
 import { librarian } from "../../agents/librarian/agent";
 import type { SandboxRepo } from "../../repo";
-import { sandbox } from "../../sandbox";
+import { sandbox, type BureauSandboxProvider } from "../../sandbox";
 import { createWideEvent, memorySink, stdoutSink, type WideEvent } from "../../../pkg/daemons/src/wide-events";
 import {
   loadDaemonReviewInputs,
@@ -21,6 +21,7 @@ export type DaemonReviewWorkflowInput = {
   baseRef: string;
   headRef: string;
   changedFiles: string[];
+  sandboxProvider?: BureauSandboxProvider;
   preserveSandbox?: boolean;
   daemonName?: string;
   daemonLimit?: number;
@@ -89,7 +90,8 @@ export async function runDaemonReviewWorkflow(
     daemonName: input.daemonName ?? null,
   });
 
-  const sb = await sandbox.justBash().create({
+  const sandboxProvider = input.sandboxProvider ?? sandbox.justBash();
+  const sb = await sandboxProvider.create({
     preserve: input.preserveSandbox === true,
   });
 

@@ -9,6 +9,59 @@ import {
 } from "./session-store";
 import type { BureauAgentContext, BureauAgentDefinition } from "./sdk";
 
+export async function persistRootBureauSession(input: {
+  context: Pick<BureauAgentContext<unknown>, "name" | "sessionRoot">;
+  sessionId: string;
+  args: unknown;
+  result: ProviderRunResult;
+  mode?: string | null;
+  sourceSha?: string | null;
+  blobStore?: BlobStore;
+  workspaceDir?: string;
+}): Promise<BureauStoredSession> {
+  const blobs = input.blobStore && input.workspaceDir
+    ? await harvestBureauOut({ workspaceDir: input.workspaceDir, sessionId: input.sessionId, store: input.blobStore })
+    : undefined;
+  const store = createLocalBureauSessionStore({ rootDir: input.context.sessionRoot });
+  return await store.createRoot({
+    sessionId: input.sessionId,
+    agentName: input.context.name,
+    args: input.args,
+    mode: input.mode ?? null,
+    sourceSha: input.sourceSha ?? null,
+    snapshot: normalizeSnapshot(input.result.session),
+    blobs,
+    output: input.result.ok ? input.result.payload : undefined,
+  });
+}
+
+export async function persistChildBureauSession(input: {
+  context: Pick<BureauAgentContext<unknown>, "name" | "sessionRoot">;
+  sessionId: string;
+  parentSession: BureauStoredSession;
+  result: ProviderRunResult;
+  mode?: string | null;
+  sourceSha?: string | null;
+  blobStore?: BlobStore;
+  workspaceDir?: string;
+}): Promise<BureauStoredSession> {
+  const blobs = input.blobStore && input.workspaceDir
+    ? await harvestBureauOut({ workspaceDir: input.workspaceDir, sessionId: input.sessionId, store: input.blobStore })
+    : undefined;
+  const store = createLocalBureauSessionStore({ rootDir: input.context.sessionRoot });
+  return await store.createChild({
+    sessionId: input.sessionId,
+    parentSessionId: input.parentSession.meta.sessionId,
+    agentName: input.context.name,
+    args: input.parentSession.meta.args,
+    mode: input.mode ?? null,
+    sourceSha: input.sourceSha ?? null,
+    snapshot: normalizeSnapshot(input.result.session),
+    blobs,
+    output: input.result.ok ? input.result.payload : undefined,
+  });
+}
+
 export async function runBureauAgent<Input>(input: {
   definition: BureauAgentDefinition<Input>;
   context: Omit<BureauAgentContext<Input>, "sessionId" | "input">;
@@ -44,19 +97,15 @@ export async function runBureauAgent<Input>(input: {
     extraTools: plan.tools ?? [],
     ...input.providerCallbacks,
   });
-  const blobs = input.blobStore
-    ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
-    : undefined;
-  const store = createLocalBureauSessionStore({ rootDir: ctx.sourceRoot });
-  const session = await store.createRoot({
+  const session = await persistRootBureauSession({
+    context: ctx,
     sessionId,
-    agentName: ctx.name,
     args: input.args,
-    mode: input.mode ?? null,
-    sourceSha: input.sourceSha ?? null,
-    snapshot: normalizeSnapshot(result.session),
-    blobs,
-    output: result.ok ? result.payload : undefined,
+    result,
+    mode: input.mode,
+    sourceSha: input.sourceSha,
+    blobStore: input.blobStore,
+    workspaceDir,
   });
 
   return { context: ctx, plan, result, session };
@@ -98,20 +147,15 @@ export async function resumeBureauAgent<Input>(input: {
     extraTools: plan.tools ?? [],
     ...input.providerCallbacks,
   });
-  const blobs = input.blobStore
-    ? await harvestBureauOut({ workspaceDir, sessionId, store: input.blobStore })
-    : undefined;
-  const store = createLocalBureauSessionStore({ rootDir: ctx.sourceRoot });
-  const session = await store.createChild({
+  const session = await persistChildBureauSession({
+    context: ctx,
     sessionId,
-    parentSessionId: input.parentSession.meta.sessionId,
-    agentName: ctx.name,
-    args: input.parentSession.meta.args,
-    mode: input.mode ?? null,
-    sourceSha: input.sourceSha ?? null,
-    snapshot: normalizeSnapshot(result.session),
-    blobs,
-    output: result.ok ? result.payload : undefined,
+    parentSession: input.parentSession,
+    result,
+    mode: input.mode,
+    sourceSha: input.sourceSha,
+    blobStore: input.blobStore,
+    workspaceDir,
   });
 
   return { context: ctx, plan, result, session };

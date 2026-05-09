@@ -1,19 +1,7 @@
 import { join, resolve } from "node:path";
-import { agent, type BureauAgentContext } from "../../sdk";
-
-export type WideRollupRecord = {
-  request_id: string;
-  first_ts: string;
-  last_ts: string;
-  total_duration_ms: number;
-  entry_service: string;
-  services: string[];
-  route_names: string[];
-  final_outcome: "ok" | "error" | "unknown";
-  final_status_code: number | null;
-  primary_error: Record<string, unknown> | null;
-  events: Array<Record<string, unknown>>;
-};
+import type { WideRollupRecord } from "../../../pkg/obs/src/wide-events";
+import { agent, type BureauAgentContext, type BureauAgentInstance } from "../../sdk";
+export type { WideRollupRecord } from "../../../pkg/obs/src/wide-events";
 
 export type TriagePlan = {
   hypothesis: string;
@@ -61,6 +49,7 @@ export function buildTriageAnalyzeContext(
   return {
     name: "triage-analyze",
     sourceRoot: root,
+    sessionRoot: root,
     root,
     cwd: root,
     agentDir,
@@ -71,6 +60,21 @@ export function buildTriageAnalyzeContext(
     },
     resolveSharedAsset(relativePath: string) {
       return join(root, "bureau", "shared", relativePath);
+    },
+  };
+}
+
+export function createTriageAnalyzeAgentInstance(
+  rollup: WideRollupRecord,
+  cwd: string,
+): BureauAgentInstance<WideRollupRecord, { rollup: WideRollupRecord }> {
+  return {
+    name: "triage-analyze",
+    args: { rollup },
+    definition: triageAnalyze(),
+    context: buildTriageAnalyzeContext(cwd),
+    buildInput() {
+      return rollup;
     },
   };
 }

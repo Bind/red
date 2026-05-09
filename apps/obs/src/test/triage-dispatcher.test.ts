@@ -174,4 +174,3 @@ describe("BureauTriageDispatcher", () => {
     expect((errors[0] as Error).message).toBe("workflow failed");
   });
 });
-

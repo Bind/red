@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
-import { createFileCodexAuthSource, createPiProvider } from "@red/daemons";
 import { configureServerLogging, getServerLogger } from "@red/server";
-import { justBashSandboxProvider } from "../../../bureau/sandbox";
+import { createBureauAgentProvider } from "../../../bureau/provider";
+import { sandbox } from "../../../bureau/sandbox";
 import { runTriageAnalyze } from "../../../bureau/workflows/triage/workflow";
 import { createApp } from "./service/app";
 import { replayCollectorFromRaw } from "./service/collector-service";
@@ -21,7 +21,11 @@ const logger = getServerLogger(["obs"]);
 
 function buildBureauTriageDispatcher(triageConfig: TriageConfig): TriageDispatcher {
   const sourceRoot = resolve(process.env.BUREAU_SOURCE_ROOT ?? process.cwd());
-  const agentProvider = createPiProvider({ authSource: createFileCodexAuthSource() });
+  const sandboxProvider = sandbox.justBash();
+  const agentProvider = createBureauAgentProvider({
+    sandboxProvider,
+    repoRoot: sourceRoot,
+  });
   const maxWallclockMs = Number.parseInt(
     process.env.TRIAGE_MAX_WALLCLOCK_MS ?? `${10 * 60_000}`,
     10,
@@ -29,10 +33,10 @@ function buildBureauTriageDispatcher(triageConfig: TriageConfig): TriageDispatch
   const inner = new BureauTriageDispatcher({
     runAnalyze: async (rollup) => {
       await runTriageAnalyze({
-        rollup: rollup as Parameters<typeof runTriageAnalyze>[0]["rollup"],
+        rollup,
         deps: {
           agentProvider,
-          sandboxProvider: justBashSandboxProvider,
+          sandboxProvider,
           sourceRoot,
           maxWallclockMs,
         },

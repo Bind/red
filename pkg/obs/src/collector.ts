@@ -1,51 +1,14 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ConsoleJsonSink, type EventSink, type ObsEvent } from "./core";
+import type {
+  CollectorBatchRequest,
+  CollectorBatchResponse,
+  CollectorSource,
+  CollectorWideEvent,
+} from "./wide-events";
 
 type FetchLike = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
-
-export interface CollectorWideEvent {
-  event_id: string;
-  request_id: string;
-  is_request_root: boolean;
-  parent_request_id?: string;
-  trace_id?: string;
-  service: string;
-  instance_id?: string;
-  kind: string;
-  ts: string;
-  ended_at?: string;
-  duration_ms?: number;
-  outcome?: "ok" | "error";
-  status_code?: number;
-  route_name?: string;
-  error_name?: string;
-  error_message?: string;
-  data: Record<string, unknown>;
-}
-
-export interface CollectorSource {
-  service: string;
-  instance_id?: string;
-}
-
-export interface CollectorBatchRequest {
-  sent_at: string;
-  source: CollectorSource;
-  events: CollectorWideEvent[];
-}
-
-export interface CollectorRejectedEvent {
-  event_id: string;
-  reason: string;
-}
-
-export interface CollectorBatchResponse {
-  accepted: number;
-  rejected: number;
-  request_ids: string[];
-  errors?: CollectorRejectedEvent[];
-}
 
 export interface CollectorEventMappingOptions {
   service?: string;

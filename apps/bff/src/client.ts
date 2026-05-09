@@ -5,6 +5,7 @@ import { hc } from "hono/client";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
 import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
+
 // Hono's typed generics intentionally use `any` for un-pinned slots; this
 // alias is the single quarantined site so the rest of the file stays clean.
 // biome-ignore lint/suspicious/noExplicitAny: hono internal generics
@@ -12,7 +13,7 @@ type HonoApp = Hono<any, any, any>;
 
 type FetchImpl = (input: RequestInfo | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export type Upstream = "api" | "auth" | "obs" | "grs" | "mcp";
+export type Upstream = "api" | "auth" | "obs" | "grs";
 export type AuthMode = "jwt" | "cookie" | "session" | "none";
 export type BodyMode = "json" | "text" | "stream";
 
@@ -21,7 +22,6 @@ export interface ClientConfig {
   authBaseUrl: string;
   obsBaseUrl?: string;
   grsBaseUrl?: string;
-  mcpBaseUrl?: string;
   bureauSourceRoot?: string;
   disableAuth?: boolean;
 }

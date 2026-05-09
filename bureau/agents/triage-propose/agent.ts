@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { agent, type BureauAgentContext } from "../../sdk";
+import { agent, type BureauAgentContext, type BureauAgentInstance } from "../../sdk";
 import type { TriagePlan } from "../triage-analyze/agent";
 
 export type TriageProposeInput = {
@@ -46,6 +46,7 @@ export function buildTriageProposeContext(
   return {
     name: "triage-propose",
     sourceRoot: root,
+    sessionRoot: root,
     root,
     cwd: root,
     agentDir,
@@ -56,6 +57,21 @@ export function buildTriageProposeContext(
     },
     resolveSharedAsset(relativePath: string) {
       return join(root, "bureau", "shared", relativePath);
+    },
+  };
+}
+
+export function createTriageProposeAgentInstance(
+  input: TriageProposeInput,
+  cwd: string,
+): BureauAgentInstance<TriageProposeInput, TriageProposeInput> {
+  return {
+    name: "triage-propose",
+    args: input,
+    definition: triagePropose(),
+    context: buildTriageProposeContext(cwd),
+    buildInput() {
+      return input;
     },
   };
 }

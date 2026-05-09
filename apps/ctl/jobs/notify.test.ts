@@ -59,7 +59,6 @@ describe("NotificationSender", () => {
     status: "ready_for_review",
     confidence: "needs_review",
     created_by: "human",
-    summary: '{"what_changed":"test"}',
     diff_stats: null,
     delivery_id: "del-1",
     created_at: new Date().toISOString(),

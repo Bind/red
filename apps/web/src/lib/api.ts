@@ -448,34 +448,6 @@ export async function fetchDiff(id: number): Promise<string> {
   return res.text();
 }
 
-export async function regenerateSummary(id: number): Promise<void> {
-  const res = await client.rpc.changes[":id"]["regenerate-summary"].$post({
-    param: { id: String(id) },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    const message =
-      typeof body === "object" && body && "error" in body && typeof body.error === "string"
-        ? body.error
-        : `API error: ${res.status}`;
-    throw new Error(message);
-  }
-}
-
-export async function requeueSummary(id: number): Promise<void> {
-  const res = await client.rpc.changes[":id"]["requeue-summary"].$post({
-    param: { id: String(id) },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    const message =
-      typeof body === "object" && body && "error" in body && typeof body.error === "string"
-        ? body.error
-        : `API error: ${res.status}`;
-    throw new Error(message);
-  }
-}
-
 export async function fetchRepos(): Promise<RepoSummary[]> {
   try {
     const payload = await requestJson<unknown>("/rpc/repos");

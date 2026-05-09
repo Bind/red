@@ -6,7 +6,8 @@ import { join } from "node:path";
 import type { AgentProvider } from "../pkg/daemons/src/providers/types";
 import { bureau, createSandbox, justBashSandboxProvider, type BureauSandboxProvider } from "./sandbox";
 import { LocalScratchRepo } from "./scratch-repo";
-import { agent } from "./sdk";
+import { agent, type BureauAgentInstance } from "./sdk";
+import { createLocalBureauSessionStore } from "./session-store";
 
 let rootDir: string;
 
@@ -34,7 +35,9 @@ const fakeAgentProvider: AgentProvider = {
 const baseContext = (rootDir: string) => ({
   name: "tester",
   sourceRoot: rootDir,
+  sessionRoot: rootDir,
   root: rootDir,
+  cwd: rootDir,
   agentDir: join(rootDir, "bureau", "agents", "tester"),
   assets: { skills: [] },
   emit() {},
@@ -128,6 +131,126 @@ describe("createSandbox", () => {
 
     expect(outcome.session.meta.agentName).toBe("tester");
     expect(cleanupCalls).toBe(1);
+  });
+
+  test("bureau.run accepts a first-class agent instance", async () => {
+    const instance: BureauAgentInstance<{ prompt: string }, { prompt: string }> = {
+      name: "tester",
+      args: { prompt: "hello from instance" },
+      definition: agent<{ prompt: string }>()
+        .instructions(() => "instance agent")
+        .initialInput((ctx) => ctx.input.prompt)
+        .build(),
+      context: baseContext(rootDir),
+      buildInput() {
+        return { prompt: "hello from instance" };
+      },
+    };
+
+    const outcome = await bureau.run({
+      provider: justBashSandboxProvider,
+      agentProvider: fakeAgentProvider,
+      maxWallclockMs: 5_000,
+      agent: instance,
+      maxTurns: 1,
+    });
+
+    expect(outcome.session.meta.agentName).toBe("tester");
+    expect(outcome.session.meta.args).toEqual({ prompt: "hello from instance" });
+    expect(outcome.session.snapshot.systemPrompt).toBe("instance agent");
+  });
+
+  test("bureau.run materializes the agent source tree into the sandbox workspace", async () => {
+    await writeFile(join(rootDir, "tracked.txt"), "copied into sandbox");
+
+    let providerCwd = "";
+    const provider: AgentProvider = {
+      name: "fake",
+      async runUntilComplete(opts) {
+        providerCwd = opts.cwd;
+        return {
+          ok: true,
+          payload: { summary: "ok", findings: [] },
+          turns: 1,
+          tokens: { input: 1, output: 1 },
+          session: { systemPrompt: opts.systemPrompt, messages: [] },
+        };
+      },
+    };
+
+    const instance: BureauAgentInstance<null, null> = {
+      name: "tester",
+      args: null,
+      definition: agent<null>()
+        .plan(async (ctx) => {
+          const copied = await readFile(join(ctx.root, "tracked.txt"), "utf8");
+          expect(copied).toBe("copied into sandbox");
+          return {
+            systemPrompt: "instance agent",
+            initialInput: "check copied source",
+            cwd: ctx.root,
+          };
+        })
+        .build(),
+      context: baseContext(rootDir),
+      buildInput() {
+        return null;
+      },
+    };
+
+    const outcome = await bureau.run({
+      provider: justBashSandboxProvider,
+      agentProvider: provider,
+      maxWallclockMs: 5_000,
+      agent: instance,
+      maxTurns: 1,
+    });
+
+    expect(outcome.session.meta.agentName).toBe("tester");
+    expect(providerCwd).toContain("/workspace");
+  });
+
+  test("bureau.resume accepts a first-class agent instance", async () => {
+    const store = createLocalBureauSessionStore({ rootDir });
+    const parent = await store.createRoot({
+      agentName: "tester",
+      args: { prompt: "root prompt" },
+      mode: "run",
+      snapshot: {
+        version: 1,
+        systemPrompt: "persisted prompt",
+        messages: [
+          { role: "user", content: "parent hello" },
+          { role: "assistant", content: "parent done" },
+        ],
+      },
+    });
+
+    const instance: BureauAgentInstance<{ prompt: string }, { prompt: string }> = {
+      name: "tester",
+      args: { prompt: "resume prompt" },
+      definition: agent<{ prompt: string }>()
+        .instructions(() => "resume agent")
+        .initialInput((ctx) => ctx.input.prompt)
+        .build(),
+      context: baseContext(rootDir),
+      buildInput(userInput) {
+        return { prompt: userInput ?? "resume prompt" };
+      },
+    };
+
+    const outcome = await bureau.resume({
+      provider: justBashSandboxProvider,
+      agentProvider: fakeAgentProvider,
+      maxWallclockMs: 5_000,
+      agent: instance,
+      parentSession: parent,
+      userInput: "child hello",
+      maxTurns: 1,
+    });
+
+    expect(outcome.session.meta.parentSessionId).toBe(parent.meta.sessionId);
+    expect(outcome.session.snapshot.systemPrompt).toBe("persisted prompt");
   });
 
   test("close commits workspace edits to the scratch repo and returns workspaceRef", async () => {

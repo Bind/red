@@ -17,6 +17,30 @@ afterEach(async () => {
 });
 
 describe("resolveBureauAgent", () => {
+  test("returns a first-class bureau agent instance", async () => {
+    const resolved = await resolveBureauAgent({
+      agentName: "librarian",
+      args: {
+        file: "apps/ctl/index.ts",
+        fileSummary: "CLI entrypoint",
+        candidates: [],
+      },
+      root: rootDir,
+    });
+
+    expect(resolved.name).toBe("librarian");
+    expect(resolved.args).toEqual({
+      file: "apps/ctl/index.ts",
+      fileSummary: "CLI entrypoint",
+      candidates: [],
+    });
+    expect(resolved.buildInput(null)).toEqual({
+      file: "apps/ctl/index.ts",
+      fileSummary: "CLI entrypoint",
+      candidates: [],
+    });
+  });
+
   test("resolves librarian into a runnable generic session spec", async () => {
     const resolved = await resolveBureauAgent({
       agentName: "librarian",
@@ -28,7 +52,7 @@ describe("resolveBureauAgent", () => {
       root: rootDir,
     });
 
-    expect(resolved.agentName).toBe("librarian");
+    expect(resolved.name).toBe("librarian");
     expect(resolved.args).toEqual({
       file: "apps/ctl/index.ts",
       fileSummary: "CLI entrypoint",
@@ -71,7 +95,7 @@ describe("resolveBureauAgent", () => {
       root: rootDir,
     });
 
-    expect(resolved.agentName).toBe("daemon-executor");
+    expect(resolved.name).toBe("daemon-executor");
     expect(resolved.args).toEqual({
       daemonName: "docs-command-surface",
       relevantFiles: ["apps/docs/README.md"],

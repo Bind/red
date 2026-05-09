@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentProvider } from "../../../pkg/daemons/src/providers/types";
-import { agent } from "../../../bureau/sdk";
 import { justBashSandboxProvider } from "../../../bureau/sandbox";
+import { agent } from "../../../bureau/sdk";
+import type { AgentProvider } from "../../../pkg/daemons/src/providers/types";
 import { ChangeQueries, SessionQueries } from "../db/queries";
 import { initInMemoryDatabase } from "../db/schema";
 import { runBureauForChange } from "./adapter";
@@ -39,7 +39,7 @@ describe("runBureauForChange", () => {
       delivery_id: "del-1",
     });
 
-    const expected = { kind: "bureau-output", value: 7 };
+    const expected = { summary: "bureau-output", findings: [] };
     const provider: AgentProvider = {
       name: "fake",
       async runUntilComplete(opts) {

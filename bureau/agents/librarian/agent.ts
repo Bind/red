@@ -9,7 +9,7 @@ import {
   type RouteDecisionCapture,
 } from "../../../pkg/daemons/src/tools/route-decision";
 import { runBureauAgent } from "../../runtime";
-import { agent, type BureauAgentContext } from "../../sdk";
+import { agent, type BureauAgentContext, type BureauAgentInstance } from "../../sdk";
 import {
   librarianModel,
   type Librarian,
@@ -62,6 +62,7 @@ export function buildLibrarianContext(
   return {
     name: "librarian",
     sourceRoot: root,
+    sessionRoot: root,
     root,
     cwd: root,
     agentDir,
@@ -72,6 +73,21 @@ export function buildLibrarianContext(
     },
     resolveSharedAsset(relativePath: string) {
       return join(root, "bureau", "shared", relativePath);
+    },
+  };
+}
+
+export function createLibrarianAgentInstance(
+  input: LibrarianInput,
+  cwd: string,
+): BureauAgentInstance<LibrarianInput, LibrarianInput> {
+  return {
+    name: "librarian",
+    args: input,
+    definition: createLibrarianDefinition(),
+    context: buildLibrarianContext(cwd),
+    buildInput() {
+      return input;
     },
   };
 }

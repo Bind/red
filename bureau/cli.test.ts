@@ -63,6 +63,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -142,6 +143,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -226,6 +228,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -297,6 +300,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -370,6 +374,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -468,6 +473,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),
@@ -566,6 +572,7 @@ describe("runBureauCli", () => {
           context: {
             name: agentName,
             sourceRoot: root,
+            sessionRoot: root,
             root,
             cwd: root,
             agentDir: join(root, "bureau", "agents", agentName),

@@ -1,12 +1,21 @@
-import { cp, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentProvider, ProviderRunCallbacks } from "../pkg/daemons/src/providers/types";
 import type { BlobStore } from "./blob-store";
 import type { SandboxRepo, WritableSandboxRepo } from "./repo";
-import { runBureauAgent } from "./runtime";
-import type { BureauAgentContext, BureauAgentDefinition } from "./sdk";
+import { isRemoteBureauAgentProvider } from "./remote-provider";
+import {
+  persistChildBureauSession,
+  persistRootBureauSession,
+  resumeBureauAgent,
+  runBureauAgent,
+} from "./runtime";
+import type { BureauAgentContext, BureauAgentDefinition, BureauAgentInstance } from "./sdk";
 import type { BureauStoredSession } from "./session-store";
+import { createBureauSessionId } from "./session-store";
+import { copyDirectoryContents, resolveSandboxCwd } from "./sandbox-fs";
+import { remoteContainer, type RemoteContainerOptions } from "./sandbox-remote";
 import { commitWorkspace, initEmptyWorkspace, seedWorkspace } from "./workspace-persistence";
 
 export type PreparedBureauWorkspace = {
@@ -46,31 +55,11 @@ export type BureauSandboxPrepareOptions = {
 };
 
 export type BureauSandboxProvider = {
+  kind: "local" | "remote";
   name: string;
   create(options: { preserve: boolean }): Promise<BureauSandboxSession>;
   prepare(options: BureauSandboxPrepareOptions): Promise<PreparedBureauWorkspace>;
 };
-
-function shouldCopyPath(source: string): boolean {
-  const normalized = source.replaceAll("\\", "/");
-  if (
-    normalized.endsWith("/.git") ||
-    normalized.includes("/.git/") ||
-    normalized.endsWith("/node_modules") ||
-    normalized.includes("/node_modules/") ||
-    normalized.endsWith("/.turbo") ||
-    normalized.includes("/.turbo/") ||
-    normalized.endsWith("/.sst") ||
-    normalized.includes("/.sst/") ||
-    normalized.endsWith("/.codex-artifacts") ||
-    normalized.includes("/.codex-artifacts/") ||
-    normalized.endsWith("/.daemons-artifacts") ||
-    normalized.includes("/.daemons-artifacts/")
-  ) {
-    return false;
-  }
-  return true;
-}
 
 async function runGit(
   cwd: string,
@@ -95,6 +84,7 @@ async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
 }
 
 export const justBashSandboxProvider: BureauSandboxProvider = {
+  kind: "local",
   name: "just-bash",
   async create(options) {
     const sandboxRoot = await mkdtemp(join(tmpdir(), "bureau-"));
@@ -117,17 +107,12 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
           remote.ref,
         ]);
         await gitOrThrow(destinationRoot, ["checkout", "--detach", "FETCH_HEAD"]);
-
-        const requestedCwd = resolve(destinationRoot, cloneOptions.cwd ?? ".");
-        const relativeCwd = relative(destinationRoot, requestedCwd);
         return {
           repoId: cloneOptions.repo.id,
           ref: cloneOptions.ref,
           dest: cloneOptions.dest,
           root: destinationRoot,
-          cwd: relativeCwd && !isAbsolute(relativeCwd)
-            ? join(destinationRoot, relativeCwd)
-            : destinationRoot,
+          cwd: resolveSandboxCwd(destinationRoot, destinationRoot, resolve(destinationRoot, cloneOptions.cwd ?? ".")),
         };
       },
       async cleanup() {
@@ -141,15 +126,10 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
     const sourceRoot = resolve(options.sourceRoot);
     const destinationRoot = join(session.root, "workspace");
     await mkdir(destinationRoot, { recursive: true });
-    await cp(sourceRoot, destinationRoot, {
-      recursive: true,
-      filter: shouldCopyPath,
-    });
-    const requestedCwd = resolve(options.cwd ?? sourceRoot);
-    const relativeCwd = relative(sourceRoot, requestedCwd);
+    await copyDirectoryContents(sourceRoot, destinationRoot);
     return {
       root: destinationRoot,
-      cwd: relativeCwd && !isAbsolute(relativeCwd) ? join(destinationRoot, relativeCwd) : destinationRoot,
+      cwd: resolveSandboxCwd(sourceRoot, destinationRoot, options.cwd),
       exposedRoot: session.exposedRoot,
       cleanup: session.cleanup,
     };
@@ -160,11 +140,14 @@ export const sandbox = {
   justBash(): BureauSandboxProvider {
     return justBashSandboxProvider;
   },
+  remoteContainer(options?: RemoteContainerOptions): BureauSandboxProvider {
+    return remoteContainer(options);
+  },
 };
 
 export type BureauSandboxContextBase = Omit<
   BureauAgentContext<unknown>,
-  "sessionId" | "input" | "cwd" | "root"
+  "sessionId" | "input" | "root"
 >;
 
 export type BureauSandboxRunOptions<Input> = {
@@ -177,9 +160,28 @@ export type BureauSandboxRunOptions<Input> = {
   providerCallbacks?: ProviderRunCallbacks;
 };
 
-export type BureauSandboxRunOutcome<Input> = Awaited<
-  ReturnType<typeof runBureauAgent<Input>>
->;
+export type BureauSandboxRunWithAgentOptions<Input> = {
+  agent: BureauAgentInstance<Input>;
+  userInput?: string | null;
+  maxTurns: number;
+  mode?: string | null;
+  sourceSha?: string | null;
+  providerCallbacks?: ProviderRunCallbacks;
+};
+
+type BureauLocalRunOutcome<Input> = Awaited<ReturnType<typeof runBureauAgent<Input>>>;
+
+export type BureauSandboxRunOutcome<Input> = Omit<BureauLocalRunOutcome<Input>, "plan"> & {
+  plan: BureauLocalRunOutcome<Input>["plan"] | null;
+};
+
+export type BureauSandboxResumeOptions<Input> = BureauSandboxRunOptions<Input> & {
+  parentSession: BureauStoredSession;
+};
+
+export type BureauSandboxResumeWithAgentOptions<Input> = BureauSandboxRunWithAgentOptions<Input> & {
+  parentSession: BureauStoredSession;
+};
 
 export type CloseResult = {
   workspaceRef?: string;
@@ -188,7 +190,10 @@ export type CloseResult = {
 export type BureauSandbox = {
   readonly workspaceDir: string;
   run<Input>(
-    options: BureauSandboxRunOptions<Input>,
+    options: BureauSandboxRunOptions<Input> | BureauSandboxRunWithAgentOptions<Input>,
+  ): Promise<BureauSandboxRunOutcome<Input>>;
+  resume<Input>(
+    options: BureauSandboxResumeOptions<Input> | BureauSandboxResumeWithAgentOptions<Input>,
   ): Promise<BureauSandboxRunOutcome<Input>>;
   close(): Promise<CloseResult>;
   [Symbol.asyncDispose](): Promise<void>;
@@ -212,8 +217,15 @@ export type CreateSandboxOptions = {
 };
 
 export async function createSandbox(options: CreateSandboxOptions): Promise<BureauSandbox> {
-  const session = await options.provider.create({ preserve: false });
-  const workspaceDir = session.root;
+  const prepared = !options.workspaceRepo && options.contextBase
+    ? await options.provider.prepare({
+      sourceRoot: options.contextBase.sourceRoot,
+      cwd: options.contextBase.cwd,
+      preserve: false,
+    })
+    : null;
+  const session = prepared ? null : await options.provider.create({ preserve: false });
+  const workspaceDir = prepared?.root ?? session!.root;
 
   if (options.workspaceRepo) {
     if (!options.sessionId && !options.resumeFrom) {
@@ -243,7 +255,7 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
         message: `bureau session ${options.sessionId}`,
       });
     }
-    await session.cleanup();
+    await (prepared?.cleanup ?? session!.cleanup)();
     return workspaceRef !== undefined ? { workspaceRef } : {};
   };
   const dispose = async (): Promise<void> => {
@@ -253,23 +265,103 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
   return {
     workspaceDir,
     async run<Input>(
-      runOptions: BureauSandboxRunOptions<Input>,
+      runOptions: BureauSandboxRunOptions<Input> | BureauSandboxRunWithAgentOptions<Input>,
     ): Promise<BureauSandboxRunOutcome<Input>> {
+      const normalized = normalizeRunOptions(runOptions);
+      if (normalized.agent && isRemoteBureauAgentProvider(options.agentProvider)) {
+        const sessionId = createBureauSessionId();
+        const result = await options.agentProvider.runBureauAgent({
+          root: workspaceDir,
+          agentName: normalized.agent.name,
+          args: normalized.agent.args,
+          userInput: normalized.userInput ?? null,
+          maxTurns: normalized.maxTurns,
+          maxWallclockMs: options.maxWallclockMs,
+          ...normalized.providerCallbacks,
+        });
+        const context = {
+          ...(normalized.contextBase ?? (options.contextBase as BureauSandboxContextBase)),
+          cwd: workspaceDir,
+          root: workspaceDir,
+        } as Omit<BureauAgentContext<Input>, "sessionId" | "input">;
+        const session = await persistRootBureauSession({
+          context,
+          sessionId,
+          args: normalized.agent.args,
+          result,
+          mode: normalized.mode,
+          sourceSha: normalized.sourceSha,
+          blobStore: options.blobStore,
+          workspaceDir,
+        });
+        return { context: { ...context, sessionId, input: normalized.input }, plan: null, result, session };
+      }
       return runBureauAgent({
-        definition: runOptions.definition,
+        definition: normalized.definition,
         context: {
-          ...(options.contextBase as BureauSandboxContextBase),
+          ...(normalized.contextBase ?? (options.contextBase as BureauSandboxContextBase)),
           cwd: workspaceDir,
           root: workspaceDir,
         } as Omit<BureauAgentContext<Input>, "sessionId" | "input">,
-        input: runOptions.input,
-        args: runOptions.args,
+        input: normalized.input,
+        args: normalized.args,
         provider: options.agentProvider,
-        maxTurns: runOptions.maxTurns,
+        maxTurns: normalized.maxTurns,
         maxWallclockMs: options.maxWallclockMs,
-        mode: runOptions.mode,
-        sourceSha: runOptions.sourceSha,
-        providerCallbacks: runOptions.providerCallbacks,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
+        blobStore: options.blobStore,
+      });
+    },
+    async resume<Input>(
+      runOptions: BureauSandboxResumeOptions<Input> | BureauSandboxResumeWithAgentOptions<Input>,
+    ): Promise<BureauSandboxRunOutcome<Input>> {
+      const normalized = normalizeRunOptions(runOptions);
+      if (normalized.agent && isRemoteBureauAgentProvider(options.agentProvider)) {
+        const sessionId = createBureauSessionId();
+        const result = await options.agentProvider.resumeBureauAgent({
+          root: workspaceDir,
+          agentName: normalized.agent.name,
+          args: normalized.agent.args,
+          userInput: normalized.userInput ?? null,
+          parentSession: runOptions.parentSession,
+          maxTurns: normalized.maxTurns,
+          maxWallclockMs: options.maxWallclockMs,
+          ...normalized.providerCallbacks,
+        });
+        const context = {
+          ...(normalized.contextBase ?? (options.contextBase as BureauSandboxContextBase)),
+          cwd: workspaceDir,
+          root: workspaceDir,
+        } as Omit<BureauAgentContext<Input>, "sessionId" | "input">;
+        const session = await persistChildBureauSession({
+          context,
+          sessionId,
+          parentSession: runOptions.parentSession,
+          result,
+          mode: normalized.mode,
+          sourceSha: normalized.sourceSha,
+          blobStore: options.blobStore,
+          workspaceDir,
+        });
+        return { context: { ...context, sessionId, input: normalized.input }, plan: null, result, session };
+      }
+      return resumeBureauAgent({
+        definition: normalized.definition,
+        context: {
+          ...(normalized.contextBase ?? (options.contextBase as BureauSandboxContextBase)),
+          cwd: workspaceDir,
+          root: workspaceDir,
+        } as Omit<BureauAgentContext<Input>, "sessionId" | "input">,
+        input: normalized.input,
+        parentSession: runOptions.parentSession,
+        provider: options.agentProvider,
+        maxTurns: normalized.maxTurns,
+        maxWallclockMs: options.maxWallclockMs,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
         blobStore: options.blobStore,
       });
     },
@@ -278,8 +370,6 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
   };
 }
 
-export type BureauStoredSessionResult = BureauStoredSession;
-
 function workspaceRefFor(sessionId: string): string {
   return `bureau/sessions/${sessionId}`;
 }
@@ -287,23 +377,115 @@ function workspaceRefFor(sessionId: string): string {
 export const bureau = {
   createSandbox,
   async run<Input>(
-    options: CreateSandboxOptions & BureauSandboxRunOptions<Input>,
+    options:
+      | (CreateSandboxOptions & BureauSandboxRunOptions<Input>)
+      | (Omit<CreateSandboxOptions, "contextBase"> & BureauSandboxRunWithAgentOptions<Input>),
   ): Promise<BureauSandboxRunOutcome<Input>> {
+    const normalized = normalizeRunOptions(options);
     await using sb = await createSandbox({
       provider: options.provider,
       agentProvider: options.agentProvider,
-      contextBase: options.contextBase,
+      contextBase: normalized.contextBase ?? (options as CreateSandboxOptions).contextBase,
       maxWallclockMs: options.maxWallclockMs,
       blobStore: options.blobStore,
+      workspaceRepo: options.workspaceRepo,
+      sessionId: options.sessionId,
+      resumeFrom: options.resumeFrom,
     });
-    return sb.run({
-      definition: options.definition,
-      input: options.input,
-      args: options.args,
+    return "agent" in options
+      ? sb.run({
+        agent: options.agent,
+        userInput: options.userInput,
+        maxTurns: normalized.maxTurns,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
+      })
+      : sb.run({
+        definition: normalized.definition,
+        input: normalized.input,
+        args: normalized.args,
+        maxTurns: normalized.maxTurns,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
+      });
+  },
+  async resume<Input>(
+    options:
+      | (CreateSandboxOptions & BureauSandboxResumeOptions<Input>)
+      | (Omit<CreateSandboxOptions, "contextBase"> & BureauSandboxResumeWithAgentOptions<Input>),
+  ): Promise<BureauSandboxRunOutcome<Input>> {
+    const normalized = normalizeRunOptions(options);
+    await using sb = await createSandbox({
+      provider: options.provider,
+      agentProvider: options.agentProvider,
+      contextBase: normalized.contextBase ?? (options as CreateSandboxOptions).contextBase,
+      maxWallclockMs: options.maxWallclockMs,
+      blobStore: options.blobStore,
+      workspaceRepo: options.workspaceRepo,
+      sessionId: options.sessionId,
+      resumeFrom: options.resumeFrom,
+    });
+    return "agent" in options
+      ? sb.resume({
+        agent: options.agent,
+        userInput: options.userInput,
+        parentSession: options.parentSession,
+        maxTurns: normalized.maxTurns,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
+      })
+      : sb.resume({
+        definition: normalized.definition,
+        input: normalized.input,
+        parentSession: options.parentSession,
+        args: normalized.args,
+        maxTurns: normalized.maxTurns,
+        mode: normalized.mode,
+        sourceSha: normalized.sourceSha,
+        providerCallbacks: normalized.providerCallbacks,
+      });
+  },
+};
+
+function normalizeRunOptions<Input>(
+  options: BureauSandboxRunOptions<Input> | BureauSandboxRunWithAgentOptions<Input>,
+): {
+  agent?: BureauAgentInstance<Input>;
+  userInput?: string | null;
+  definition: BureauAgentDefinition<Input>;
+  contextBase?: BureauSandboxContextBase;
+  input: Input;
+  args: unknown;
+  maxTurns: number;
+  mode?: string | null;
+  sourceSha?: string | null;
+  providerCallbacks?: ProviderRunCallbacks;
+} {
+  if ("agent" in options) {
+    return {
+      agent: options.agent,
+      userInput: options.userInput ?? null,
+      definition: options.agent.definition,
+      contextBase: options.agent.context as BureauSandboxContextBase,
+      input: options.agent.buildInput(options.userInput ?? null),
+      args: options.agent.args,
       maxTurns: options.maxTurns,
       mode: options.mode,
       sourceSha: options.sourceSha,
       providerCallbacks: options.providerCallbacks,
-    });
-  },
-};
+    };
+  }
+
+  return {
+    definition: options.definition,
+    input: options.input,
+    args: options.args,
+    maxTurns: options.maxTurns,
+    mode: options.mode,
+    sourceSha: options.sourceSha,
+    providerCallbacks: options.providerCallbacks,
+  };
+}
