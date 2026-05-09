@@ -49,7 +49,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Validate CI secrets
-        run: just ci-secrets-check .env.ci production
+        run: just ci::secrets-check .env.ci production
 
       - name: Provision infra
         run: dotenvx run -f .env.ci -- just provision production .env.ci

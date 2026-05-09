@@ -6,7 +6,7 @@ triggers `.github/workflows/release.yml`, which:
 1. Checks out the tag.
 2. Builds and pushes the controlled service images to GHCR, tagged by commit SHA
    and the release version.
-3. Runs `just ci-secrets-check .env.ci production`, then `just provision production`
+3. Runs `just ci::secrets-check .env.ci production`, then `just provision production`
    → `sst deploy` against Cloudflare + Hetzner,
    then syncs exported SST env vars into the target env file.
 4. Writes the SSH private key from secrets.
