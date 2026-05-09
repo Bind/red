@@ -1,4 +1,4 @@
-name: Build main images
+name: Build app images
 
 on:
   push:
@@ -6,12 +6,12 @@ on:
       - main
 
 concurrency:
-  group: build-main-images-${{ github.sha }}
+  group: build-app-images-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   build-images:
-    name: build canonical main images
+    name: build canonical app images
     permissions:
       contents: read
       packages: write

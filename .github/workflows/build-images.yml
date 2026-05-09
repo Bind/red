@@ -1,4 +1,4 @@
-name: Build images
+name: Build app images
 
 on:
   workflow_call:
@@ -27,7 +27,7 @@ on:
 
 jobs:
   workspace_deps:
-    name: Build shared workspace deps
+    name: Build base images
     runs-on: ${{ inputs.runner_label }}
     permissions:
       contents: read
