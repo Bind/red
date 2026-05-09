@@ -5,6 +5,7 @@ import { hc } from "hono/client";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppRouter as AuthAppRouter } from "../../auth/src/server";
 import type { AppRouter as ObsAppRouter } from "../../obs/src/service/app";
+
 // Hono's typed generics intentionally use `any` for un-pinned slots; this
 // alias is the single quarantined site so the rest of the file stays clean.
 // biome-ignore lint/suspicious/noExplicitAny: hono internal generics

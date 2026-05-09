@@ -81,7 +81,6 @@ export function makeApiRouter(deps: ApiDeps) {
     repos,
     sessions,
     repositoryProvider,
-    stateMachine,
     eventBus,
     logger,
   } = deps;
@@ -116,6 +115,18 @@ export function makeApiRouter(deps: ApiDeps) {
         change.head_sha,
       );
       return c.text(diff);
+    })
+    .post("/api/changes/:id/regenerate-summary", (c) => {
+      const id = Number.parseInt(c.req.param("id"), 10);
+      const change = changes.getById(id);
+      if (!change) return c.json({ error: "Not found" }, 404);
+      return c.json({ error: "Summary regeneration is not implemented" }, 501);
+    })
+    .post("/api/changes/:id/requeue-summary", (c) => {
+      const id = Number.parseInt(c.req.param("id"), 10);
+      const change = changes.getById(id);
+      if (!change) return c.json({ error: "Not found" }, 404);
+      return c.json({ error: "Summary requeue is not implemented" }, 501);
     })
     .get("/api/review", (c) => {
       const list = changes.listForReview();

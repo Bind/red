@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "@red/server";
-import {
-  type ClientConfig,
-  forwardAuthRequest,
-  makeApi,
-  makeAuth,
-  makeObs,
-} from "./client";
+import { type ClientConfig, forwardAuthRequest, makeApi, makeAuth, makeObs } from "./client";
 
 type Call = {
   url: string;
@@ -167,7 +161,13 @@ describe("service client", () => {
       config: baseConfig({ obsBaseUrl: undefined, disableAuth: true }),
       fetchImpl,
     });
-    const app = new Hono().get("/test", (c) => obs(c).send(($) => $.api.health.$get()));
+    const app = new Hono().get("/test", (c) =>
+      obs(c).send(($) =>
+        $.v1.rollups.$get({
+          query: {},
+        }),
+      ),
+    );
 
     const res = await app.request("/test");
 
@@ -237,7 +237,11 @@ describe("service client", () => {
     const app = new Hono().get("/test", (c) =>
       obs(c)
         .onError(() => c.json({ runs: [] }))
-        .send(($) => $.api.health.$get()),
+        .send(($) =>
+          $.v1.rollups.$get({
+            query: {},
+          }),
+        ),
     );
 
     const res = await app.request("/test");

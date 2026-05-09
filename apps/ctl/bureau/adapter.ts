@@ -55,6 +55,7 @@ export async function runBureauForChange<I, O>(
         name: input.agentName,
         sourceRoot: root,
         sessionRoot: root,
+        cwd: root,
         agentDir,
         assets: { skills: [] },
         emit() {},

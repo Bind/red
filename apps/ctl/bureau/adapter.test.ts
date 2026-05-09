@@ -39,7 +39,7 @@ describe("runBureauForChange", () => {
       delivery_id: "del-1",
     });
 
-    const expected = { kind: "bureau-output", value: 7 };
+    const expected = { summary: "bureau-output", findings: [] };
     const provider: AgentProvider = {
       name: "fake",
       async runUntilComplete(opts) {
