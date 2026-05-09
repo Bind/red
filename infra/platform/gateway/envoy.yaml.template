@@ -48,10 +48,6 @@ static_resources:
                         - match: { path: "/v1/events" }
                           route: { cluster: redc_obs }
 
-                        # ── triage (workflow runs) ─────────────────────
-                        - match: { prefix: "/v1/runs" }
-                          route: { cluster: redc_triage }
-
                         # ── grs (git smart-HTTP) ───────────────────────
                         - match:
                             safe_regex:
@@ -128,19 +124,6 @@ static_resources:
                     socket_address:
                       address: ${OBS_HOST}
                       port_value: 4090
-
-    - name: redc_triage
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: redc_triage
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: ${TRIAGE_HOST}
-                      port_value: 7000
 
     - name: redc_grs
       type: STRICT_DNS
