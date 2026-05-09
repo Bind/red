@@ -37,6 +37,7 @@ const baseContext = (rootDir: string) => ({
   sourceRoot: rootDir,
   sessionRoot: rootDir,
   root: rootDir,
+  cwd: rootDir,
   agentDir: join(rootDir, "bureau", "agents", "tester"),
   assets: { skills: [] },
   emit() {},

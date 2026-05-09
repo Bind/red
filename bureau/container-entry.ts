@@ -14,18 +14,17 @@ type FixtureCaptureToolsRequest = {
 };
 
 type FixtureRunAgentRequest = {
-  mode: "run-agent";
+  mode: "fixture.run-agent";
   root: string;
   agentName: string;
   args: unknown;
   userInput: string | null;
   maxTurns: number;
   maxWallclockMs: number;
-  providerMode: "fixture";
 };
 
 type FixtureResumeAgentRequest = {
-  mode: "resume-agent";
+  mode: "fixture.resume-agent";
   root: string;
   agentName: string;
   args: unknown;
@@ -33,7 +32,6 @@ type FixtureResumeAgentRequest = {
   parentSession: BureauStoredSession;
   maxTurns: number;
   maxWallclockMs: number;
-  providerMode: "fixture";
 };
 
 type ContainerEntryRequest =
@@ -62,7 +60,7 @@ if (request.mode === "fixture.capture-tools") {
   });
 
   process.stdout.write(`${JSON.stringify({ type: "result", result })}\n`);
-} else if (request.mode === "run-agent") {
+} else if (request.mode === "fixture.run-agent") {
   const resolved = await resolveContainerAgent(request);
   const input = resolved.buildInput(request.userInput);
   const plan = await resolved.definition.run({
@@ -81,7 +79,7 @@ if (request.mode === "fixture.capture-tools") {
   });
 
   process.stdout.write(`${JSON.stringify({ type: "result", result })}\n`);
-} else if (request.mode === "resume-agent") {
+} else if (request.mode === "fixture.resume-agent") {
   const resolved = await resolveContainerAgent(request);
   const input = resolved.buildInput(request.userInput);
   const plan = await resolved.definition.run({
@@ -181,7 +179,7 @@ function createFixtureLocalToolAgent(root: string): {
     definition: agent<null>()
       .plan((ctx) => ({
         systemPrompt: "fixture local tool agent",
-        initialInput: ctx.input === null ? "fixture input" : "fixture input",
+        initialInput: "fixture input",
         tools: [
           {
             name: "fixture-local-tool",

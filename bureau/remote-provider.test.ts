@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createLibrarianAgentInstance } from "./agents/librarian/agent";
 import { createTriageProposeAgentInstance } from "./agents/triage-propose/agent";
-import { createRemoteBureauProvider } from "./remote-provider";
+import { createFixtureRemoteBureauProvider } from "./remote-provider";
 import { bureau, justBashSandboxProvider } from "./sandbox";
 import { createLocalBureauSessionStore } from "./session-store";
 
@@ -18,13 +18,13 @@ beforeAll(async () => {
   await runOrThrow(["docker", "pull", TEST_IMAGE]);
 }, 60_000);
 
-describe("createRemoteBureauProvider", () => {
+describe("createFixtureRemoteBureauProvider", () => {
   test("runs a first-class agent through bureau.run inside the container", async () => {
     if (!dockerAvailable) return;
 
     const rootDir = await mkdtemp(join(tmpdir(), "remote-bureau-run-"));
     try {
-      const provider = createRemoteBureauProvider({
+      const provider = createFixtureRemoteBureauProvider({
         runtime: "docker",
         image: TEST_IMAGE,
         repoRoot: resolve(process.cwd()),
@@ -59,7 +59,7 @@ describe("createRemoteBureauProvider", () => {
 
     const rootDir = await mkdtemp(join(tmpdir(), "remote-bureau-resume-"));
     try {
-      const provider = createRemoteBureauProvider({
+      const provider = createFixtureRemoteBureauProvider({
         runtime: "docker",
         image: TEST_IMAGE,
         repoRoot: resolve(process.cwd()),

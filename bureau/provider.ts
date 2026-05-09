@@ -4,7 +4,6 @@ import {
   type AgentProvider,
   type CodexAuthSource,
 } from "../pkg/daemons/src/index";
-import { createRemoteBureauProvider } from "./remote-provider";
 import type { BureauSandboxProvider } from "./sandbox";
 
 export type CreateBureauAgentProviderOptions = {
@@ -17,14 +16,10 @@ export type CreateBureauAgentProviderOptions = {
 export function createBureauAgentProvider(
   options: CreateBureauAgentProviderOptions,
 ): AgentProvider {
-  const env = options.env ?? process.env;
-
-  if (options.sandboxProvider.name === "remote-container") {
-    return createRemoteBureauProvider({
-      runtime: env.BUREAU_SANDBOX_RUNTIME === "podman" ? "podman" : "docker",
-      image: env.BUREAU_RUNTIME_IMAGE ?? env.BUREAU_SANDBOX_IMAGE ?? "oven/bun:1",
-      repoRoot: options.repoRoot,
-    });
+  if (options.sandboxProvider.kind === "remote") {
+    throw new Error(
+      "createBureauAgentProvider does not auto-wire remote sandboxes yet; provide an explicit remote AgentProvider instead",
+    );
   }
 
   return createPiProvider({

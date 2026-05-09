@@ -1,6 +1,6 @@
-import { cp, mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentProvider, ProviderRunCallbacks } from "../pkg/daemons/src/providers/types";
 import type { BlobStore } from "./blob-store";
 import type { SandboxRepo, WritableSandboxRepo } from "./repo";
@@ -14,6 +14,7 @@ import {
 import type { BureauAgentContext, BureauAgentDefinition, BureauAgentInstance } from "./sdk";
 import type { BureauStoredSession } from "./session-store";
 import { createBureauSessionId } from "./session-store";
+import { copyDirectoryContents, resolveSandboxCwd } from "./sandbox-fs";
 import { remoteContainer, type RemoteContainerOptions } from "./sandbox-remote";
 import { commitWorkspace, initEmptyWorkspace, seedWorkspace } from "./workspace-persistence";
 
@@ -54,31 +55,11 @@ export type BureauSandboxPrepareOptions = {
 };
 
 export type BureauSandboxProvider = {
+  kind: "local" | "remote";
   name: string;
   create(options: { preserve: boolean }): Promise<BureauSandboxSession>;
   prepare(options: BureauSandboxPrepareOptions): Promise<PreparedBureauWorkspace>;
 };
-
-function shouldCopyPath(source: string): boolean {
-  const normalized = source.replaceAll("\\", "/");
-  if (
-    normalized.endsWith("/.git") ||
-    normalized.includes("/.git/") ||
-    normalized.endsWith("/node_modules") ||
-    normalized.includes("/node_modules/") ||
-    normalized.endsWith("/.turbo") ||
-    normalized.includes("/.turbo/") ||
-    normalized.endsWith("/.sst") ||
-    normalized.includes("/.sst/") ||
-    normalized.endsWith("/.codex-artifacts") ||
-    normalized.includes("/.codex-artifacts/") ||
-    normalized.endsWith("/.daemons-artifacts") ||
-    normalized.includes("/.daemons-artifacts/")
-  ) {
-    return false;
-  }
-  return true;
-}
 
 async function runGit(
   cwd: string,
@@ -102,17 +83,8 @@ async function gitOrThrow(cwd: string, args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function copyDirectoryContents(sourceRoot: string, destinationRoot: string): Promise<void> {
-  const entries = await readdir(sourceRoot);
-  for (const entry of entries) {
-    await cp(join(sourceRoot, entry), join(destinationRoot, entry), {
-      recursive: true,
-      filter: shouldCopyPath,
-    });
-  }
-}
-
 export const justBashSandboxProvider: BureauSandboxProvider = {
+  kind: "local",
   name: "just-bash",
   async create(options) {
     const sandboxRoot = await mkdtemp(join(tmpdir(), "bureau-"));
@@ -135,17 +107,12 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
           remote.ref,
         ]);
         await gitOrThrow(destinationRoot, ["checkout", "--detach", "FETCH_HEAD"]);
-
-        const requestedCwd = resolve(destinationRoot, cloneOptions.cwd ?? ".");
-        const relativeCwd = relative(destinationRoot, requestedCwd);
         return {
           repoId: cloneOptions.repo.id,
           ref: cloneOptions.ref,
           dest: cloneOptions.dest,
           root: destinationRoot,
-          cwd: relativeCwd && !isAbsolute(relativeCwd)
-            ? join(destinationRoot, relativeCwd)
-            : destinationRoot,
+          cwd: resolveSandboxCwd(destinationRoot, destinationRoot, resolve(destinationRoot, cloneOptions.cwd ?? ".")),
         };
       },
       async cleanup() {
@@ -160,11 +127,9 @@ export const justBashSandboxProvider: BureauSandboxProvider = {
     const destinationRoot = join(session.root, "workspace");
     await mkdir(destinationRoot, { recursive: true });
     await copyDirectoryContents(sourceRoot, destinationRoot);
-    const requestedCwd = resolve(options.cwd ?? sourceRoot);
-    const relativeCwd = relative(sourceRoot, requestedCwd);
     return {
       root: destinationRoot,
-      cwd: relativeCwd && !isAbsolute(relativeCwd) ? join(destinationRoot, relativeCwd) : destinationRoot,
+      cwd: resolveSandboxCwd(sourceRoot, destinationRoot, options.cwd),
       exposedRoot: session.exposedRoot,
       cleanup: session.cleanup,
     };
@@ -182,7 +147,7 @@ export const sandbox = {
 
 export type BureauSandboxContextBase = Omit<
   BureauAgentContext<unknown>,
-  "sessionId" | "input" | "cwd" | "root"
+  "sessionId" | "input" | "root"
 >;
 
 export type BureauSandboxRunOptions<Input> = {
@@ -204,9 +169,11 @@ export type BureauSandboxRunWithAgentOptions<Input> = {
   providerCallbacks?: ProviderRunCallbacks;
 };
 
-export type BureauSandboxRunOutcome<Input> = Awaited<
-  ReturnType<typeof runBureauAgent<Input>>
->;
+type BureauLocalRunOutcome<Input> = Awaited<ReturnType<typeof runBureauAgent<Input>>>;
+
+export type BureauSandboxRunOutcome<Input> = Omit<BureauLocalRunOutcome<Input>, "plan"> & {
+  plan: BureauLocalRunOutcome<Input>["plan"] | null;
+};
 
 export type BureauSandboxResumeOptions<Input> = BureauSandboxRunOptions<Input> & {
   parentSession: BureauStoredSession;
@@ -327,7 +294,7 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
           blobStore: options.blobStore,
           workspaceDir,
         });
-        return { context: { ...context, sessionId, input: normalized.input }, plan: null as never, result, session };
+        return { context: { ...context, sessionId, input: normalized.input }, plan: null, result, session };
       }
       return runBureauAgent({
         definition: normalized.definition,
@@ -378,7 +345,7 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
           blobStore: options.blobStore,
           workspaceDir,
         });
-        return { context: { ...context, sessionId, input: normalized.input }, plan: null as never, result, session };
+        return { context: { ...context, sessionId, input: normalized.input }, plan: null, result, session };
       }
       return resumeBureauAgent({
         definition: normalized.definition,
@@ -403,8 +370,6 @@ export async function createSandbox(options: CreateSandboxOptions): Promise<Bure
   };
 }
 
-export type BureauStoredSessionResult = BureauStoredSession;
-
 function workspaceRefFor(sessionId: string): string {
   return `bureau/sessions/${sessionId}`;
 }
@@ -423,6 +388,9 @@ export const bureau = {
       contextBase: normalized.contextBase ?? (options as CreateSandboxOptions).contextBase,
       maxWallclockMs: options.maxWallclockMs,
       blobStore: options.blobStore,
+      workspaceRepo: options.workspaceRepo,
+      sessionId: options.sessionId,
+      resumeFrom: options.resumeFrom,
     });
     return "agent" in options
       ? sb.run({
@@ -455,6 +423,9 @@ export const bureau = {
       contextBase: normalized.contextBase ?? (options as CreateSandboxOptions).contextBase,
       maxWallclockMs: options.maxWallclockMs,
       blobStore: options.blobStore,
+      workspaceRepo: options.workspaceRepo,
+      sessionId: options.sessionId,
+      resumeFrom: options.resumeFrom,
     });
     return "agent" in options
       ? sb.resume({

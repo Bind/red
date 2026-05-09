@@ -1,6 +1,7 @@
-import { cp, mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+import { copyDirectoryContents, resolveSandboxCwd } from "./sandbox-fs";
 import type {
   BureauSandboxPrepareOptions,
   BureauSandboxProvider,
@@ -40,6 +41,7 @@ export function remoteContainer(options: RemoteContainerOptions = {}): BureauSan
   const minDiskFreeKb = options.minDiskFreeKb ?? DEFAULT_MIN_DISK_FREE_KB;
 
   return {
+    kind: "remote",
     name: "remote-container",
     async create(createOptions): Promise<BureauSandboxSession> {
       const sandboxRoot = await mkdtemp(join(tmpdir(), "bureau-remote-"));
@@ -69,26 +71,14 @@ export function remoteContainer(options: RemoteContainerOptions = {}): BureauSan
       const destinationRoot = join(session.root, "workspace");
       await mkdir(destinationRoot, { recursive: true });
       await copyDirectoryContents(sourceRoot, destinationRoot);
-      const requestedCwd = resolve(prepareOptions.cwd ?? sourceRoot);
-      const relativeCwd = relative(sourceRoot, requestedCwd);
       return {
         root: destinationRoot,
-        cwd: relativeCwd && !isAbsolute(relativeCwd) ? join(destinationRoot, relativeCwd) : destinationRoot,
+        cwd: resolveSandboxCwd(sourceRoot, destinationRoot, prepareOptions.cwd),
         exposedRoot: session.exposedRoot,
         cleanup: session.cleanup,
       };
     },
   };
-}
-
-async function copyDirectoryContents(sourceRoot: string, destinationRoot: string): Promise<void> {
-  const entries = await readdir(sourceRoot);
-  for (const entry of entries) {
-    await cp(join(sourceRoot, entry), join(destinationRoot, entry), {
-      recursive: true,
-      filter: shouldCopyPath,
-    });
-  }
 }
 
 async function cloneWithRuntime(input: {
@@ -126,14 +116,12 @@ async function cloneWithRuntime(input: {
     ].join(" && "),
   });
 
-  const requestedCwd = resolve(destinationRoot, input.cloneOptions.cwd ?? ".");
-  const relativeCwd = relative(destinationRoot, requestedCwd);
   return {
     repoId: input.cloneOptions.repo.id,
     ref: input.cloneOptions.ref,
     dest: input.cloneOptions.dest,
     root: destinationRoot,
-    cwd: relativeCwd && !isAbsolute(relativeCwd) ? join(destinationRoot, relativeCwd) : destinationRoot,
+    cwd: resolveSandboxCwd(destinationRoot, destinationRoot, resolve(destinationRoot, input.cloneOptions.cwd ?? ".")),
   };
 }
 
@@ -234,27 +222,6 @@ async function runHostCommand(args: string[]): Promise<{ stdout: string; stderr:
     );
   }
   return { stdout, stderr };
-}
-
-function shouldCopyPath(source: string): boolean {
-  const normalized = source.replaceAll("\\", "/");
-  if (
-    normalized.endsWith("/.git") ||
-    normalized.includes("/.git/") ||
-    normalized.endsWith("/node_modules") ||
-    normalized.includes("/node_modules/") ||
-    normalized.endsWith("/.turbo") ||
-    normalized.includes("/.turbo/") ||
-    normalized.endsWith("/.sst") ||
-    normalized.includes("/.sst/") ||
-    normalized.endsWith("/.codex-artifacts") ||
-    normalized.includes("/.codex-artifacts/") ||
-    normalized.endsWith("/.daemons-artifacts") ||
-    normalized.includes("/.daemons-artifacts/")
-  ) {
-    return false;
-  }
-  return true;
 }
 
 function shellQuote(value: string): string {

@@ -36,13 +36,12 @@ export type RemoteBureauProviderOptions = {
   image: string;
   repoRoot: string;
   command?: string[];
-  providerMode?: "fixture";
 };
 
 type RemoteBureauEnvelope =
   | { type: "result"; result: ProviderRunResult };
 
-export function createRemoteBureauProvider(
+export function createFixtureRemoteBureauProvider(
   options: RemoteBureauProviderOptions,
 ): RemoteBureauAgentProvider {
   const runtime = options.runtime ?? "docker";
@@ -50,7 +49,7 @@ export function createRemoteBureauProvider(
   const repoRoot = resolve(options.repoRoot);
 
   return {
-    name: "remote-bureau",
+    name: "remote-bureau-fixture",
     async runUntilComplete() {
       throw new Error("remote-bureau provider only supports bureau.run({ agent, ... })");
     },
@@ -61,14 +60,13 @@ export function createRemoteBureauProvider(
         command,
         repoRoot,
         request: {
-          mode: "run-agent",
+          mode: "fixture.run-agent",
           root: "/workspace",
           agentName: input.agentName,
           args: input.args,
           userInput: input.userInput,
           maxTurns: input.maxTurns,
           maxWallclockMs: input.maxWallclockMs,
-          providerMode: options.providerMode ?? "fixture",
         },
         mountRoot: input.root,
       });
@@ -80,14 +78,13 @@ export function createRemoteBureauProvider(
         command,
         repoRoot,
         request: {
-          mode: "resume-agent",
+          mode: "fixture.resume-agent",
           root: "/workspace",
           agentName: input.agentName,
           args: input.args,
           userInput: input.userInput,
           maxTurns: input.maxTurns,
           maxWallclockMs: input.maxWallclockMs,
-          providerMode: options.providerMode ?? "fixture",
           parentSession: input.parentSession,
         },
         mountRoot: input.root,

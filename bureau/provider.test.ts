@@ -18,19 +18,17 @@ describe("createBureauAgentProvider", () => {
     expect(provider.name).toBe("pi");
   });
 
-  test("returns the remote bureau provider for remote-container sandboxes", () => {
-    const provider = createBureauAgentProvider({
-      sandboxProvider: sandbox.remoteContainer({
-        runtime: "docker",
-        image: "oven/bun:1",
-      }),
-      repoRoot: process.cwd(),
-      env: {
-        ...process.env,
-        BUREAU_RUNTIME_IMAGE: "oven/bun:1",
-      },
-    });
-
-    expect(provider.name).toBe("remote-bureau");
+  test("rejects implicit fixture wiring for remote-container sandboxes", () => {
+    expect(() =>
+      createBureauAgentProvider({
+        sandboxProvider: sandbox.remoteContainer({
+          runtime: "docker",
+          image: "oven/bun:1",
+        }),
+        repoRoot: process.cwd(),
+      })
+    ).toThrow(
+      "createBureauAgentProvider does not auto-wire remote sandboxes yet; provide an explicit remote AgentProvider instead",
+    );
   });
 });

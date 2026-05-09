@@ -101,7 +101,7 @@ describe("bureau container entry", () => {
 
     proc.stdin.write(
       JSON.stringify({
-        mode: "run-agent",
+        mode: "fixture.run-agent",
         root: "/workspace",
         agentName: "librarian",
         args: {
@@ -112,7 +112,6 @@ describe("bureau container entry", () => {
         userInput: null,
         maxTurns: 1,
         maxWallclockMs: 5_000,
-        providerMode: "fixture",
       }),
     );
     proc.stdin.end();
