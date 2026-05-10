@@ -28,10 +28,11 @@ The release workflow:
 7. Runs `just deploy-ssh <release-tag> <commit-sha> <RED_SERVER_IP> 2222` → rsyncs the
    working tree to `/opt/red`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
-8. Runs a direct health check against the new box with
-   `just ci::deploy-check-resolve https://<RED_DNS_RECORD> <RED_DNS_RECORD> <RED_SERVER_IP>`.
+8. Runs a direct plain-HTTP health check against the new box with
+   `just ci::wait-for-health http://<RED_SERVER_IP>`.
 9. Updates the public Cloudflare `A` record to `RED_SERVER_IP`, waits for public DNS
-   to converge, then runs `just deploy-check https://<RED_DNS_RECORD>`.
+   to converge, then waits for public HTTPS health on
+   `https://<RED_DNS_RECORD>/health`.
 
 The human gate is now merging to `main`, not manually publishing a release.
 
