@@ -94,6 +94,19 @@ jobs:
       - name: Provision infra
         run: dotenvx run -f .env.ci -- just provision production .env.ci
 
+      - name: Resolve deployment target
+        id: target
+        run: |
+          set -euo pipefail
+          server_ip="$(dotenvx get RED_SERVER_IP -f .env.ci --format shell)"
+          dns_record="$(dotenvx get RED_DNS_RECORD -f .env.ci --format shell)"
+          if [[ -z "$server_ip" || -z "$dns_record" ]]; then
+            echo "missing RED_SERVER_IP or RED_DNS_RECORD after provision"
+            exit 1
+          fi
+          echo "server_ip=${server_ip}" >> "$GITHUB_OUTPUT"
+          echo "dns_record=${dns_record}" >> "$GITHUB_OUTPUT"
+
       - name: Configure SSH (private key from .env.ci)
         run: |
           mkdir -p ~/.ssh
@@ -106,7 +119,16 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy code (rsync + docker compose up)
-        run: just deploy-ssh "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.sha }}" red.computer 2222
+        run: just deploy-ssh "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.sha }}" "${{ steps.target.outputs.server_ip }}" 2222
+
+      - name: Direct post-deploy health check
+        run: just ci::deploy-check-resolve "https://${{ steps.target.outputs.dns_record }}" "${{ steps.target.outputs.dns_record }}" "${{ steps.target.outputs.server_ip }}"
+
+      - name: Promote production DNS
+        run: just ci::promote-production-dns .env.ci
+
+      - name: Wait for public DNS
+        run: just ci::wait-for-dns "${{ steps.target.outputs.dns_record }}" "${{ steps.target.outputs.server_ip }}"
 
       - name: Post-deploy health check
-        run: just deploy-check https://red.computer
+        run: just deploy-check "https://${{ steps.target.outputs.dns_record }}"

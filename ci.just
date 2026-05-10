@@ -123,3 +123,89 @@ watch-main-release interval="300" branch="main" production_url="https://red.comp
         }' | tee -a "$log_file"
       sleep {{ interval }}
     done
+
+# Health-check a domain against a specific IP before public DNS has converged.
+deploy-check-resolve url host ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    body="$(
+      curl -fsSL \
+        --retry 12 \
+        --retry-delay 5 \
+        --retry-all-errors \
+        --max-time 15 \
+        --resolve "{{ host }}:443:{{ ip }}" \
+        "{{ url }}/health"
+    )"
+    echo "$body" | jq .
+    status="$(echo "$body" | jq -r .status)"
+    if [ "$status" != "ok" ]; then
+      echo "health status is $status"
+      exit 1
+    fi
+
+# Update the production Cloudflare A record to the provisioned server IP.
+promote-production-dns env_file=".env.ci":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    zone_id="$(dotenvx get CLOUDFLARE_ZONE_ID -f "{{ env_file }}" --format shell)"
+    api_token="$(dotenvx get CLOUDFLARE_API_TOKEN -f "{{ env_file }}" --format shell)"
+    host="$(dotenvx get RED_DNS_RECORD -f "{{ env_file }}" --format shell)"
+    target_ip="$(dotenvx get RED_SERVER_IP -f "{{ env_file }}" --format shell)"
+    records="$(
+      curl -fsS \
+        -H "Authorization: Bearer ${api_token}" \
+        "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?type=A&name=${host}"
+    )"
+    count="$(echo "$records" | jq '.result | length')"
+    if [[ "$count" -gt 1 ]]; then
+      echo "error: expected exactly one A record for ${host}, found ${count}" >&2
+      echo "$records" | jq '.result[] | {id,name,content,type}'
+      exit 1
+    fi
+    if [[ "$count" -eq 0 ]]; then
+      curl -fsS -X POST \
+        -H "Authorization: Bearer ${api_token}" \
+        -H "Content-Type: application/json" \
+        "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" \
+        --data "$(jq -nc --arg host "$host" --arg ip "$target_ip" '{type:"A",name:$host,content:$ip,ttl:300,proxied:false}')" \
+        >/dev/null
+      echo "created ${host} -> ${target_ip}"
+      exit 0
+    fi
+    record_id="$(echo "$records" | jq -r '.result[0].id')"
+    current_ip="$(echo "$records" | jq -r '.result[0].content')"
+    if [[ "$current_ip" == "$target_ip" ]]; then
+      echo "${host} already points to ${target_ip}"
+      exit 0
+    fi
+    curl -fsS -X PATCH \
+      -H "Authorization: Bearer ${api_token}" \
+      -H "Content-Type: application/json" \
+      "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}" \
+      --data "$(jq -nc --arg host "$host" --arg ip "$target_ip" '{type:"A",name:$host,content:$ip,ttl:300,proxied:false}')" \
+      >/dev/null
+    echo "updated ${host}: ${current_ip} -> ${target_ip}"
+
+# Wait until public DNS resolves a host to the expected IPv4 address.
+wait-for-dns host expected_ip timeout_seconds="300" poll_seconds="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    deadline=$(( $(date +%s) + {{ timeout_seconds }} ))
+    while (( $(date +%s) < deadline )); do
+      answers="$(
+        if command -v dig >/dev/null 2>&1; then
+          dig +short "{{ host }}" A
+        else
+          getent ahostsv4 "{{ host }}" | awk '{print $1}' | sort -u
+        fi
+      )"
+      if printf '%s\n' "$answers" | grep -Fx "{{ expected_ip }}" >/dev/null; then
+        echo "{{ host }} resolves to {{ expected_ip }}"
+        exit 0
+      fi
+      echo "waiting for {{ host }} -> {{ expected_ip }}; current answers: ${answers:-<none>}"
+      sleep {{ poll_seconds }}
+    done
+    echo "error: timed out waiting for {{ host }} to resolve to {{ expected_ip }}" >&2
+    exit 1

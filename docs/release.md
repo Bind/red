@@ -23,12 +23,15 @@ The release workflow:
 4. Runs `just ci::secrets-check .env.ci production`, then `just provision production`
    → `sst deploy` against Cloudflare + Hetzner,
    then syncs exported SST env vars into the target env file.
-5. Writes the SSH private key from secrets.
-6. Runs `just deploy-ssh <release-tag> <commit-sha> red.computer 2222` → rsyncs the
+5. Resolves `RED_SERVER_IP` + `RED_DNS_RECORD` from the provisioned SST outputs.
+6. Writes the SSH private key from secrets.
+7. Runs `just deploy-ssh <release-tag> <commit-sha> <RED_SERVER_IP> 2222` → rsyncs the
    working tree to `/opt/red`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
-7. Runs `just deploy-check https://red.computer` → curl `/health` and fail
-   the workflow unless `status == "ok"`.
+8. Runs a direct health check against the new box with
+   `just ci::deploy-check-resolve https://<RED_DNS_RECORD> <RED_DNS_RECORD> <RED_SERVER_IP>`.
+9. Updates the public Cloudflare `A` record to `RED_SERVER_IP`, waits for public DNS
+   to converge, then runs `just deploy-check https://<RED_DNS_RECORD>`.
 
 The human gate is now merging to `main`, not manually publishing a release.
 
@@ -114,6 +117,12 @@ release workflow succeeds.
 If the release workflow says prebuilt images are missing for the tag's commit SHA,
 wait for the `Build app images` workflow on that `main` commit to finish, or fix
 the branch/tag so the release points at a commit that already landed on `main`.
+
+If the release workflow fails after `Provision infra`, check whether:
+
+- `RED_SERVER_IP` in `.env.ci` matches the intended host from SST
+- the deploy step is targeting the resolved server IP, not stale public DNS
+- the public `A` record for `red.computer` actually converged to `RED_SERVER_IP`
 
 ## Manual backfill
 
