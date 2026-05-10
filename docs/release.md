@@ -32,6 +32,30 @@ The release workflow:
 
 The human gate is now merging to `main`, not manually publishing a release.
 
+## Fresh prod host bootstrap
+
+If production needs to move to a fresh Hetzner box, bootstrap the machine
+before pointing `red.computer` at it:
+
+```bash
+just bootstrap-prod-box <new-prod-ip> 22
+```
+
+That uses `HETZNER_SSH_PRIVATE_KEY` from `.env.ci` for initial root access,
+uploads `.env.production`, persists `DOTENV_PRIVATE_KEY_PRODUCTION` from your
+local `.env.keys` into `/root/.bashrc`, decrypts `/opt/red/.env`, installs
+docker + dotenvx if missing, creates `/opt/red`, and moves sshd to port `2222`.
+
+After that, verify:
+
+```bash
+ssh -p 2222 root@<new-prod-ip> true
+just deploy-ssh <release-tag> <commit-sha> <new-prod-ip> 2222
+```
+
+Do not leave `red.computer` with multiple `A` records during cutover. Point it
+at exactly one prod host at a time.
+
 ## Required repo secrets
 
 | name | used by | notes |
