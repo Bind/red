@@ -4,7 +4,7 @@ set -euo pipefail
 HOST="${1:?usage: setup.sh <host-or-ip>}"
 PORT="${2:-22}"
 REMOTE_SCRIPT="/root/setup-prod-box.sh"
-REMOTE_PROD_ENV="/opt/red/.env.production"
+REMOTE_PROD_ENV="/root/.env.production"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TMP_KEY="$(mktemp)"
