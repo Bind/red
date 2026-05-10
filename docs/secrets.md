@@ -103,3 +103,13 @@ workflow uses `dotenvx get <KEY> -f .env.ci` to emit it.
 
 If `DOTENV_PRIVATE_KEY_<ENV>` isn't exported on the box, the deploy
 fails fast with a clear error.
+
+For a brand-new production box, prefer:
+
+```bash
+just bootstrap-prod-box <new-prod-ip> 22
+```
+
+That uploads `.env.production`, persists `DOTENV_PRIVATE_KEY_PRODUCTION`,
+decrypts `/opt/red/.env`, and prepares the host for the normal `deploy-ssh`
+flow.

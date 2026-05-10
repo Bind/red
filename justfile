@@ -345,6 +345,10 @@ provision stage="production" *targets:
 bootstrap-dev-box host port="2222":
     ./infra/preview/setup.sh {{ host }} {{ port }}
 
+# Bootstrap a fresh production box over SSH using credentials from .env.ci/.env.keys.
+bootstrap-prod-box host port="22":
+    ./infra/prod/setup.sh {{ host }} {{ port }}
+
 # Rsync working tree to the host and pull/start the runtime + prod overlay over ssh
 deploy-ssh image_tag git_commit host="red.computer" port="2222":
     ./infra/prod/deploy.sh {{ host }} {{ port }} {{ image_tag }} {{ git_commit }}
