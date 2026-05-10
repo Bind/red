@@ -144,6 +144,28 @@ deploy-check-resolve url host ip:
       exit 1
     fi
 
+# Wait for an HTTP(S) health endpoint to return {"status":"ok"}.
+wait-for-health url timeout_seconds="600" poll_seconds="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    deadline=$(( $(date +%s) + {{ timeout_seconds }} ))
+    while (( $(date +%s) < deadline )); do
+      if body="$(curl -fsSL --max-time 15 "{{ url }}/health" 2>/dev/null)"; then
+        echo "$body" | jq .
+        status="$(echo "$body" | jq -r .status)"
+        if [[ "$status" == "ok" ]]; then
+          echo "{{ url }} is healthy"
+          exit 0
+        fi
+        echo "waiting for {{ url }} health=ok; got status=${status}"
+      else
+        echo "waiting for {{ url }} to respond successfully"
+      fi
+      sleep {{ poll_seconds }}
+    done
+    echo "error: timed out waiting for {{ url }}/health" >&2
+    exit 1
+
 # Update the production Cloudflare A record to the provisioned server IP.
 promote-production-dns env_file=".env.ci":
     #!/usr/bin/env bash
