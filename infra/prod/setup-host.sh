@@ -48,6 +48,9 @@ chmod 755 "${PROD_DIR}"
 
 echo "==> Moving sshd to port ${SSH_PORT}"
 sed -i "s/^#\\?Port .*/Port ${SSH_PORT}/" /etc/ssh/sshd_config
+if systemctl list-unit-files ssh.socket >/dev/null 2>&1; then
+  systemctl disable --now ssh.socket || true
+fi
 systemctl restart ssh
 
 if [[ -n "${DOTENV_PRIVATE_KEY_PRODUCTION:-}" ]]; then
@@ -63,6 +66,9 @@ if [[ "${BOOTSTRAP_PROD_ENV:-0}" == "1" ]]; then
     echo "error: BOOTSTRAP_PROD_ENV=1 requires DOTENV_PRIVATE_KEY_PRODUCTION" >&2
     exit 1
   fi
+  if [[ -f /root/.env.production ]]; then
+    mv /root/.env.production "${PROD_DIR}/.env.production"
+  fi
   if [[ ! -f "${PROD_DIR}/.env.production" ]]; then
     echo "error: ${PROD_DIR}/.env.production is missing" >&2
     exit 1
@@ -70,7 +76,7 @@ if [[ "${BOOTSTRAP_PROD_ENV:-0}" == "1" ]]; then
   echo "==> Decrypting ${PROD_DIR}/.env.production → ${PROD_DIR}/.env"
   (
     cd "${PROD_DIR}"
-    dotenvx decrypt -f .env.production -o .env
+    dotenvx decrypt -f .env.production --stdout > .env
     chmod 600 .env
   )
 fi

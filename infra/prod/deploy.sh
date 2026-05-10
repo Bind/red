@@ -52,7 +52,7 @@ if ! command -v dotenvx >/dev/null 2>&1; then
   curl -fsS https://dotenvx.sh | sh
 fi
 
-dotenvx decrypt -f .env.production -o .env
+dotenvx decrypt -f .env.production --stdout > .env
 chmod 600 .env
 
 set -a
@@ -64,8 +64,8 @@ if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
 fi
 
 export IMAGE_TAG GIT_COMMIT
-docker compose -f infra/base/compose.yml -f infra/prod/compose.yml pull
-docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d
+docker compose --env-file .env -f infra/base/compose.yml -f infra/prod/compose.yml pull
+docker compose --env-file .env -f infra/base/compose.yml -f infra/prod/compose.yml up -d
 REMOTE
 
 echo "==> Deployed to https://${HOST}"
