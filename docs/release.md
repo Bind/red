@@ -28,8 +28,8 @@ The release workflow:
 7. Runs `just deploy-ssh <release-tag> <commit-sha> <RED_SERVER_IP> 2222` → rsyncs the
    working tree to `/opt/red`, decrypts `.env.production`, pulls the tagged GHCR
    images on the server, then `docker compose -f infra/base/compose.yml -f infra/prod/compose.yml up -d`.
-8. Runs a direct plain-HTTP health check against the new box with
-   `just ci::wait-for-health http://<RED_SERVER_IP>`.
+8. Runs an internal on-host gateway health check against the new box with
+   `just ci::remote-gateway-health <RED_SERVER_IP> 2222`.
 9. Updates the public Cloudflare `A` record to `RED_SERVER_IP`, waits for public DNS
    to converge, then waits for public HTTPS health on
    `https://<RED_DNS_RECORD>/health`.

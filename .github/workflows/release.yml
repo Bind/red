@@ -122,7 +122,7 @@ jobs:
         run: just deploy-ssh "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.sha }}" "${{ steps.target.outputs.server_ip }}" 2222
 
       - name: Direct post-deploy health check
-        run: just ci::wait-for-health "http://${{ steps.target.outputs.server_ip }}"
+        run: just ci::remote-gateway-health "${{ steps.target.outputs.server_ip }}" 2222
 
       - name: Promote production DNS
         run: just ci::promote-production-dns .env.ci

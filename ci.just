@@ -166,6 +166,31 @@ wait-for-health url timeout_seconds="600" poll_seconds="10":
     echo "error: timed out waiting for {{ url }}/health" >&2
     exit 1
 
+# Probe the deployed gateway from inside the host before public DNS/TLS cutover.
+remote-gateway-health host port="2222" timeout_seconds="600" poll_seconds="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    deadline=$(( $(date +%s) + {{ timeout_seconds }} ))
+    while (( $(date +%s) < deadline )); do
+      if body="$(
+        ssh -p {{ port }} -o StrictHostKeyChecking=accept-new "root@{{ host }}" \
+          'docker exec base-caddy-1 sh -lc "wget -qO- http://gateway:8080/health"' 2>/dev/null
+      )"; then
+        echo "$body" | jq .
+        status="$(echo "$body" | jq -r .status)"
+        if [[ "$status" == "ok" ]]; then
+          echo "gateway is healthy on {{ host }}"
+          exit 0
+        fi
+        echo "waiting for gateway health=ok on {{ host }}; got status=${status}"
+      else
+        echo "waiting for internal gateway health on {{ host }}"
+      fi
+      sleep {{ poll_seconds }}
+    done
+    echo "error: timed out waiting for internal gateway health on {{ host }}" >&2
+    exit 1
+
 # Update the production Cloudflare A record to the provisioned server IP.
 promote-production-dns env_file=".env.ci":
     #!/usr/bin/env bash
