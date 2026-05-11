@@ -140,6 +140,55 @@ function requiredBoolean(value: string | undefined, label: string): boolean {
   throw new Error(`${label} must be true or false`);
 }
 
+function parseOptionalCloudflareEmailSending(env: NodeJS.ProcessEnv) {
+  const from = optionalString(env.AUTH_LAB_EMAIL_FROM);
+  const accountId =
+    optionalString(env.AUTH_LAB_EMAIL_ACCOUNT_ID) ??
+    optionalString(env.CLOUDFLARE_ACCOUNT_ID) ??
+    optionalString(env.CLOUDFLARE_DEFAULT_ACCOUNT_ID);
+  const apiToken =
+    optionalString(env.AUTH_LAB_EMAIL_API_TOKEN) ?? optionalString(env.CLOUDFLARE_API_TOKEN);
+  const senderName = optionalString(env.AUTH_LAB_EMAIL_SENDER_NAME);
+  const replyTo = optionalString(env.AUTH_LAB_EMAIL_REPLY_TO);
+  const apiBaseUrl = optionalString(env.AUTH_LAB_EMAIL_API_BASE_URL);
+
+  const hasAny =
+    Boolean(from) ||
+    Boolean(accountId) ||
+    Boolean(apiToken) ||
+    Boolean(senderName) ||
+    Boolean(replyTo) ||
+    Boolean(apiBaseUrl);
+  if (!hasAny) {
+    return undefined;
+  }
+  if (!from) {
+    throw new Error("AUTH_LAB_EMAIL_FROM is required when email sending is configured");
+  }
+  if (!accountId) {
+    throw new Error(
+      "AUTH_LAB_EMAIL_ACCOUNT_ID or CLOUDFLARE_DEFAULT_ACCOUNT_ID is required when email sending is configured",
+    );
+  }
+  if (!apiToken) {
+    throw new Error(
+      "AUTH_LAB_EMAIL_API_TOKEN or CLOUDFLARE_API_TOKEN is required when email sending is configured",
+    );
+  }
+
+  return {
+    provider: "cloudflare" as const,
+    cloudflare: {
+      accountId,
+      apiToken,
+      from,
+      senderName,
+      replyTo,
+      apiBaseUrl,
+    },
+  };
+}
+
 function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
   const port = Number.parseInt(env.AUTH_LAB_PORT ?? "4020", 10);
   if (!Number.isFinite(port) || port <= 0) {
@@ -179,6 +228,7 @@ function loadDevConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     },
     userAuthSecret: env.AUTH_LAB_BETTER_AUTH_SECRET ?? "red-auth-lab-dev-secret",
     signingPrivateJwk: optionalString(env.AUTH_LAB_SIGNING_PRIVATE_JWK),
+    emailSending: parseOptionalCloudflareEmailSending(env),
     seedClients: [
       {
         clientId,
@@ -248,6 +298,7 @@ function loadComposeConfig(env: NodeJS.ProcessEnv): AuthRuntimeConfig {
     },
     userAuthSecret,
     signingPrivateJwk,
+    emailSending: parseOptionalCloudflareEmailSending(env),
     seedClients: [
       {
         clientId,

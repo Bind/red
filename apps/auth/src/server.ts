@@ -14,6 +14,11 @@ import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
+import {
+  type CloudflareEmailSenderConfig,
+  createCloudflareEmailSender,
+  type EmailSender,
+} from "./service/cloudflare-email";
 import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
 import { createTokenAuthority } from "./service/m2m/service";
 import { createSessionExchangeService } from "./service/session-exchange-service";
@@ -51,6 +56,10 @@ export interface AuthServerConfig {
   allowAnyTotpCode?: boolean;
   userAuthSecret?: string;
   signingPrivateJwk?: string;
+  emailSending?: {
+    provider: "cloudflare";
+    cloudflare: CloudflareEmailSenderConfig;
+  };
   database: {
     kind: "sqlite" | "postgres";
     sqlitePath?: string;
@@ -167,6 +176,38 @@ function normalizeClientId(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function buildClientMagicLinkUrl(input: {
+  redirectBaseUrl: string;
+  magicLinkPath?: string;
+  attemptId: string;
+  token: string;
+  clientId: string;
+}): string {
+  const url = new URL(input.magicLinkPath ?? "/auth/magic-link", input.redirectBaseUrl);
+  url.searchParams.set("attempt_id", input.attemptId);
+  url.searchParams.set("token", input.token);
+  url.searchParams.set("client_id", input.clientId);
+  return url.toString();
+}
+
+function buildSignInEmail(input: { email: string; url: string }) {
+  return {
+    to: input.email,
+    subject: "Sign in to red",
+    text: `Use this sign-in link to access red:\n\n${input.url}\n\nThis link expires in 15 minutes.`,
+    html: `<p>Use this sign-in link to access <strong>red</strong>:</p><p><a href="${input.url}">${input.url}</a></p><p>This link expires in 15 minutes.</p>`,
+  };
+}
+
+function buildRecoveryEmail(input: { email: string; url: string }) {
+  return {
+    to: input.email,
+    subject: "Confirm your red account recovery",
+    text: `Use this link to start your red account recovery session:\n\n${input.url}\n\nAfter the link opens, you will still need your recovery factor.`,
+    html: `<p>Use this link to start your <strong>red</strong> account recovery session:</p><p><a href="${input.url}">${input.url}</a></p><p>After the link opens, you will still need your recovery factor.</p>`,
+  };
+}
+
 function withRequestIdHeaders(requestId: string, init?: HeadersInit): Headers {
   const headers = new Headers(init);
   headers.set("x-request-id", requestId);
@@ -194,6 +235,10 @@ export async function createAuthServer(config: AuthServerConfig) {
     (config.webClients ?? []).map((client) => [client.clientId, client] as const),
   );
   const registry = createMachineClientRegistry(config.seedClients);
+  const emailSender: EmailSender | null =
+    config.emailSending?.provider === "cloudflare"
+      ? createCloudflareEmailSender(config.emailSending.cloudflare)
+      : null;
   const authority = await createTokenAuthority({
     issuer: config.issuer,
     defaultAudience: config.audience,
@@ -654,6 +699,7 @@ export async function createAuthServer(config: AuthServerConfig) {
         },
       });
       await userLifecycle.startRecoveryChallenge(email);
+      const mailboxLengthBefore = userRuntime.mailbox.length;
       const mailRequest = new Request(`${config.issuer}/api/auth/sign-in/magic-link`, {
         method: "POST",
         headers: withRequestIdHeaders(requestId, {
@@ -667,7 +713,21 @@ export async function createAuthServer(config: AuthServerConfig) {
           },
         }),
       });
-      return authAdapter.handle(mailRequest);
+      const response = await authAdapter.handle(mailRequest);
+      if (!response.ok) {
+        return response;
+      }
+      if (emailSender) {
+        const mail = userRuntime.mailbox
+          .slice(mailboxLengthBefore)
+          .filter((entry) => normalizeEmail(entry.email) === email)
+          .at(-1);
+        if (!mail?.url) {
+          throw new AuthError("server_error", "Recovery magic link was not captured", 500);
+        }
+        await emailSender.sendEmail(buildRecoveryEmail({ email, url: mail.url }));
+      }
+      return c.json({ ok: true, email });
     })
 
     .post(
@@ -758,7 +818,18 @@ export async function createAuthServer(config: AuthServerConfig) {
           },
         });
 
-        mail.url = `${new URL(client.magicLinkPath ?? "/auth/magic-link", client.redirectBaseUrl).toString()}?attempt_id=${encodeURIComponent(attempt.id)}&token=${encodeURIComponent(mail.token)}&client_id=${encodeURIComponent(clientId)}`;
+        const clientMagicLinkUrl = buildClientMagicLinkUrl({
+          redirectBaseUrl: client.redirectBaseUrl,
+          magicLinkPath: client.magicLinkPath,
+          attemptId: attempt.id,
+          token: mail.token,
+          clientId,
+        });
+        mail.url = clientMagicLinkUrl;
+
+        if (emailSender) {
+          await emailSender.sendEmail(buildSignInEmail({ email, url: clientMagicLinkUrl }));
+        }
 
         return c.json({
           attempt_id: attempt.id,

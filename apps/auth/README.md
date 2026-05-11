@@ -38,6 +38,19 @@ The important separation is:
 Test-only when enabled:
 - `GET /__test__/mailbox/latest`
 
+## Transactional Email
+
+Magic-link delivery is not SMTP-backed in this repo. To send real login emails in deployed environments,
+configure Cloudflare Email Service on the auth service and keep the in-memory mailbox only for local
+tests and token capture during auth flows.
+
+Relevant env vars:
+- `AUTH_LAB_EMAIL_FROM`
+- `AUTH_LAB_EMAIL_ACCOUNT_ID` or `CLOUDFLARE_DEFAULT_ACCOUNT_ID`
+- `AUTH_LAB_EMAIL_API_TOKEN` or `CLOUDFLARE_API_TOKEN`
+- optional: `AUTH_LAB_EMAIL_SENDER_NAME`
+- optional: `AUTH_LAB_EMAIL_REPLY_TO`
+
 ## Local Use
 
 ```bash
@@ -55,7 +68,6 @@ Compose mode is strict:
 
 ## MVP TODOs
 
-- Remove the remaining test-only mailbox dependency from the production integration story.
 - Replace any remaining service-owned shortcuts with fully route-driven onboarding and recovery transitions.
 - Finalize the passwordless TOTP enrollment path and recovery completion path.
 - Replace in-memory M2M revocation tracking with durable storage.
