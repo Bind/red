@@ -17,10 +17,15 @@ services:
   api:
     env_file:
       - ../../.env
+    environment:
+      RED_REPOS: ${PROD_HOSTED_REPO_ID:-bind/red}
+      GIT_STORAGE_DEFAULT_OWNER: ${PROD_REPO_OWNER:-bind}
 
   bff:
     env_file:
       - ../../.env
+    environment:
+      BFF_HOSTED_REPO_ID: ${PROD_HOSTED_REPO_ID:-bind/red}
 
   auth:
     env_file:
