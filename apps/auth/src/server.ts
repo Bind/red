@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { zValidator } from "@hono/zod-validator";
 import {
+  type CloudflareEmailSenderConfig,
+  CloudflareEmailService,
+  type EmailSender,
+} from "@red/email";
+import {
   collectHealthReport,
   createObsSinkFromEnv,
   type EventEnvelope,
@@ -14,11 +19,6 @@ import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { type BetterAuthAdapter, createBetterAuthAdapter } from "./service/better-auth-adapter";
-import {
-  type CloudflareEmailSenderConfig,
-  createCloudflareEmailSender,
-  type EmailSender,
-} from "./service/cloudflare-email";
 import { createMachineClientRegistry, type MachineClientSeed } from "./service/m2m/registry";
 import { createTokenAuthority } from "./service/m2m/service";
 import { createSessionExchangeService } from "./service/session-exchange-service";
@@ -237,7 +237,7 @@ export async function createAuthServer(config: AuthServerConfig) {
   const registry = createMachineClientRegistry(config.seedClients);
   const emailSender: EmailSender | null =
     config.emailSending?.provider === "cloudflare"
-      ? createCloudflareEmailSender(config.emailSending.cloudflare)
+      ? new CloudflareEmailService(config.emailSending.cloudflare)
       : null;
   const authority = await createTokenAuthority({
     issuer: config.issuer,
