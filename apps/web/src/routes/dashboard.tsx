@@ -31,10 +31,12 @@ import {
   createRepo,
   enrollTotp,
   fetchBranches,
+  fetchHostedRepoSnapshot,
   fetchPasskeyAuthenticateOptions,
   fetchPasskeyRegisterOptions,
   fetchRepos,
   fetchReviewQueue,
+  type HostedRepoSnapshot,
   type LoginAttempt,
   type MagicLinkPreview,
   type RepoSummary,
@@ -110,6 +112,114 @@ function parseApiMessage(error: unknown, fallback: string): string {
 function parseTotpSecret(totpUri: string): string {
   const uri = new URL(totpUri);
   return uri.searchParams.get("secret") ?? "";
+}
+
+function CoreRepoStatsCard() {
+  const [snapshot, setSnapshot] = useState<HostedRepoSnapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const next = await fetchHostedRepoSnapshot();
+        if (!cancelled) {
+          setSnapshot(next);
+          setError(null);
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setSnapshot(null);
+          setError(
+            nextError instanceof Error ? nextError.message : "Unable to load hosted repo stats.",
+          );
+        }
+      }
+    };
+
+    void load();
+    const handle = window.setInterval(() => {
+      void load();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, []);
+
+  const latestCommit = snapshot?.commits[0] ?? null;
+  const repoPath = snapshot ? `/${snapshot.repo.owner}/${snapshot.repo.name}` : "/bind/red";
+
+  return (
+    <Card className="border-border/60 bg-card/90">
+      <CardHeader className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={snapshot?.availability.reachable ? "secondary" : "outline"}>
+            {snapshot?.availability.reachable ? "repo online" : "repo pending"}
+          </Badge>
+          <Badge variant="outline">prod hosted repo</Badge>
+        </div>
+        <CardTitle className="text-xl">
+          {snapshot ? snapshot.repo.full_name : "Core repo"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Unable to load core repo stats</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : snapshot ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border border-border/60 bg-background/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Default branch
+                </p>
+                <p className="mt-1 font-mono text-sm">{snapshot.repo.default_branch}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Branches</p>
+                <p className="mt-1 text-lg font-semibold">{snapshot.branches.length}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Recent commits
+                </p>
+                <p className="mt-1 text-lg font-semibold">{snapshot.commits.length}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">README</p>
+                <p className="mt-1 font-mono text-sm">{snapshot.readme?.path ?? "not available"}</p>
+              </div>
+            </div>
+            {latestCommit && (
+              <div className="rounded-md border border-border/60 bg-background/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Latest commit
+                </p>
+                <p className="mt-2 line-clamp-2 text-sm text-foreground">{latestCommit.message}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {latestCommit.author_name ?? latestCommit.author_email ?? "unknown author"}
+                  {latestCommit.timestamp ? ` · ${timeAgo(latestCommit.timestamp)}` : ""}
+                </p>
+              </div>
+            )}
+            <Button type="button" variant="outline" asChild>
+              <Link to={repoPath}>Open hosted repo view</Link>
+            </Button>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <Skeleton className="h-20 w-full rounded-xl" />
+            <Skeleton className="h-20 w-full rounded-xl" />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function PasskeyEnrollmentCard({ onComplete }: { onComplete: () => Promise<void> }) {
@@ -476,7 +586,7 @@ function AuthGate({
 
   const description =
     lifecycle === "signed_out"
-      ? "Authenticate with your magic link, then the dashboard will unlock automatically."
+      ? "Authenticate with your magic link or YubiKey TOTP, then the dashboard will unlock automatically."
       : lifecycle === "pending_passkey"
         ? "Your account is authenticated, but the primary passkey step is not complete yet."
         : lifecycle === "pending_recovery_factor"
@@ -514,6 +624,9 @@ function AuthGate({
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={submitting}>
                   {submitting ? "Requesting..." : "Send magic link"}
+                </Button>
+                <Button type="button" variant="secondary" asChild>
+                  <Link to="/auth/yubikey">Use YubiKey TOTP</Link>
                 </Button>
                 <Button
                   type="button"
@@ -558,6 +671,7 @@ function AuthGate({
                   </AlertDescription>
                 </Alert>
               )}
+              <CoreRepoStatsCard />
             </form>
           )}
 
@@ -889,7 +1003,7 @@ function DashboardContent({ me }: { me: AuthMeResponse }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-primary/15 bg-gradient-to-br from-primary/10 via-card to-background">
           <CardHeader className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -910,9 +1024,10 @@ function DashboardContent({ me }: { me: AuthMeResponse }) {
             </Button>
           </CardContent>
         </Card>
-
-        <RepoCreateCard defaultOwner={deriveDefaultOwner(me.user.email)} onCreated={loadRepos} />
+        <CoreRepoStatsCard />
       </div>
+
+      <RepoCreateCard defaultOwner={deriveDefaultOwner(me.user.email)} onCreated={loadRepos} />
 
       <RepoCatalogCard
         repos={repos}

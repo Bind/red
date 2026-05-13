@@ -66,6 +66,7 @@ fi
 export IMAGE_TAG GIT_COMMIT
 docker compose --env-file .env -f infra/base/compose.yml -f infra/prod/compose.yml pull
 docker compose --env-file .env -f infra/base/compose.yml -f infra/prod/compose.yml up -d
+./infra/prod/seed.sh
 REMOTE
 
 echo "==> Deployed to https://${HOST}"

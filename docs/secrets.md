@@ -113,3 +113,17 @@ just bootstrap-prod-box <new-prod-ip> 22
 That uploads `.env.production`, persists `DOTENV_PRIVATE_KEY_PRODUCTION`,
 decrypts `/opt/red/.env`, and prepares the host for the normal `deploy-ssh`
 flow.
+
+## Auth email delivery
+
+Production auth can send browser login emails through Cloudflare Email Service.
+The auth service reads:
+
+- `AUTH_LAB_EMAIL_FROM`
+- `AUTH_LAB_EMAIL_ACCOUNT_ID` or `CLOUDFLARE_DEFAULT_ACCOUNT_ID`
+- `AUTH_LAB_EMAIL_API_TOKEN` or `CLOUDFLARE_API_TOKEN`
+- optional `AUTH_LAB_EMAIL_SENDER_NAME`
+- optional `AUTH_LAB_EMAIL_REPLY_TO`
+
+If those are unset, auth still works for local/test flows via the in-memory
+mailbox, but deployed environments will not dispatch real magic-link emails.

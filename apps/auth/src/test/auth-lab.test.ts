@@ -450,6 +450,67 @@ describe("auth lab", () => {
     expect(sessionBody.session.id).toBe(completed.session_id);
   });
 
+  test("sends login-attempt email through Cloudflare with the client-facing magic link", async () => {
+    const sent: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const server = await createAuthServer({
+      ...baseConfig,
+      emailSending: {
+        provider: "cloudflare",
+        cloudflare: {
+          accountId: "acct-test",
+          apiToken: "token-test",
+          from: "auth@red.computer",
+          apiBaseUrl: "https://email.test",
+          fetchImpl: async (input, init) => {
+            sent.push({
+              url: String(input),
+              body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+            });
+            return new Response(
+              JSON.stringify({
+                success: true,
+                errors: [],
+                result: { delivered: ["cross-device@example.com"] },
+              }),
+              {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              },
+            );
+          },
+        },
+      },
+    });
+
+    const createResponse = await server.fetch(
+      new Request("http://127.0.0.1:4020/login-attempts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "cross-device@example.com",
+          client_id: "red-web",
+        }),
+      }),
+    );
+
+    expect(createResponse.status).toBe(200);
+    const created = (await createResponse.json()) as {
+      attempt_id: string;
+    };
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.url).toBe("https://email.test/accounts/acct-test/email/sending/send");
+    expect(sent[0]?.body.to).toBe("cross-device@example.com");
+    expect(sent[0]?.body.from).toBe("auth@red.computer");
+    expect(String(sent[0]?.body.text)).toContain(
+      `http://localhost:5173/auth/magic-link?attempt_id=${created.attempt_id}`,
+    );
+    expect(server.userRuntime.mailbox.at(-1)?.url).toContain(
+      `http://localhost:5173/auth/magic-link?attempt_id=${created.attempt_id}`,
+    );
+  });
+
   test("denies bootstrap-only sessions from receiving privileged JWTs", async () => {
     const server = await createAuthServer(baseConfig);
     const bootstrap = await bootstrapMagicLinkSession(
